@@ -39,6 +39,7 @@ API_VERSION = 1
 
 
 class JobIn(BaseModel):
+    whole: bool | None = None  # one candidate spanning the measured source
     url: str
     force: bool = False
     max_clips: int | None = None  # per-job override of clips.max_clips_per_video
@@ -83,6 +84,7 @@ class JobPatch(BaseModel):
     afterwards — a job whose configuration changed halfway would render some
     of its clips one way and the rest another."""
 
+    whole: bool | None = None
     max_clips: int | None = None
     caption_style: dict | None = None
     captions: bool | None = None
@@ -118,6 +120,7 @@ class BatchItemIn(BaseModel):
     longform" has to survive the trip. A batch-wide option set could not
     express that."""
 
+    whole: bool | None = None
     url: str
     force: bool = False
     max_clips: int | None = None
@@ -482,6 +485,8 @@ def _process_options(body, into: dict | None = None, data_dir: Path | None = Non
     chosen to rate or understand the moments or to suggest edits for the
     clips) must be installed."""
     payload: dict = dict(into or {})
+    if getattr(body, "whole", None) is not None:
+        payload["whole"] = body.whole
     if getattr(body, "max_clips", None) is not None:
         payload["max_clips"] = max(1, min(10, body.max_clips))
     if getattr(body, "caption_style", None):
@@ -595,6 +600,9 @@ def _process_options(body, into: dict | None = None, data_dir: Path | None = Non
     # toggle being switched off needs to say so.
     for key in getattr(body, "clear", []) or []:
         payload.pop(key, None)
+    if payload.get("whole") and any(payload.get(key) for key in
+                                    ("longform", "long_clips", "sport", "pipeline", "rate", "edit")):
+        raise HTTPException(400, "Whole clips can't be combined with Longform, long clips, Sports, a pipeline, Rate or Suggest edits.")
     # Vertical Live keeps a finished 9:16 layout as it is; Podcast reframes a
     # multi-camera set and Longform makes 16:9. Asking for both is a mistake
     # worth saying out loud rather than quietly picking one.

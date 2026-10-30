@@ -252,6 +252,64 @@ def run(monkeypatch):
 CONFIG = {"clips": {}, "tracking": {"detector": "yolov8n-pose.pt", "sample_fps": 8}}
 
 
+def test_whole_clip_without_webcam_keeps_full_source_width(run, monkeypatch):
+    run_mod, plans = run
+    monkeypatch.setattr(run_mod, "_trusted_look", lambda *a: "at")
+    config = {**CONFIG, "clips": {"whole": True}}
+    run_mod.render(Path("clip.mp4"), Path("out.mp4"),
+                   {"cam": None, "by": "user", "preset": "fullscreen", "panels": []}, config)
+    game = plans[-1].element("game")
+    assert game.fit == "contain" and game.src == (0, 0, 1920, 1080)
+
+
+def test_whole_clip_camera_filling_frame_uses_fit_instead_of_standard_crop(run, monkeypatch):
+    run_mod, plans = run
+    monkeypatch.setattr(run_mod, "_trusted_look", lambda *a: "camera")
+    config = {**CONFIG, "clips": {"whole": True}}
+    result = run_mod.render(Path("clip.mp4"), Path("out.mp4"),
+                            {"cam": [0, 0.6, 0.3, 0.4], "by": "user", "panels": []}, config)
+    assert result is not None and plans[-1].element("game").fit == "contain"
+
+
+def test_whole_clip_real_encode_keeps_duration_captions_and_portrait(tmp_path, monkeypatch):
+    """Synthetic media only: this is render evidence, never a live Twitch demo."""
+    import json
+    import subprocess
+
+    from core import pipeline
+    from core.binaries import ffmpeg, ffprobe
+    from core.models import ClipCandidate, Segment
+    from gaming import compose
+    from gaming import run as run_mod
+
+    source = tmp_path / "fixture.mp4"
+    subprocess.run([ffmpeg(), "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=20",
+                    "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "1.6",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac",
+                    str(source)], check=True, capture_output=True, timeout=30)
+    monkeypatch.setattr(run_mod, "_trusted_look", lambda *args: "at")
+    monkeypatch.setattr(compose, "video_encoder_args", lambda: ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "28"])
+    burned = []
+    compose_render = compose.render
+    def record_caption(*args, **kwargs):
+        burned.append(kwargs["ass_path"].read_text(encoding="utf-8"))
+        return compose_render(*args, **kwargs)
+    monkeypatch.setattr(compose, "render", record_caption)
+    duration = pipeline._whole_duration(source)
+    config = {"clips": {"whole": True, "gaming": True, "captions": True, "vertical": True},
+              "paths": {"data_dir": str(tmp_path)}, "tracking": CONFIG["tracking"]}
+    output, saved = pipeline._render_files(source, ClipCandidate(0, duration, 100),
+        [Segment(0, duration, "Synthetic caption fixture")], tmp_path / "clips", config,
+        {"gaming": {"cam": None, "by": "user", "panels": []}})
+    probe = subprocess.run([ffprobe(), "-v", "error", "-show_entries", "stream=width,height:format=duration",
+                            "-of", "json", str(output)], check=True, capture_output=True, text=True, timeout=30)
+    result = json.loads(probe.stdout)
+    assert result["streams"][0]["width"] == 1080 and result["streams"][0]["height"] == 1920
+    assert abs(float(result["format"]["duration"]) - duration) < 0.15
+    assert burned and "SYNTHETIC" in burned[0] and json.loads(saved)["whole"] is True
+    assert json.loads(saved)["gaming"]["used_preset"] == "blurred"
+
+
 def _seen(monkeypatch, tracks, finding=None):
     """Fake the clip's tracks (and TalkNet's verdict on them)."""
     monkeypatch.setattr(detect, "sample_tracks", lambda *_a, **_k: (tracks, 1920, 1080, 30.0, 40.0, 320))

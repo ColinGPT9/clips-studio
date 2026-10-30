@@ -771,7 +771,7 @@ def test_download_classifies_what_went_wrong(tmp_path, monkeypatch):
     (ConnectionRefusedError(), sources.OFFLINE),
     (OSError(errno.EIO, "Input/output error"), sources.OTHER),
     (ValueError("anything else"), sources.OTHER),
-])
+], ids=lambda value: type(value).__name__)
 def test_what_a_download_error_is(error, kind):
     assert sources.failure(error) == kind
 

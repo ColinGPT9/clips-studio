@@ -471,6 +471,7 @@ export interface Job {
  *  Editing one queued video's options can never reach another — each job
  *  owns its own copy. */
 export interface JobOptions {
+  whole?: boolean
   force?: boolean
   captions?: boolean
   caption_style?: CaptionStyle
@@ -918,7 +919,7 @@ export interface PublishPlanItem {
 
 // ---- watched channels (server/automation.py) ---------------------------------
 
-export type WatchPlatform = 'youtube' | 'twitch' | 'kick'
+export type WatchPlatform = 'youtube' | 'twitch' | 'twitch_clips' | 'kick'
 
 /** What happens to a watched video's clips. Configured once per channel. */
 export interface WatchPublish {
@@ -956,6 +957,10 @@ export interface Watch {
   publish: WatchPublish
   backlog: 'all' | 'newest' | 'day' | 'none'
   min_minutes: number
+  min_views?: number
+  lookback_days?: number
+  backfill?: boolean
+  max_pending?: number
   last_ok_poll_at: number
   next_poll_at: number
   last_error: string
@@ -985,6 +990,9 @@ export interface WatchDelivery {
 }
 
 export interface WatchItem {
+  views?: number
+  reached_at?: number
+  clipper?: string
   id: number
   watch_id: number
   platform: WatchPlatform

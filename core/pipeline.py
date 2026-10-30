@@ -195,6 +195,19 @@ def convert_slow_source(video, config: dict) -> None:
         ensure_h264_source(video.path, config)
 
 
+def _whole_duration(path: Path) -> float:
+    import subprocess
+
+    result = subprocess.run(
+        [ffprobe(), "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True, check=True, timeout=30,
+    )
+    duration = float(result.stdout.strip())
+    if not math.isfinite(duration) or duration <= 0:
+        raise ValueError("The whole clip's duration could not be measured.")
+    return duration
+
+
 def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> list[RenderedClip]:
     import time
 
@@ -214,6 +227,15 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     progress.emit(stage="downloaded", video_id=video.video_id, title=video.title, duration=video.duration)
 
     convert_slow_source(video, config)
+    whole = bool(config["clips"].get("whole"))
+    if whole:
+        config = {**config, "clips": {**config["clips"], "outro": False}}
+        for key in ("rate", "edit", "focus", "pipeline", "sport"):
+            config["clips"].pop(key, None)
+        video.duration = _whole_duration(video.path)
+        item = db.conn.execute("SELECT title FROM watch_items WHERE video_id = ?", (video.video_id,)).fetchone()
+        if item is not None and item["title"]:
+            video.title = item["title"]
 
     # Vertical Live (core/modes.py): the source has to actually be a 9:16
     # video. Checked before any work, so a wrong toggle costs seconds and says
@@ -319,6 +341,8 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     signals_out: dict = {}
 
     def _extract_signals() -> None:
+        if whole:
+            return
         try:
             from analysis.audio_features import extract_audio_features
             from analysis.visual_features import extract_visual_features
@@ -347,7 +371,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         from plugins import gaming as gaming_plugins
 
         gaming_detector = gaming_plugins.is_detector(config["clips"]["pipeline"], data_dir)
-    gaming_scoring = modes.gaming_scoring(config) and (
+    gaming_scoring = not whole and modes.gaming_scoring(config) and (
         not config["clips"].get("pipeline") or gaming_detector
     )
     # A match (the Sports toggle, sports/): scored for its moments with the
@@ -356,6 +380,8 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     known_games = list(getattr(video, "games", None) or []) or db.video_games(video.video_id)
 
     def _fetch_hype() -> None:
+        if whole:
+            return
         try:
             from analysis.hype import audience_signals
 
@@ -458,7 +484,11 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         from plugins import steps as plugin_steps
 
         find_config = plugin_steps.shortlist_config(config)
-    if config["clips"].get("pipeline"):
+    if whole:
+        intent, rejections = None, []
+        candidates = [ClipCandidate(0.0, video.duration, 100, hook=video.title,
+                                    reason="Viewer-selected whole clip", source="viewer")]
+    elif config["clips"].get("pipeline"):
         # A plugin pipeline (plugins/) picks the moments in its own process;
         # titles, rendering and the library below are made as for any job.
         from plugins import runner as plugin_runner
@@ -575,6 +605,9 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         creator_context=(creator_ctx.summary if creator_ctx else ""),
         **({"rules": title_rules()} if title_rules is not None else {}),
     )
+    if whole:
+        for meta in metas:
+            meta.title = video.title
     # ...and its check of them against the game (basketball: who scored, who
     # leads): the ones that get it wrong are written again with these rules.
     check_titles = getattr(sport_profile, "check_titles", None) if sport_profile is not None else None
@@ -1025,6 +1058,18 @@ def _try_gaming_render(intermediate: Path, render_path: Path, opts: dict, config
         return gaming_run.render(intermediate, render_path, g if isinstance(g, dict) else {}, config,
                                  ass_path=ass_path, vf_extra=vf_extra, normalize=normalize)
     except Exception as e:
+        if config.get("clips", {}).get("whole"):
+            # Detection can fail; preserve the entire frame using the existing
+            # fit composition. A render failure propagates instead of cropping.
+            from core.modes import probe_size
+            from gaming import compose, layout
+
+            width, height = probe_size(intermediate)
+            settings = {"preset": "blurred", "cam": None, "game_box": [0, 0, 1, 1], "panels": []}
+            plan = layout.plan(width, height, settings)
+            compose.render(intermediate, render_path, plan, ass_path=ass_path,
+                           vf_extra=vf_extra, normalize=normalize)
+            return {**settings, "layout": plan.kind, "used_preset": plan.preset, "used_cam": None}
         print(f"      (Gaming layout failed, using the standard layout: {e})")
         return None
 
@@ -1384,6 +1429,9 @@ def _render_files(
     # A clip saved with the removed Highlights post style renders with the
     # person's own caption style and no title card, and is saved without it.
     opts = _drop_post_style(render_opts or {})
+    if config["clips"].get("whole") or opts.get("whole"):
+        config = {**config, "clips": {**config["clips"], "whole": True, "outro": False}}
+        opts["whole"] = True
     # Deterministic timestamp-based name: re-runs overwrite instead of piling up.
     stem = f"clip_{int(candidate.start):05d}-{int(candidate.end):05d}"
     final_path = clip_dir / f"{stem}.mp4"
@@ -1544,7 +1592,7 @@ def _render_files(
     # end was moved past by hand is out of date: the pad is as ever then.
     from dataclasses import replace
 
-    pad = END_PAD
+    pad = 0 if config["clips"].get("whole") else END_PAD
     stop = opts.get("stop_by")
     if isinstance(stop, (int, float)) and float(stop) >= candidate.duration - 0.01:
         pad = max(0.0, min(pad, float(stop) - candidate.duration))

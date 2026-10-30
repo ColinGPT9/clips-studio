@@ -132,7 +132,7 @@ Content-Type: application/json
 {"operation":"vod_link","params":{"video_id":"456","seconds":90}}
 ```
 
-Named operations are `stream_context`, `videos`, `create_clip`, `create_vod_clip`,
+Named operations are `stream_context`, `videos`, `clips`, `create_clip`, `create_vod_clip`,
 `get_clip`, `vod_link`, and `send_chat` (`create_clip`, a live clip, is for this
 desktop route only; plugin runs work on finished VODs and cannot ask for it).
 Trusted application requests use explicit VOD-relative offsets; SDK source-media
@@ -155,6 +155,23 @@ refused. Reloading the panel does not start collection or switch its channel.
 The desktop `stream_context` operation accepts either a numeric `broadcaster_id`
 or a `broadcaster_login`; the latter resolves through Twitch's Users endpoint.
 No supplied URL is fetched. `videos` can read a selected public channel.
+
+| Operation | Parameters and result | Permission |
+|---|---|---|
+| `clips` | `broadcaster_id` or `broadcaster_login`, RFC3339 `started_at`/`ended_at`, `first` (1–100), `after`; returns sanitized `clips` and `cursor`. | Public read using the connected user's token, no scope; any public channel. |
+
+`clips` rows contain `id`, public `url`, `title`, nonnegative integer
+`view_count`, `created_at`, `duration`, `creator_name`, `game_id`, `video_id`
+and nullable `vod_offset`. Rows belonging to another broadcaster are refused.
+Twitch sorts by views; the clip-watch feed stops paging below its target and
+splits long or saturated time windows. It honors rate-limit remaining/reset
+headers and backs off on HTTP 429. Counts may lag. With a start but no end,
+Twitch's window is one week; the watcher always supplies both bounds.
+
+Viewer clips download through the existing yt-dlp path. Official restricted
+clip downloads are not implemented in this entry. No app token, client secret
+or download URL is exposed. See [Twitch Get Clips](https://dev.twitch.tv/docs/api/reference/#get-clips)
+and [rate limits](https://dev.twitch.tv/docs/api/guide/#twitch-rate-limits).
 The events POST and stream-workflow monitor POST accept an optional
 `broadcaster_id`; omitting it keeps the connected-channel default. Event GET
 returns the active listener's channel. These changes do not expose OAuth tokens.

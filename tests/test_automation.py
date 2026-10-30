@@ -52,6 +52,9 @@ class FakeFeed:
             raise self.fail
         return list(self.listings.get(channel_key, []))
 
+    def clips(self, channel_key, **kwargs):
+        return self.latest("twitch_clips", channel_key)
+
     def readiness(self, url, min_seconds=0):
         self.readiness_calls.append(url)
         found = self.ready.get(url, Readiness("ready", duration=3600))
@@ -152,6 +155,126 @@ def env(tmp_path):
     e = Env(tmp_path)
     e.enable()
     return e
+
+
+def viewer_clip(views, slug="Moment"):
+    return NewSourceVideo("twitch_clips", "streamer", f"tw_clip_{slug}",
+                          f"https://clips.twitch.tv/{slug}", "Viewer title", START - 100,
+                          views=views, clipper="HelpfulViewer", duration=42)
+
+
+def add_clip_watch(env, **changes):
+    response = env.client.post("/automation/watches", json={
+        "platform": "twitch_clips", "channel": "streamer", "min_views": 10000, **changes})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_clip_crossing_is_recorded_and_queued_once_across_restart(tmp_path):
+    env = Env(tmp_path)
+    env.enable()
+    clip = viewer_clip(9999)
+    env.feed.listings["streamer"] = [clip]
+    watch = add_clip_watch(env)
+    assert watch["min_minutes"] == 0 and watch["backlog"] == "all"
+    env.watcher.tick()
+    assert env.items() == [] and env.jobs() == []
+    clip.views = 12431
+    env.later()
+    item = env.item(clip.video_id)
+    assert item["views"] == 12431 and item["reached_at"] == env.now
+    assert item["clipper"] == "HelpfulViewer" and len(env.jobs()) == 1
+    payload = json.loads(env.jobs()[0]["payload"])
+    assert payload["whole"] is True and payload["gaming"] is True
+    env.later()
+    restarted = Env(tmp_path, feed=env.feed)
+    restarted.now = env.now + INTERVAL + 1
+    restarted.watcher.tick()
+    assert len(restarted.jobs()) == 1
+
+
+@pytest.mark.parametrize("backfill", [False, True])
+def test_clip_first_look_baseline_or_backfill(env, backfill):
+    clip = viewer_clip(12431)
+    env.feed.listings["streamer"] = [clip]
+    add_clip_watch(env, backfill=backfill)
+    env.watcher.tick()
+    assert env.item(clip.video_id)["status"] == ("queued" if backfill else "earlier")
+    assert env.item(clip.video_id)["reached_at"] == 0  # backfill is never claimed as a live crossing
+    assert len(env.jobs()) == int(backfill)
+
+
+def test_edited_clip_target_applies_on_next_poll(env):
+    clip = viewer_clip(8000)
+    env.feed.listings["streamer"] = [clip]
+    watch = add_clip_watch(env)
+    env.watcher.tick()
+    assert env.items() == []
+    response = env.client.patch(f"/automation/watches/{watch['id']}", json={"min_views": 7500})
+    assert response.status_code == 200
+    env.later()
+    assert len(env.jobs()) == 1
+
+
+def test_clip_watch_defaults_credit_the_actual_viewer(env):
+    watch = add_clip_watch(env)
+    assert watch["publish"]["footer"] == "Clipped by {clipper} on twitch.tv/{source_channel}"
+
+
+def test_busy_clip_channel_caps_upcoming_items_and_rechecks_the_rest(env):
+    clips = [viewer_clip(15000, f"Moment{i}") for i in range(20)]
+    env.feed.listings["streamer"] = clips
+    watch = add_clip_watch(env, backfill=True)
+    assert watch["max_pending"] == 5 and watch["publish"]["per_day"] == 5
+    env.watcher.tick()
+    assert len(env.jobs()) == 5 and len(env.items()) == 5
+    env.later()
+    assert len(env.jobs()) == 5 and len(env.items()) == 5
+    # A completed, fully delivered item frees one upcoming place.
+    env.finish(clips[0].video_id)
+    env.run(lambda d: d.set_watch_item(env.item(clips[0].video_id)["id"], publish_state="done"))
+    env.later()
+    assert len(env.jobs()) == 6 and len(env.items()) == 6
+
+
+def test_scheduled_clip_keeps_a_place_until_delivery(env):
+    env.feed.listings["streamer"] = [viewer_clip(15000, f"Moment{i}") for i in range(5)]
+    watch = add_clip_watch(env, backfill=True, max_pending=1)
+    env.watcher.tick()
+    first = env.items()[0]
+    env.finish(first["video_id"])
+    def scheduled(d):
+        d.set_watch_item(first["id"], publish_state="done")
+        clip_id = d.add_clip(first["video_id"], 0, 42, 100, "title")
+        d.record_clip_publish(clip_id, "youtube", {"provider": "woopsocial", "video_id": first["video_id"], "state": "queued", "scheduled_for": "2099-01-01T00:00:00Z"})
+    env.run(scheduled)
+    env.later()
+    assert len(env.jobs()) == 1 and watch["max_pending"] == 1
+
+
+def test_overlapping_viewer_clips_share_one_vod_moment(env):
+    first, overlap, later = [viewer_clip(15000, slug) for slug in ("First", "Overlap", "Later")]
+    for clip, offset in ((first, 100), (overlap, 105), (later, 200)):
+        clip.source_video_id = "12345"
+        clip.vod_offset = offset
+    env.feed.listings["streamer"] = [first, overlap, later]
+    add_clip_watch(env, backfill=True)
+    env.watcher.tick()
+    assert len(env.jobs()) == 2
+    assert env.item(overlap.video_id)["status"] == "skipped"
+    assert "same Twitch VOD moment" in env.item(overlap.video_id)["reason"]
+    env.later()
+    assert len(env.jobs()) == 2
+
+
+def test_clip_job_payload_removes_finder_modes_and_limits():
+    watch = {"platform": "twitch_clips", "options": json.dumps({
+        "longform": True, "long_clips": True, "sport": "football", "pipeline": "detector",
+        "max_clips": 5, "min_score": 99, "focus": "wins", "vertical_live": True, "podcast": True})}
+    payload = automation.job_payload(watch, "https://clips.twitch.tv/Moment")
+    assert payload["whole"] and payload["gaming"]
+    assert not any(key in payload for key in ("longform", "long_clips", "sport", "pipeline",
+                                             "max_clips", "min_score", "focus", "vertical_live", "podcast"))
 
 
 def watched(env, *videos, key=UC):

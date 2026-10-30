@@ -258,7 +258,7 @@ TRY_AGAIN = "Try again; if it happens again, send a bug report from Feedback (it
     (PermissionError(errno.EACCES, "Permission denied"),
      f"Couldn't save model.onnx in Clips Kitty's model folder. {TRY_AGAIN}"),
     (OSError(errno.EIO, "Input/output error"), f"Couldn't download model.onnx. {TRY_AGAIN}"),
-])
+], ids=lambda value: type(value).__name__)
 def test_each_kind_of_failed_download_says_its_own_cause(tmp_path, caplog, error, said):
     def failing(url, dest):
         raise error

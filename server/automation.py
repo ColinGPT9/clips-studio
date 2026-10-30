@@ -37,7 +37,7 @@ from core.state import StateDB
 ENABLED_KEY = "automation_enabled"
 DELETE_SOURCES_KEY = "automation_delete_sources"
 
-PLATFORM_NAMES = {"youtube": "YouTube", "twitch": "Twitch", "kick": "Kick"}
+PLATFORM_NAMES = {"youtube": "YouTube", "twitch": "Twitch", "twitch_clips": "Twitch", "kick": "Kick"}
 
 WATCH_TICK_SECONDS = 30
 DEFAULT_INTERVAL_MINUTES = 15
@@ -126,7 +126,11 @@ class AutomationPatch(BaseModel):
 
 
 class WatchIn(BaseModel):
-    platform: Literal["youtube", "twitch", "kick"]
+    platform: Literal["youtube", "twitch", "twitch_clips", "kick"]
+    min_views: int = Field(default=0, ge=0, le=10_000_000)
+    lookback_days: int = Field(default=7, ge=1, le=90)
+    backfill: bool = False
+    max_pending: int = Field(default=5, ge=1, le=100)
     channel: str = Field(min_length=1, max_length=300)
     # What happens to its clips, chosen when the channel is added, so a
     # hands-off channel is one step to set up rather than two.
@@ -139,6 +143,10 @@ class WatchIn(BaseModel):
 
 
 class WatchPatch(BaseModel):
+    min_views: int | None = Field(default=None, ge=0, le=10_000_000)
+    lookback_days: int | None = Field(default=None, ge=1, le=90)
+    backfill: bool | None = None
+    max_pending: int | None = Field(default=None, ge=1, le=100)
     enabled: bool | None = None
     name: str | None = Field(default=None, max_length=100)
     preset: str | None = None
@@ -190,6 +198,11 @@ def job_payload(watch, url: str, origin: str = "watch") -> dict:
     options = watch_options(watch)
     preset = PRESETS.get(options.pop("preset", "standard")) or PRESETS["standard"]
     payload = {"url": url, **preset["options"], **options, "origin": origin}
+    if dict(watch).get("platform") == "twitch_clips":
+        for key in ("longform", "long_clips", "sport", "pipeline", "max_clips", "min_score", "focus",
+                    "podcast", "vertical_live", "gaming_scoring", "rate", "edit"):
+            payload.pop(key, None)
+        payload.update(whole=True, gaming=True)
     if payload.get("gaming") and any(payload.get(k) for k in ("vertical_live", "podcast", "longform")):
         # The watch settings never offer Gaming with these; a watch that has
         # both anyway (made by hand, or by an older version) keeps the other
@@ -215,6 +228,7 @@ def render_footer(template: str, item, watch) -> str:
     """Fill the source placeholders. Plain replacement, not str.format, so any
     other braces a person typed stay exactly as they typed them."""
     values = {
+        "{clipper}": dict(item).get("clipper", ""),
         "{source_url}": item["url"] or "",
         "{source_title}": item["title"] or "",
         "{source_channel}": watch["name"] or watch["channel_key"],
@@ -307,6 +321,7 @@ def view_item(d: StateDB, item, worker) -> dict:
             "detected_at", "state", "reason", "job_id", "publish_state", "publish_error",
             "retries", "retry_at", "publish_attempts", "publish_retry_at", "delivery_retries",
             "source_freed",
+            "views", "reached_at", "clipper",
         )
     }
     status = {
@@ -357,6 +372,10 @@ def view_watch(d: StateDB, watch) -> dict:
         "publish": publish_settings(watch).model_dump(),
         "backlog": watch["backlog"],
         "min_minutes": watch["min_minutes"],
+        "min_views": watch["min_views"],
+        "lookback_days": watch["lookback_days"],
+        "backfill": bool(watch["backfill"]),
+        "max_pending": watch["max_pending"],
         "last_ok_poll_at": watch["last_ok_poll_at"],
         "next_poll_at": watch["next_poll_at"],
         "last_error": watch["last_error"],
@@ -392,12 +411,12 @@ def watch_creator(d: StateDB, watch, *, create: bool = False) -> int | None:
     if create:
         from creator import identity
 
-        return identity.resolve(d, "", name, platform=watch["platform"])
+        return identity.resolve(d, "", name, platform="twitch" if watch["platform"] == "twitch_clips" else watch["platform"])
     row = d.conn.execute(
         "SELECT creator_id FROM platform_accounts"
         " WHERE platform = ? AND platform_account_id = ? COLLATE NOCASE"
         " ORDER BY platform_account_id = ? DESC LIMIT 1",
-        (watch["platform"], name, name),
+        ("twitch" if watch["platform"] == "twitch_clips" else watch["platform"], name, name),
     ).fetchone()
     return row["creator_id"] if row else None
 
@@ -592,13 +611,20 @@ class ChannelWatcher(threading.Thread):
         name = watch["name"] or watch["channel_key"]
         try:
             with self._busy(f"Checking {name} for new videos"):
-                videos = self._feed.latest(watch["platform"], watch["channel_key"])
+                if watch["platform"] == "twitch_clips":
+                    videos = self._feed.clips(watch["channel_key"], min_views=watch["min_views"],
+                                             lookback_days=watch["lookback_days"], now=now)
+                else:
+                    videos = self._feed.latest(watch["platform"], watch["channel_key"])
         except Exception as e:
             self._say(f"Couldn't check {name}: {_short(e)}", "error")
             d.set_watch(watch["id"], last_error=_short(e), next_poll_at=now + self._interval)
             return
         # Shorts are not watched at all: nothing to clip, so not worth a row.
         videos = [v for v in videos if not getattr(v, "short", False)]
+        if watch["platform"] == "twitch_clips":
+            videos = sorted((v for v in videos if v.views >= watch["min_views"]),
+                            key=lambda v: v.published_at, reverse=True)
         known = d.watch_item_ids()
         fresh, seen = [], set()
         for video in videos:
@@ -606,7 +632,7 @@ class ChannelWatcher(threading.Thread):
                 fresh.append(video)
                 seen.add(video.video_id)
 
-        if not watch["last_ok_poll_at"]:
+        if not watch["last_ok_poll_at"] and not (watch["platform"] == "twitch_clips" and watch["backfill"]):
             # The first look records what is already there, so adding a channel
             # never queues its back catalogue. Listed, so any of it can still be
             # clipped with one click.
@@ -619,9 +645,13 @@ class ChannelWatcher(threading.Thread):
             missed = now - watch["last_ok_poll_at"] > 2 * self._interval
             if missed and len(fresh) > 1:
                 take, hold = self._catch_up(watch["backlog"], fresh, now)
+            if watch["platform"] == "twitch_clips":
+                take = self._admit_clips(d, watch, take, now)
             for video in take:
-                self._insert(d, watch, video, now, "new", "")
-                self._say(f"New video on {name}: {_quoted(video.title)}", "found", video.url)
+                message = (f"{_quoted(video.title)} {'reached' if watch['last_ok_poll_at'] else 'already has'} {video.views:,} views (target {watch['min_views']:,})"
+                           if watch["platform"] == "twitch_clips" else f"New video on {name}: {_quoted(video.title)}")
+                self._insert(d, watch, video, now, "new", message if watch["platform"] == "twitch_clips" else "")
+                self._say(message, "found", video.url)
             for video in hold:
                 self._insert(d, watch, video, now, "skipped", _MISSED)
             if hold:
@@ -641,7 +671,57 @@ class ChannelWatcher(threading.Thread):
             video.video_id, watch_id=watch["id"], platform=watch["platform"], url=video.url,
             title=video.title, published_at=video.published_at, detected_at=now, state=state,
             reason=reason, next_check_at=now,
+            views=getattr(video, "views", 0), clipper=getattr(video, "clipper", ""),
+            reached_at=now if watch["platform"] == "twitch_clips" and state == "new" and watch["last_ok_poll_at"] else 0,
+            source_video_id=getattr(video, "source_video_id", ""),
+            vod_offset=getattr(video, "vod_offset", None), source_duration=getattr(video, "duration", 0),
         )
+
+    def _admit_clips(self, d: StateDB, watch, fresh: list, now: float) -> list:
+        """Bound work and scheduled posts, and keep one overlapping VOD moment.
+
+        Excess clips remain unrecorded, so subsequent polls can reconsider
+        them when a place opens. No title-based or guessed content dedupe.
+        """
+        existing = d.conn.execute(
+            "SELECT * FROM watch_items WHERE watch_id = ? AND state IN ('new','not_ready','waiting','queued')",
+            (watch["id"],),
+        ).fetchall()
+        pending = 0
+        moments = []
+        for item in existing:
+            moments.append((item["source_video_id"], item["vod_offset"], item["source_duration"]))
+            if _job_status(d, item) == "cancelled":
+                continue
+            deliveries = _deliveries(d, item["video_id"])
+            if item["publish_state"] == "done" and (not deliveries or all(r["state"] == "published" for r in deliveries)):
+                continue
+            if item["publish_state"] == "off" and _job_status(d, item) == "done":
+                continue
+            pending += 1
+        available = max(0, watch["max_pending"] - pending)
+        admitted, deferred = [], 0
+        for clip in fresh:
+            vod, start, duration = clip.source_video_id, clip.vod_offset, clip.duration
+            same = False
+            if vod and start is not None and duration > 0:
+                for other_vod, other_start, other_duration in moments:
+                    if other_vod != vod or other_start is None or other_duration <= 0:
+                        continue
+                    overlap = min(start + duration, other_start + other_duration) - max(start, other_start)
+                    if overlap >= 0.5 * min(duration, other_duration):
+                        same = True
+                        break
+            if same:
+                self._insert(d, watch, clip, now, "skipped", "Another viewer clip already covers the same Twitch VOD moment.")
+            elif len(admitted) < available:
+                admitted.append(clip)
+                moments.append((vod, start, duration))
+            else:
+                deferred += 1
+        if deferred:
+            self._say(f"{deferred} qualifying clips deferred: {watch['max_pending']} upcoming clips at most. Checking again after delivery.", "info")
+        return admitted
 
     def _catch_up(self, policy: str, fresh: list, now: float) -> tuple[list, list]:
         """Several videos appeared while nobody was watching. Which to clip.
@@ -762,7 +842,7 @@ class ChannelWatcher(threading.Thread):
             from creator import identity
 
             d.upsert_video(video_id, title=title, channel_name=name)
-            identity.tag_video(d, video_id, name, platform=watch["platform"])
+            identity.tag_video(d, video_id, name, platform="twitch" if watch["platform"] == "twitch_clips" else watch["platform"])
         except Exception as e:
             print(f"Watch: couldn't link {video_id} to its creator: {e}")
 
@@ -1266,10 +1346,15 @@ def install(
             options["preset"] = preset
             if body.publish is not None:
                 _validate_discord_destination(d, body.publish)
+            publishing = body.publish or PublishSettings()
+            if channel.platform == "twitch_clips" and not publishing.footer:
+                publishing = publishing.model_copy(update={"footer": "Clipped by {clipper} on twitch.tv/{source_channel}"})
             watch_id = d.insert_watch(
                 channel.platform, channel.channel_key, name=channel.name,
-                publish=(body.publish or PublishSettings()).model_dump_json(),
+                publish=publishing.model_dump_json(),
                 options=json.dumps(options),
+                min_views=body.min_views, lookback_days=body.lookback_days, backfill=int(body.backfill),
+                max_pending=body.max_pending,
             )
             watch = load_watch(d, watch_id)
             # In Creators straight away, before the first video, so what it
@@ -1291,6 +1376,10 @@ def install(
         try:
             watch = load_watch(d, watch_id)
             fields: dict = {}
+            for key in ("min_views", "lookback_days", "backfill", "max_pending"):
+                value = getattr(body, key)
+                if value is not None:
+                    fields[key] = int(value)
             if body.enabled is not None:
                 fields["enabled"] = 1 if body.enabled else 0
             if body.name is not None and body.name.strip():

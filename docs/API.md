@@ -1166,7 +1166,49 @@ watched. A channel that can't be found or read returns 400 with a message a
 person can read.
 
 The first look records everything already on the channel with status
-`earlier`. Adding a channel never queues its back catalogue.
+`earlier`. Existing video watches never queue their back catalogue on addition.
+
+For viewer-made Twitch clips, use the separate `twitch_clips` platform:
+
+```json
+{"platform":"twitch_clips","channel":"zackrawrr","min_views":10000,
+ "lookback_days":45,"backfill":true,"max_pending":5,"options":{"gaming":true,"captions":true},
+ "publish":{"mode":"auto","platforms":["youtube","tiktok"],"per_day":5}}
+```
+
+Requires any connected Twitch user account; a viewer account can read a public
+channel. `min_views` is 0–10,000,000 (default 0); `lookback_days` is 1–90
+(default 7). Under-target clips are never recorded and are re-read on each poll.
+Clips already qualifying on first look are `earlier` unless `backfill` is true.
+Backfills have `reached_at: 0`, distinguishing them from observed crossings.
+Counts can lag on Twitch; a crossing timestamp is when this app first observed
+the clip qualifying, not an exact Twitch view event.
+
+Clip watches default to `min_minutes: 0` and `backlog: "all"`. Jobs always use
+`whole: true` and Gaming layout, without a finder, moment limits or trimming.
+One candidate spans `[0, ffprobe duration]`; captions and titles remain, the
+viewer title is the default post title, and no webcam uses full-frame fit.
+Whole mode disables end padding and the outro. Public clip URLs use IDs like
+`tw_clip_Slug`. Existing VOD, YouTube and Kick watches keep their behavior.
+
+Busy channels default to five upcoming clips (`max_pending`, 1–100), matching
+the default five posts/day. Processing, review and scheduled posts occupy a
+place until delivery; excess clips remain unrecorded and are rechecked when
+space opens. For deferred clips, `reached_at` is the qualifying admission poll,
+not the moment the target was crossed while the queue was full.
+Clips overlapping at least half the shorter accepted clip's window on the same
+Twitch VOD are skipped as duplicate moments. This requires both clips' actual
+`video_id` and `vod_offset`; missing metadata is never guessed. The queue and
+schedule limits still apply when overlap cannot be verified.
+
+The publishing path reuses `publish_clips(once=True)` and the shared next free
+schedule slot. Clip-watch default footer is
+`Clipped by {clipper} on twitch.tv/{source_channel}`. `{clipper}` expands to the
+viewer who made the clip; other source placeholders remain available.
+
+`whole` is also an additive option on job create, batch items and queued-job
+patches. It cannot share a job with Longform, long clips, Sports, a finder
+pipeline, Rate or Suggest edits. Understand may annotate the whole candidate.
 
 ### `GET /automation/watches` · `PATCH` / `DELETE /automation/watches/{id}`
 
@@ -1214,6 +1256,10 @@ PATCH takes any of the following, and changes only what it is sent:
 | `publish.overrides` | Per platform, the fields WoopSocial takes: `youtube.privacy` (`public`, `unlisted`, `private`); `tiktok.privacyLevel` (`PUBLIC_TO_EVERYONE`, `FOLLOWER_OF_CREATOR`, `MUTUAL_FOLLOW_FRIENDS`, `SELF_ONLY`) and the booleans `allowComment`, `allowDuet`, `allowStitch`, `isYourBrand`, `isBrandedContent`; `instagram.postType` (`REEL`, `STORY`); `facebook.postType` (`REEL`, `VIDEO`, `STORY`); `pinterest.pinterestBoardId`. |
 | `backlog` | What to do when several videos appeared while Clips Kitty wasn't watching: `newest` (default), `all`, `day` (the last 24 hours) or `none`. Videos that aren't taken are listed as `skipped`, never dropped. |
 | `min_minutes` | Shorter videos (Shorts) are skipped. |
+| `min_views` | Clip-watch view target, applied before deduplication on the next poll. |
+| `lookback_days` | Clip-watch lookback, 1–90 days; daily windows split further at Twitch's approximate 1,000-result cap. |
+| `backfill` | On clip-watch creation, queue already-qualified clips instead of listing them as earlier; changing it later does not reset deduplication. |
+| `max_pending` | Clip watches: at most this many processing/review/upcoming items (default 5). Scheduled items hold their place until delivered. |
 
 `DELETE` stops watching and forgets the watch's list. Jobs and clips it
 produced stay in the library.
@@ -1260,6 +1306,9 @@ Look at the channel now instead of waiting for the next interval.
 ### `GET /automation/items?watch_id=`
 
 The videos a watch has seen, newest first.
+
+Items also return `views` (snapshot at qualification), `reached_at` (Unix seconds
+of an observed crossing, otherwise 0), and `clipper` (viewer display name).
 
 ```json
 {

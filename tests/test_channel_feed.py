@@ -16,6 +16,36 @@ from sources.dispatch import identify
 UC = "UC0123456789abcdefABCDEF"
 
 
+@pytest.mark.parametrize("url", ["https://clips.twitch.tv/ViewerMoment?x=1",
+                               "https://www.twitch.tv/streamer/clip/ViewerMoment"])
+def test_viewer_clip_links_have_distinct_twitch_ids(url):
+    assert identify(url) == ("twitch", "tw_clip_ViewerMoment")
+
+
+def test_viewer_clip_download_uses_existing_downloader(monkeypatch, tmp_path):
+    from sources import twitch
+    class Downloader:
+        def __init__(self, options):
+            self.options = options
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def extract_info(self, url, download=False):
+            if download:
+                (tmp_path / "tw_clip_ViewerMoment.mp4").write_bytes(b"media")
+            return {"title": "Viewer title", "duration": 42, "uploader": "streamer"}
+    monkeypatch.setattr(twitch.yt_dlp, "YoutubeDL", Downloader)
+    video = twitch.download("https://clips.twitch.tv/ViewerMoment", tmp_path)
+    assert video.video_id == "tw_clip_ViewerMoment" and video.duration == 42
+
+
+def test_viewer_clips_never_fetch_vod_chat(monkeypatch):
+    from analysis import hype
+    monkeypatch.setattr(hype, "_twitch_chat", lambda *args: pytest.fail("Clip is not a VOD"))
+    assert hype.audience_signals("https://clips.twitch.tv/ViewerMoment", "tw_clip_ViewerMoment", 42) == (None, [])
+
+
 def rss_entries(*ids):
     return [
         {"video_id": v, "title": f"Video {v}", "url": f"https://www.youtube.com/watch?v={v}",

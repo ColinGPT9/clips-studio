@@ -898,13 +898,15 @@ export const api = {
     platform: WatchPlatform,
     channel: string,
     publish?: Partial<WatchPublish>,
-    options?: Partial<JobOptions>
+    options?: Partial<JobOptions>,
+    clips?: { min_views: number; lookback_days: number; backfill: boolean; max_pending: number }
   ) =>
     request<Watch & { created: boolean }>('/automation/watches', {
       method: 'POST',
       body: JSON.stringify({
         platform,
         channel,
+        ...clips,
         ...(publish ? { publish } : {}),
         ...(options ? { options } : {})
       })
@@ -918,6 +920,10 @@ export const api = {
       publish?: WatchPublish
       backlog?: Watch['backlog']
       min_minutes?: number
+      min_views?: number
+      lookback_days?: number
+      backfill?: boolean
+      max_pending?: number
     }
   ) =>
     request<Watch>(`/automation/watches/${id}`, {

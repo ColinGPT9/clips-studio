@@ -19,7 +19,7 @@ def identify(url: str) -> tuple[str, str | None]:
         # downloads/ by the upload endpoint — there is nothing to fetch.
         return "local", url.split(":", 1)[1]
     if twitch.is_twitch_url(url):
-        return "twitch", twitch.extract_vod_id(url)
+        return "twitch", twitch.extract_clip_id(url) or twitch.extract_vod_id(url)
     if kick.is_kick_url(url):
         return "kick", kick.extract_vod_id(url)
     return "youtube", youtube.extract_video_id(url)

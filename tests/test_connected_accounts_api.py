@@ -138,6 +138,16 @@ def connect(api):
     return flow, response
 
 
+def test_clips_can_read_a_selected_public_channel(api):
+    connect(api)
+    client, _, provider, *_ = api
+    provider.operation_scopes["clips"] = ()
+    response = client.post(f"/connected-accounts/{ACCOUNT}/twitch", headers=HEADERS,
+                           json={"operation": "clips", "params": {"broadcaster_login": "other", "first": 100}})
+    assert response.status_code == 200, response.text
+    assert provider.operations[-1] == ("clips", {"broadcaster_login": "other", "first": 100})
+
+
 def test_all_account_routes_require_desktop_session_before_side_effects(api):
     client = api[0]
     for method, path, body in [

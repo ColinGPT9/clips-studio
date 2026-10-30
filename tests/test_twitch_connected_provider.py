@@ -51,6 +51,74 @@ def account(*scopes):
     }
 
 
+def clip_row(**changes):
+    return {"id": "ViewerMoment", "broadcaster_id": "99",
+            "url": "https://clips.twitch.tv/ViewerMoment?tracking=removed",
+            "title": "Great play", "view_count": 12431, "duration": 42.5,
+            "created_at": "2026-10-29T12:00:00Z", "creator_name": "Viewer",
+            "game_id": "123", "video_id": "456", "vod_offset": 10, **changes}
+
+
+def test_clips_public_read_params_cursor_and_sanitized_rows():
+    session = Session(Reply(data={"data": [{"id": "99", "login": "other"}]}),
+                      Reply(data={"data": [clip_row(edit_url="SECRET")],
+                                  "pagination": {"cursor": "next-page"}}))
+    result = TwitchProvider("public-client", session=session).perform(
+        "TOKEN", account(), "clips", broadcaster_login="other", first=100,
+        started_at="2026-10-01T00:00:00Z", ended_at="2026-10-02T00:00:00+00:00", after="previous")
+    assert session.calls[1][:2] == ("GET", "https://api.twitch.tv/helix/clips")
+    assert session.calls[1][2]["params"] == {
+        "broadcaster_id": "99", "first": 100, "started_at": "2026-10-01T00:00:00Z",
+        "ended_at": "2026-10-02T00:00:00+00:00", "after": "previous"}
+    assert result["cursor"] == "next-page"
+    assert result["clips"] == [{k: v for k, v in clip_row().items() if k != "broadcaster_id"} | {
+        "url": "https://clips.twitch.tv/ViewerMoment"}]
+
+
+@pytest.mark.parametrize("params", [
+    {"first": 101}, {"first": 0}, {"first": True}, {"started_at": "yesterday"},
+    {"started_at": "2026-10-01"}, {"started_at": "2026-10-01T00:00:00"},
+    {"started_at": "2026-10-03T00:00:00Z", "ended_at": "2026-10-02T00:00:00Z"},
+    {"after": "x" * 1025},
+])
+def test_clips_reject_invalid_query_without_network(params):
+    session = Session()
+    with pytest.raises(AccountError) as exc:
+        TwitchProvider("public-client", session=session).perform(
+            "TOKEN", account(), "clips", broadcaster_id="99", **params)
+    assert exc.value.code == "invalid_request" and not session.calls
+
+
+def test_clips_refuse_another_broadcasters_rows():
+    session = Session(Reply(data={"data": [clip_row(broadcaster_id="88")]}))
+    with pytest.raises(AccountError) as exc:
+        TwitchProvider("public-client", session=session).perform(
+            "TOKEN", account(), "clips", broadcaster_id="99")
+    assert exc.value.code == "permission_denied"
+
+
+@pytest.mark.parametrize("changes", [{"view_count": -1}, {"view_count": True},
+                                  {"duration": float("nan")}, {"url": "https://evil.test/x"}])
+def test_clips_reject_malformed_provider_rows(changes):
+    session = Session(Reply(data={"data": [clip_row(**changes)]}))
+    with pytest.raises(AccountError):
+        TwitchProvider("public-client", session=session).perform(
+            "TOKEN", account(), "clips", broadcaster_id="99")
+
+
+def test_clips_rate_limit_prevents_immediate_repeat(monkeypatch):
+    reply = Reply(status=429)
+    reply.headers = {"Ratelimit-Remaining": "0", "Ratelimit-Reset": "1060"}
+    session = Session(reply)
+    monkeypatch.setattr("connected_accounts.twitch.time.time", lambda: 1000)
+    provider = TwitchProvider("public-client", session=session)
+    for _ in range(2):
+        with pytest.raises(AccountError) as exc:
+            provider.perform("TOKEN", account(), "clips", broadcaster_id="99")
+        assert exc.value.code == "rate_limited"
+    assert len(session.calls) == 1
+
+
 def test_public_channel_login_resolves_to_provider_verified_id():
     session = Session(
         Reply(data={"data": [{"id": "99", "login": "fixturestreamer", "display_name": "Fixture Streamer"}]}),
