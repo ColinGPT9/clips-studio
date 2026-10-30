@@ -150,6 +150,14 @@ def test_clips_require_a_connected_account_without_public_fallback():
         feed.clips("other")
 
 
+def test_clip_channel_resolution_returns_a_readable_error_when_twitch_refuses_it():
+    from connected_accounts.models import AccountError
+
+    feed = ConnectedFeed(Service(error=AccountError("not_found", "The Twitch channel was not found.", status=404)))
+    with pytest.raises(ValueError, match="channel was not found"):
+        feed.resolve("twitch_clips", "missing")
+
+
 def test_saturated_clip_windows_are_split_again():
     from datetime import datetime
 

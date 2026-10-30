@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from connected_accounts.models import AccountError
 from sources import channel_feed
 
 _LOGIN = re.compile(r"^[a-zA-Z0-9_]{1,25}$")
@@ -138,7 +139,10 @@ class ConnectedFeed:
             if not login:
                 raise ValueError("Choose a Twitch channel name.")
             # Validate using the connected user's public read, never a VOD listing.
-            self.clips(login, lookback_days=1)
+            try:
+                self.clips(login, lookback_days=1)
+            except AccountError as error:
+                raise ValueError(str(error)) from None
             return channel_feed.Channel(platform, login, login)
         if platform == "twitch":
             account = self._for_login(_login(text))
