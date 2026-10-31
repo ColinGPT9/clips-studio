@@ -83,7 +83,7 @@ class FakeBroadcaster:
 
 
 class Env:
-    def __init__(self, tmp_path, feed=None, options_from=dict):
+    def __init__(self, tmp_path, feed=None, options_from=dict, texts=None):
         self.now = START
         self.feed = feed or FakeFeed()
         self.db_path = tmp_path / "state.db"
@@ -96,7 +96,7 @@ class Env:
         self.watcher = automation.install(
             app, db=self.db, worker=self.worker, broadcaster=FakeBroadcaster(),
             options_from=options_from, feed=self.feed, clock=lambda: self.now,
-            interval_minutes=15, publisher=self.publisher, data_dir=tmp_path,
+            interval_minutes=15, publisher=self.publisher, data_dir=tmp_path, texts=texts,
         )
         self.client = TestClient(app, base_url="http://127.0.0.1")
 
@@ -578,6 +578,228 @@ def with_publish_mode(env, mode):
     env.feed.listings[UC] = [yt("newnewnew01")]
     env.later()
     return watch
+
+
+class FakeTexts:
+    def __init__(self, away=True):
+        self.is_away = away
+        self.applied = self.ticks = 0
+
+    def away(self, d):
+        return self.is_away
+
+    def apply(self, d, watcher):
+        self.applied += 1
+
+    def tick(self, d, watcher):
+        self.ticks += 1
+
+
+def test_away_gate_holds_auto_without_replacing_publishing(tmp_path):
+    texts = FakeTexts()
+    env = Env(tmp_path, texts=texts)
+    env.enable()
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.later(5)
+    assert env.item('newnewnew01')['publish_state'] == 'ask' and not env.published
+    env.client.patch('/automation', json={'enabled': False})
+    item_id = env.item('newnewnew01')['id']
+    env.client.post(f'/automation/items/{item_id}/publish')
+    env.watcher.tick()
+    assert len(env.published) == 1 and texts.applied and texts.ticks
+    env.watcher.tick()
+    assert len(env.published) == 1
+
+
+def test_away_off_preserves_automatic_publishing(tmp_path):
+    env = Env(tmp_path, texts=FakeTexts(away=False))
+    env.enable()
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.later(5)
+    assert env.item('newnewnew01')['publish_state'] == 'done' and len(env.published) == 1
+
+
+@pytest.mark.parametrize('source', ['button', 'typed'])
+def test_remote_first_answer_wins_and_publishes_with_watching_off(tmp_path, monkeypatch, source):
+    from server import text_updates
+
+    runtime = text_updates.TextUpdates(lambda: StateDB(tmp_path / 'state.db'), tmp_path,
+                                       clock=lambda: env.now, model_factory=lambda *_: None)
+    env = Env(tmp_path, texts=runtime)
+    env.enable()
+    env.run(lambda d: runtime.configure(d, {'enabled': True}))
+    env.run(lambda d: text_updates.store_settings(d, {'away_from_desk': True}))
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.later(5)
+    item = env.item('newnewnew01')
+    assert item['publish_state'] == 'ask' and len(env.run(runtime.pending)) == 1
+    assert env.run(lambda d: text_updates.claim(d, item['id'], 'approve', 'discord', env.now, source=source))
+    assert not env.run(lambda d: text_updates.claim(d, item['id'], 'deny', 'discord', env.now))
+    env.client.post(f"/automation/items/{item['id']}/skip")
+    assert env.item('newnewnew01')['publish_state'] == 'ask'
+    env.client.patch('/automation', json={'enabled': False})
+    env.watcher.tick()
+    env.watcher.tick()
+    assert len(env.published) == 1 and env.item('newnewnew01')['publish_state'] == 'done'
+
+
+def test_remote_deny_frees_a_viewer_clip_place(tmp_path):
+    from server import text_updates
+
+    runtime = text_updates.TextUpdates(lambda: StateDB(tmp_path / 'state.db'), tmp_path,
+                                       clock=lambda: env.now, model_factory=lambda *_: None)
+    env = Env(tmp_path, texts=runtime)
+    env.enable()
+    env.run(lambda d: runtime.configure(d, {'enabled': True}))
+    env.run(lambda d: text_updates.store_settings(d, {'away_from_desk': True}))
+    env.feed.listings['streamer'] = [viewer_clip(12000, 'Pending')]
+    add_clip_watch(env, backfill=True, max_pending=1, publish={'mode': 'auto', 'platforms': ['youtube']})
+    env.watcher.tick()
+    first = env.items()[0]
+    env.finish(first['video_id'])
+    env.run(lambda d: d.add_clip(first['video_id'], 0, 10, 90, 'Viewer clip'))
+    env.later(5)
+    assert env.run(lambda d: text_updates.claim(d, first['id'], 'deny', 'discord', env.now))
+    env.watcher.tick()
+    assert env.item(first['video_id'])['publish_state'] == 'off' and not env.published
+    env.feed.listings['streamer'].append(viewer_clip(12000, 'Next'))
+    env.later()
+    assert len(env.jobs()) == 2
+
+
+@pytest.mark.parametrize('event', ['run_failed', 'publish_failed'])
+def test_failure_updates_send_once_after_retries_are_not_pending(tmp_path, event):
+    import secrets
+
+    from campaigns.discord_webhook import SendResult
+    from server import text_updates
+
+    class Bot:
+        connected = True
+
+        def __init__(self):
+            self.messages = []
+
+        def send(self, channel, payload):
+            self.messages.append(payload)
+            return SendResult('ok', message_id=str(secrets.randbits(62)))
+
+        def edit(self, *args):
+            return SendResult('ok')
+
+    bot = Bot()
+    runtime = text_updates.TextUpdates(lambda: StateDB(tmp_path / 'state.db'), tmp_path,
+                                       bot=bot, clock=lambda: env.now, model_factory=lambda *_: None)
+    env = Env(tmp_path, texts=runtime)
+    env.enable()
+    env.run(lambda d: runtime.configure(d, {'enabled': True, 'events': [event]}))
+    env.run(lambda d: text_updates.store_settings(d, {'channel_id': str(secrets.randbits(62))}))
+    publishing_watch(env, mode='ask')
+    if event == 'run_failed':
+        env.finish('newnewnew01', status='failed')
+    else:
+        finished_with_clips(env)
+        env.run(lambda d: d.set_watch_item(env.item('newnewnew01')['id'], publish_state='ask', publish_error='Fixture failure'))
+    env.later(5)
+    env.watcher.tick()
+    assert len(bot.messages) == 1 and 'failed' in bot.messages[0]['content'].lower()
+    restarted = Env(tmp_path, feed=env.feed, texts=runtime)
+    restarted.now = env.now
+    restarted.watcher.tick()
+    assert len(bot.messages) == 1
+
+
+def test_enabling_updates_baselines_old_asks_and_restart_keeps_new_request(tmp_path):
+    from server import text_updates
+
+    runtime = text_updates.TextUpdates(lambda: StateDB(tmp_path / 'state.db'), tmp_path,
+                                       clock=lambda: env.now, model_factory=lambda *_: None)
+    env = Env(tmp_path, texts=runtime)
+    env.enable()
+    publishing_watch(env, mode='ask')
+    finished_with_clips(env)
+    env.later(5)
+    env.run(lambda d: runtime.configure(d, {'enabled': True}))
+    env.watcher.tick()
+    assert env.run(runtime.pending) == []
+    env.feed.listings[UC] = [yt('nextnewnew01')]
+    env.later()
+    finished_with_clips(env, 'nextnewnew01')
+    env.later(5)
+    before = env.run(runtime.pending)
+    assert len(before) == 1
+    restarted = Env(tmp_path, feed=env.feed, texts=runtime)
+    restarted.now = env.now
+    restarted.watcher.tick()
+    assert env.run(runtime.pending)[0]['line'] == before[0]['line']
+    assert env.run(lambda d: d.conn.execute("SELECT COUNT(*) FROM text_updates WHERE event='ask' AND state!='baseline'").fetchone()[0]) == 1
+    env.run(lambda d: runtime.configure(d, {'enabled': False}))
+    env.run(lambda d: runtime.configure(d, {'enabled': True}))
+    env.watcher.tick()
+    assert env.run(runtime.pending) == []
+
+
+def test_clip_update_outbox_schedules_posts_and_failures_once(posted_env):
+    import secrets
+
+    from campaigns.discord_webhook import SendResult
+    from server import text_updates
+
+    env = posted_env
+
+    class Bot:
+        connected = True
+
+        def __init__(self):
+            self.posts, self.edits = [], []
+
+        def send(self, channel, payload):
+            self.posts.append(payload)
+            return SendResult('ok', message_id=str(secrets.randbits(62)))
+
+        def edit(self, channel, message, payload):
+            self.edits.append(payload)
+            return SendResult('ok')
+
+    bot = Bot()
+    runtime = text_updates.TextUpdates(env.db, env.data_dir, bot=bot, clock=lambda: env.now,
+                                       model_factory=lambda *_: None)
+    env.watcher._texts = runtime
+    env.run(lambda d: runtime.configure(d, {'enabled': True, 'events': ['ready', 'scheduled', 'live', 'rejected']}))
+    env.run(lambda d: text_updates.store_settings(d, {'channel_id': str(secrets.randbits(62)), 'away_from_desk': True}))
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.later(5)
+    item = env.item('newnewnew01')
+    assert len([post for post in bot.posts if post['components']]) == 1
+    env.watcher.tick()
+    assert len([post for post in bot.posts if post['components']]) == 1
+    env.run(lambda d: runtime.configure(d, {'show_dmca': False}))
+    env.watcher.tick()
+    assert bot.edits and len(bot.edits[-1]['components'][0]['components']) == 2
+    assert not any(button['disabled'] for button in bot.edits[-1]['components'][0]['components'])
+    env.client.post(f"/automation/items/{item['id']}/publish")
+    env.watcher.tick()
+    env.run(lambda d: d._write("UPDATE clip_publishes SET scheduled_for='2026-11-01T14:00:00Z'", ()))
+    env.watcher.tick()
+    assert any('Scheduled' in post['content'] and '2026-11-01T14:00:00Z' in post['content'] for post in bot.posts)
+    env.run(lambda d: d._write("UPDATE clip_publishes SET state='published'", ()))
+    env.watcher.tick()
+    assert any('Posted' in post['content'] for post in bot.posts)
+    env.run(lambda d: d._write("UPDATE clip_publishes SET state='failed'", ()))
+    env.run(lambda d: d.set_watch_item(item['id'], delivery_retries=3, publish_retry_at=0))
+    env.watcher.tick()
+    before = len(bot.posts)
+    env.watcher.tick()
+    assert len(bot.posts) == before and any('rejected' in post['content'] for post in bot.posts)
+    assert 'Scheduled' not in env.run(lambda d: runtime.real_state(d, item['id']))
+    assert bot.edits and all(button['disabled'] for button in bot.edits[-1]['components'][0]['components'])
+    env.run(lambda d: runtime.configure(d, {'enabled': False}))
+    env.watcher.tick()
+    assert len(bot.posts) == before
 
 
 @pytest.mark.parametrize("mode, expected", [("off", "off"), ("ask", "ask")])

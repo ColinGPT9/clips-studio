@@ -13,6 +13,31 @@ from datetime import date, datetime
 from pathlib import Path
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS text_updates (
+    item_id INTEGER NOT NULL,
+    event TEXT NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('sent', 'baseline', 'failed')),
+    sent_at REAL NOT NULL DEFAULT 0,
+    created_at REAL NOT NULL DEFAULT 0,
+    message_id TEXT NOT NULL DEFAULT '',
+    channel_id TEXT NOT NULL DEFAULT '',
+    line TEXT NOT NULL DEFAULT '',
+    answer TEXT NOT NULL DEFAULT '',
+    answered_where TEXT NOT NULL DEFAULT '',
+    answered_at REAL NOT NULL DEFAULT 0,
+    retry_at REAL NOT NULL DEFAULT 0,
+    edit_text TEXT NOT NULL DEFAULT '',
+    clarified INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(item_id, event)
+);
+CREATE TABLE IF NOT EXISTS text_update_replies (
+    id INTEGER PRIMARY KEY,
+    item_id INTEGER NOT NULL,
+    intent TEXT NOT NULL CHECK(intent IN ('approve', 'deny')),
+    source TEXT NOT NULL CHECK(source IN ('button', 'typed')),
+    received_at REAL NOT NULL,
+    applied INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS videos (
     video_id   TEXT PRIMARY KEY,
     channel_id TEXT,

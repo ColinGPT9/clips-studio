@@ -492,6 +492,43 @@ def learned_from(d: StateDB, video_id: str) -> tuple[str, int] | None:
 # ---- the watcher ------------------------------------------------------------
 
 
+def approve_item(d, item, *, where='app'):
+    from server import text_updates
+
+    if item['state'] != 'queued' or _job_status(d, item) != 'done':
+        raise ValueError("This video's clips aren't ready yet.")
+    with d.transaction():
+        request = text_updates.event_row(d, item['id'])
+        if request and request['state'] != 'baseline':
+            if where == 'app':
+                if not text_updates.claim(d, item['id'], 'approve', where, time.time()):
+                    return False
+            elif request['answer'] != 'approve' or request['answered_where'] != 'discord':
+                return False
+        if item['publish_state'] != 'publishing' or item['publish_retry_at']:
+            d._write("UPDATE watch_items SET publish_state='publishing',publish_error='',publish_retry_at=0,publish_attempts=0 WHERE id=?",
+                     (item['id'],))
+    return True
+
+
+def decline_item(d, item, *, where='app'):
+    from server import text_updates
+
+    with d.transaction():
+        request = text_updates.event_row(d, item['id'])
+        if request and request['state'] != 'baseline':
+            if where == 'app':
+                if not text_updates.claim(d, item['id'], 'deny', where, time.time()):
+                    return False
+            elif request['answer'] != 'deny' or request['answered_where'] != 'discord':
+                return False
+        if item['state'] in ('new', 'not_ready', 'waiting'):
+            d._write("UPDATE watch_items SET state='skipped',reason='Skipped by you.' WHERE id=?", (item['id'],))
+        elif item['publish_state'] == 'ask':
+            d._write("UPDATE watch_items SET publish_state='off' WHERE id=?", (item['id'],))
+    return True
+
+
 class ChannelWatcher(threading.Thread):
     """Looks at each watched channel every few minutes and moves what it finds
     along: detected, ready, queued, published or waiting to be asked.
@@ -512,6 +549,7 @@ class ChannelWatcher(threading.Thread):
         interval_minutes: float = DEFAULT_INTERVAL_MINUTES,
         downloads=None,
         clock=time.time,
+        texts=None,
     ):
         super().__init__(daemon=True, name="channel-watcher")
         self._downloads = downloads
@@ -520,6 +558,7 @@ class ChannelWatcher(threading.Thread):
         self._worker = worker
         self._broadcaster = broadcaster
         self._publisher = publisher
+        self._texts = texts
         self._interval = max(MIN_INTERVAL_MINUTES, float(interval_minutes)) * 60
         self._clock = clock
         self._wake = threading.Event()
@@ -585,6 +624,11 @@ class ChannelWatcher(threading.Thread):
         now = self._clock()
         d = self._db()
         try:
+            if self._texts is not None:
+                try:
+                    self._texts.apply(d, self)
+                except Exception:
+                    print('Clip updates could not apply a reply.')
             if not is_enabled(d):
                 # Watching is off, but a publish someone asked for, or one a
                 # restart interrupted, still goes out.
@@ -602,6 +646,11 @@ class ChannelWatcher(threading.Thread):
             self._free_disk(d)
             self._notice_posts(d)
         finally:
+            if self._texts is not None:
+                try:
+                    self._texts.tick(d, self)
+                except Exception:
+                    print('Clip updates could not refresh.')
             d.close()
 
     def _attach_discord_links(self, d: StateDB, now: float) -> None:
@@ -917,7 +966,8 @@ class ChannelWatcher(threading.Thread):
                           f"{names}, so they weren't posted automatically.", "done")
                 self._broadcaster.publish({"type": "automation"})
                 continue
-            if item["publish_state"] == "publishing" or mode == "auto":
+            away_from_desk = bool(self._texts is not None and self._texts.away(d))
+            if item["publish_state"] == "publishing" or (mode == "auto" and not away_from_desk):
                 self.publish(d, item, watch)
             else:
                 fields = {"publish_state": "off" if mode == "off" else "ask"}
@@ -927,7 +977,7 @@ class ChannelWatcher(threading.Thread):
                 d.set_watch_item(item["id"], **fields)
                 self._say(
                     f"Clips of {_quoted(item['title'])} are ready"
-                    + (". Waiting for you to publish them." if mode == "ask" else "."),
+                    + (". Waiting for you to publish them." if mode != "off" else "."),
                     "done",
                 )
             self._broadcaster.publish({"type": "automation"})
@@ -1212,6 +1262,7 @@ def install(
     feed=None,
     publisher=None,
     clock=time.time,
+    texts=None,
 ) -> ChannelWatcher:
     """Add the automation routes to `app`. Returns the watcher for the caller
     to start and stop with the rest of the server.
@@ -1230,7 +1281,7 @@ def install(
 
     watcher = ChannelWatcher(
         db, feed=feed, worker=worker, broadcaster=broadcaster, publisher=publisher,
-        interval_minutes=interval_minutes, clock=clock,
+        interval_minutes=interval_minutes, clock=clock, texts=texts,
         downloads=Path(data_dir) / "downloads" if data_dir is not None else None,
     )
 
@@ -1499,12 +1550,12 @@ def install(
         d = db()
         try:
             item = load_item(d, item_id)
-            if item["state"] != "queued" or _job_status(d, item) != "done":
-                raise HTTPException(409, "This video's clips aren't ready yet.")
-            if item["publish_state"] != "publishing" or item["publish_retry_at"]:
-                # A person asking is the go-ahead now, not after a wait.
-                d.set_watch_item(item_id, publish_state="publishing", publish_error="",
-                                 publish_retry_at=0, publish_attempts=0)
+            try:
+                changed = approve_item(d, item)
+                if changed and watcher._texts is not None and getattr(watcher._texts, 'enabled', lambda _: False)(d):
+                    watcher._say(f"Approved in the app: {_quoted(item['title'])} (#{item_id})", 'info')
+            except ValueError as error:
+                raise HTTPException(409, str(error)) from None
             result = view_item(d, load_item(d, item_id), worker)
         finally:
             d.close()
@@ -1517,10 +1568,9 @@ def install(
         d = db()
         try:
             item = load_item(d, item_id)
-            if item["state"] in ("new", "not_ready", "waiting"):
-                d.set_watch_item(item_id, state="skipped", reason="Skipped by you.")
-            elif item["publish_state"] == "ask":
-                d.set_watch_item(item_id, publish_state="off")
+            changed = decline_item(d, item)
+            if changed and watcher._texts is not None and getattr(watcher._texts, 'enabled', lambda _: False)(d):
+                watcher._say(f"Denied in the app: {_quoted(item['title'])} (#{item_id})", 'info')
             result = view_item(d, load_item(d, item_id), worker)
         finally:
             d.close()

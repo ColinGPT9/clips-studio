@@ -17,7 +17,19 @@ The optional GTA detector is not selected as a finder for whole clips. Do not
 show its live execution unless it actually ran as an Understand step; existing
 plugin/first-entry footage must be identified as reused foundations.
 
-## Opening date sources
+## Optional approval beat — 25 seconds, only after a real run
+
+Use a 2:55 cut when including this add-on: intro 0:00–0:15, community
+0:15–0:35, setup 0:35–1:00, real render 1:00–1:30, approvals 1:30–1:55,
+matching schedules 1:55–2:15, Codex evidence 2:15–2:40, repo close 2:40–2:55.
+
+During the approval beat, show the saved line in the app card, click
+**Damage Control**, show the generic attorney popup, then Approve
+on Discord from the owner's phone and show the scheduled result. Keep any
+personal satirical narration outside the repository. Do not substitute
+fixture messages for the live phone interaction.
+
+### Opening date sources
 
 Checked 2026-10-30; recheck before recording if the release schedule changes:
 

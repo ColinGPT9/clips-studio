@@ -1,5 +1,10 @@
 # Run Clip Autopilot
 
+Optional: after completing the base setup, follow [TEXT_UPDATES.md](TEXT_UPDATES.md)
+to enable app/Discord approvals. It requires the owner's Discord sign-in,
+bot token, private channel or DM and a successful test before Away from desk
+can be enabled. The base entry works with Clip updates off.
+
 Use Windows and the entry branch. This feature runs inside the existing
 Clips Kitty desktop app; it is not an additional hosted service.
 

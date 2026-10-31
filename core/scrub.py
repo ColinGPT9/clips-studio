@@ -9,6 +9,8 @@ rule, for the day a provider echoes one back or a library prints one.
 import re
 
 SECRET_PATTERNS = [
+    re.compile(r"(?i)\bbot\s+[A-Za-z0-9._-]{16,}"),
+    re.compile(r"(?<![\w.-])[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{20,}(?![\w.-])"),
     re.compile(r"AIza[0-9A-Za-z_\-]{20,}"),              # Google / Gemini API keys
     re.compile(r"\bsk-[A-Za-z0-9_\-]{20,}"),              # OpenAI, OpenRouter (sk-or-v1-), Anthropic (sk-ant-)
     re.compile(r"\bxai-[A-Za-z0-9_\-]{20,}"),             # xAI

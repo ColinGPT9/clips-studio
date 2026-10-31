@@ -50,6 +50,13 @@ footage or a live crossing. See [TEST_LOG.md](TEST_LOG.md).
 
 ## Submission readiness
 
+An optional, off-by-default Clip updates add-on provides Approve / Deny /
+Damage Control (DMCA joke) controls in the app and on Discord. Away from desk
+holds posts for approval, while the app's local model (including Gemma)
+writes the shared line and interprets owner replies with a plain-text/strict
+fallback. The attorney popup is satire and performs no deletion or filing.
+Live bot operation remains pending. See [TEXT_UPDATES.md](TEXT_UPDATES.md).
+
 Read [RULES_CHECK.md](RULES_CHECK.md), [NEW_WORK.md](NEW_WORK.md) and
 [JUDGE_SETUP.md](JUDGE_SETUP.md). [COMPLETION_AUDIT.md](COMPLETION_AUDIT.md)
 maps the brief to evidence and distinguishes incomplete requirements.

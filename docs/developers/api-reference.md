@@ -4,7 +4,7 @@
 
 API version **1** (`GET /health` → `api_version`). The engine listens on `http://127.0.0.1:8765`. How to call it, with examples and the gotchas, is in [`docs/API.md`](../API.md); what the labels promise is in [API](api.md).
 
-251 routes: **60 stable**, **47 experimental**, 144 internal.
+258 routes: **60 stable**, **47 experimental**, 151 internal.
 
 | Label | Promise |
 |---|---|
@@ -233,6 +233,7 @@ Everything else. Grouped by the first part of the path; the module is where it i
 | `/settings` | `GET /settings`<br>`PATCH /settings` | `server.api` |
 | `/sources` | `GET /sources/frame`<br>`GET /sources/people`<br>`GET /sources/snap`<br>`GET /sources/suggest` | `server.api` |
 | `/storage` | `GET /storage`<br>`GET /storage/videos` | `server.api` |
+| `/text-updates` | `GET /text-updates/channels`<br>`DELETE /text-updates/credentials`<br>`PUT /text-updates/discord-bot`<br>`GET /text-updates/pending`<br>`PATCH /text-updates/settings`<br>`GET /text-updates/status`<br>`POST /text-updates/test` | `server.text_updates_api` |
 | `/uploadpost` | `POST /uploadpost/batch`<br>`GET /uploadpost/capabilities`<br>`GET /uploadpost/clips/{clip_id}`<br>`POST /uploadpost/clips/{clip_id}/publish`<br>`POST /uploadpost/connect`<br>`GET /uploadpost/connections`<br>`DELETE /uploadpost/key`<br>`PUT /uploadpost/key`<br>`GET /uploadpost/profiles`<br>`POST /uploadpost/refresh/{request_id}`<br>`POST /uploadpost/retry/{request_id}`<br>`PATCH /uploadpost/settings`<br>`GET /uploadpost/status` | `server.uploadpost_api` |
 | `/videos` | `GET /videos/local/shape`<br>`DELETE /videos/{video_id}` | `server.api` |
 | `/voices` | `GET /voices`<br>`GET /voices/preview` | `server.api` |

@@ -100,18 +100,45 @@ async function ensureTray(): Promise<void> {
   if (tray) return // a second close raced this one
   tray = new Tray(icon)
   tray.setToolTip('Clips Kitty: watching for new videos')
-  tray.setContextMenu(
+  await refreshTrayMenu()
+  if (!tray) return
+  trayUpdateTimer = setInterval(() => void refreshTrayMenu(), 30000)
+  tray.on('click', showWindow)
+}
+
+let trayUpdateTimer: ReturnType<typeof setInterval> | null = null
+
+async function refreshTrayMenu(): Promise<void> {
+  let status: { enabled?: boolean; away_from_desk?: boolean; connected?: boolean; test_ok?: boolean } = {}
+  try {
+    const response = await fetch(`http://127.0.0.1:${API_PORT}/text-updates/status`, {signal: AbortSignal.timeout(3000)})
+    if (response.ok) status = await response.json() as typeof status
+  } catch { /* The optional feature can be unavailable in an older engine. */ }
+  tray?.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Open Clips Kitty', click: showWindow },
+      { label: 'Away from desk', type: 'checkbox', checked: status.away_from_desk === true,
+        enabled: status.enabled === true && (status.away_from_desk === true || (status.connected === true && status.test_ok === true)),
+        click: async (item) => {
+          try {
+            const response = await fetch(`http://127.0.0.1:${API_PORT}/text-updates/settings`, {
+              method: 'PATCH', headers: {'Content-Type': 'application/json', 'X-Clips-Kitty-Session': SESSION_SECRET},
+              body: JSON.stringify({away_from_desk:item.checked}), signal: AbortSignal.timeout(3000)
+            })
+            if (!response.ok) dialog.showErrorBox('Clip updates', 'Connect the bot and send a successful test before switching Away from desk on.')
+          } catch { dialog.showErrorBox('Clip updates', 'The app could not change Away from desk. Check Settings → Clip updates.') }
+          await refreshTrayMenu()
+        } },
       { type: 'separator' },
       // before-quit asks first if a model is downloading.
       { label: 'Quit Clips Kitty', click: () => app.quit() }
     ])
   )
-  tray.on('click', showWindow)
 }
 
 function dropTray(): void {
+  if (trayUpdateTimer) clearInterval(trayUpdateTimer)
+  trayUpdateTimer = null
   tray?.destroy()
   tray = null
 }
@@ -516,13 +543,14 @@ ipcMain.handle('pick-video-files', async () => {
 // is the entire point of being able to walk away from a long batch.
 ipcMain.handle('notify', (event, payload: unknown) => {
   if (!Notification.isSupported()) return false
-  const { title, body } = (payload ?? {}) as { title?: unknown; body?: unknown }
+  const { title, body, action } = (payload ?? {}) as { title?: unknown; body?: unknown; action?: unknown }
   if (typeof title !== 'string' || typeof body !== 'string') return false
   const n = new Notification({ title: title.slice(0, 120), body: body.slice(0, 300) })
   n.on('click', () => {
     const w = BrowserWindow.fromWebContents(event.sender)
     w?.show()
     w?.focus()
+    if (action === 'clip-approval') w?.webContents.send('open-clip-approval')
   })
   n.show()
   return true

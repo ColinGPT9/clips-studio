@@ -46,7 +46,7 @@ The requested test modules and UI commands are recorded individually in
 TEST_LOG.md. New behavioral regressions were observed failing during the
 initial build before their fixes. The additional Automatic integration test
 audits the reused publishing implementation and needs no production change.
-The final gates including the deferred-backfill and scheduler fixes passed: 5,465 full-suite
+The base-entry gates including the deferred-backfill and scheduler fixes passed: 5,465 full-suite
 tests (10 skips), 1,498 expanded platform tests (8 skips), and Ruff.
 The platform CI workflow now includes test_automation.py, ensuring the
 Automatic watch publishing regression runs in the job with FastAPI installed.
@@ -73,3 +73,23 @@ change settings, schedule a post or expose credentials.
 
 The complete entry is **not yet proven finished**. Passing local/CI tests or
 opening the PR cannot substitute for the pending live-account and video evidence.
+
+## Optional Clip updates add-on audit
+
+| Add-on requirement | Evidence | State |
+|---|---|---|
+| Branch from fetched entry head; PR into the entry branch | `feature/clip-autopilot-text-updates` based on `6326b19`; NEW_WORK.md | Branch verified; PR follows final gates |
+| Verify current Discord details before coding and record this session | Official sources and differences in TEXT_UPDATES.md; environment session ID | Verified |
+| Off-by-default settings, Away safety gate, local Gemma/plain fallback | server/text_updates.py; guarded settings tests; local-only bounded inference | Verified offline |
+| Shared first-answer decision helpers; watcher tick integration even with watching off | server/automation.py; button/typed/app, stale-answer, off-watch, baseline and Deny admission regressions | Verified offline |
+| Persist one request line and one send per item/event; expiry and selected updates | core/state.py tables and text_updates service; repeat/restart/failure/schedule regressions | Verified offline |
+| Bot token, owner identity, private channel/DM, invitation and Send test | Existing credential store and Discord identity reused; text_updates_api.py; settings API tests | Verified offline; real setup pending |
+| Gateway lifecycle, intents, heartbeat/resume and prompt click replies | discord_bot.py and fake socket/transport tests; separate callback rate limits | Verified offline; real Gateway pending |
+| Approval popup/card across pages, existing watch-row actions, notifications, Settings and Watch/tray switches | ApprovalCard.tsx, ClipUpdatesCard.tsx, main/preload bridge; real Electron fixture, typecheck/build | Verified offline |
+| Damage Control satire with generic attorney popup, no state change or filing | Front-end-only popup and one Discord response/edit; transport/state and browser assertions | Verified offline; live demo pending |
+| Personal video joke stays outside source/tests/docs | Add-on wording is generic; no personal caption text added | Verified for the add-on diff |
+| Additive internal API reference, CI coverage, lint/full Python/platform gates | Generated reference; workflow platform list and entry-branch PR triggers; TEST_LOG.md | Ruff passed; full suite 5,510 passed/10 skipped; platform 1,509 passed/8 skipped |
+| Owner live checks and optional 25-second phone/demo beat, total under three minutes | TEXT_UPDATES.md, TEST_LOG.md and alternate 2:55 recording plan | Pending owner/live evidence |
+
+The add-on is optional. Its offline checks do not change any pending base-entry
+live result into a pass, and its real bot/phone demonstration remains unproven.

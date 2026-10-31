@@ -5,6 +5,7 @@ import { platformLabel } from '../../lib/uploadpost'
 import QueueItemSettings from '../queue/QueueItemSettings'
 import WatchPublishSettings from './WatchPublishSettings'
 import { t } from '../../lib/i18n'
+import { ApprovalActions, useClipUpdates } from '../ApprovalCard'
 
 export const WATCH_PLATFORM_LABEL: Record<string, string> = {
   youtube: 'YouTube',
@@ -402,6 +403,7 @@ function ItemRow({
   onOpenInStudio?: (videoId: string) => void
 }): JSX.Element {
   const { text, tone } = statusText(item)
+  const clipUpdates = useClipUpdates()
   const deliveries = deliverySummary(item)
   const anyFailed = deliveries.some((d) => d.failed > 0 || d.skipped > 0)
   const when = item.published_at || item.detected_at
@@ -488,6 +490,11 @@ function ItemRow({
           {item.publish_state === 'ask' && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-warn">{t('Ready to publish.')}</span>
+              {clipUpdates.status?.enabled ? <>
+                <span>#{item.id}</span>
+                <ApprovalActions itemId={item.id} showDMCA={clipUpdates.status.show_dmca} disabled={busy}
+                  onChanged={() => { void clipUpdates.refresh(); void act(async () => {}) }} />
+              </> : <>
               <button
                 className="btn-accent !px-2 !py-1 text-xs"
                 disabled={busy}
@@ -502,6 +509,7 @@ function ItemRow({
               >
                 {t("Don't publish")}
               </button>
+              </>}
             </div>
           )}
           {item.publish_state === 'publishing' &&
