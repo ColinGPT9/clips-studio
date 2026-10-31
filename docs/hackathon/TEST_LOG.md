@@ -141,3 +141,23 @@ Colin accepted the shorter jail, street-question and impound timing and prioriti
 - Actual frozen-backend job30 used GTA0.5.2,local Whisper transcription and the manually selected source facecam. It completed in approximately1.3minutes with123transcript segments and one supported output. The host's optional image-model preflight skipped an unsuitable image response; measured visual/audio signals and source-grounded dialogue processing remained available. Mapped audience nominations were unavailable. No detector tuning or plugin changes.
 - Clip57, source316.93-335.73seconds within the excerpt, exported as19.2seconds at1080x1920with audio. Full decode passed. SHA256 `7239a8edc4e3bd4c8812fd234710d30d239736a570e1449d6e399e61b64c9db5`. Actual MCP and GUI exports had identical hashes. Actual main/preload/renderer captures show the xQc gallery and Draw it facecam picker; no mocked responses or new render jobs during capture.
 - This is a retrospectively selected demonstration excerpt from the same broadcast as the earlier live xQc check, not a blind evaluation, full nine-hour VOD run or live-nomination-to-highlight timing proof. Fanum remains earlier comparison evidence; the final demo uses xQc throughout its gameplay shots.
+
+
+## Native-HD xQc source and full-editor demo revision
+
+- Replaced the final demo's 480p recording with the native 1920x1080, 60-fps
+  rendition of the same public xQc VOD 2912487657 / stream 322149964635.
+  The continuous excerpt remains 4:30:00-4:38:00; measured duration is480.067seconds.
+- Actual app job31 completed in4.3minutes with117 local transcript segments,
+  the unchanged GTA0.5.2pipeline and one supported highlight. No mapped audience
+  nominations or optional local-model corroboration were available in this run;
+  source-based detection was retained. This is not a live nomination-timing proof.
+- Clip58 is19.2seconds,1080x1920,H264/AAC,manual facecam. Actual stdio MCP export
+  and full decoding passed. SHA256 `8519b5a83f06c1ba345afae34a9d569f558602e39113cc7d705cb3e290eb4526`.
+- The final demo records playback in the full actual editor, plus its manual
+  layout picker. It uses the HD source; no blur filter or standalone enlarged
+  portrait shot replaces the application. No detector tuning was performed.
+- NEW_WORK.md and the Codex segment link original dated source commits for the
+  new Twitch enhancement, while disclosing the existing AGPL-3.0 engine.
+  The official rules require new work and permit qualifying open-source
+  enhancements; they do not require a freshly created hosting repository.

@@ -8,10 +8,13 @@
 
 **Codex session ID:** `01a179b9-a6c3-7760-bbdf-dabc10d0b1d3`
 
-**Test recording:** `Clips-Kitty-Hackathon-Demo.mp4` (2 minutes 17 seconds).
-The user clarified that this is a test video, not the final submission demo.
-Do not use it as the final entry without a separate explicit selection. The
-final demo and its public URL remain undecided; they do not gate app work.
+**Final demo:** `Clips-Kitty-Demo.mp4`, under three minutes. The current
+packet is maintained separately from the earlier 2:17 synthetic test recording.
+The entrant will upload the final video publicly to YouTube and paste its real URL.
+
+**New contribution and preserved foundation:** [NEW_WORK.md](NEW_WORK.md)
+links the new Twitch features to original dated commits and distinguishes the
+existing AGPL-3.0 engine. The rules do not require a fresh Git repository.
 
 **Submission page:** https://devpost.com/submit-to/31742-codex-x-twitchcon-hackathon/manage/submissions
 
@@ -52,14 +55,13 @@ timestamp-link repair passed 212 affected checks and current CI/CodeQL. The
 detector candidate passed 358 tests. Actual rendered exports contain audio and
 fully decode.
 
-The test recording uses original synthetic test footage with an authored transcript,
-clearly labeled. It does not claim real-gameplay ASR quality. A separate private
-Fanum tuning run produced 28 clips, 10-22.96 seconds, and the shorter timing style
-was approved. That retrospective run is not an untouched holdout or proof of
-quality parity with another service.
+The current demo uses the same xQc GTA V broadcast for its real Twitch
+integration footage and its separately processed recording excerpt. The newer
+source is native 1920x1080 at 60 fps; the full desktop editor is visible during
+highlight playback. The older 480p xQc run and Fanum comparisons remain
+historical test evidence, not the latest media in the submission packet.
 
-Zackrawrr was offline during the real connection test. Live stream transitions,
-live nomination-to-recording clock alignment, native Twitch clip creation and
+Live nomination-to-recording clock alignment, native Twitch clip creation and
 actual social delivery are not presented as verified. No chat messages, native
 Twitch clips or social posts were sent by the demonstration.
 
@@ -77,7 +79,7 @@ requirements for the demonstrated viewer connection, editor or export flow.
 
 ## Submission checklist
 
-- Finish the real app workflow first; select the final submission recording separately.
+- Use the revised full-editor HD demo; the earlier 2:17 synthetic recording is test evidence.
 - Use the two branch URLs above; the new work remains in draft PR194 and PR9.
 - Paste the description and actual Codex session ID above.
 - Fill your own team/contact information and submit the form yourself.
@@ -85,3 +87,15 @@ requirements for the demonstrated viewer connection, editor or export flow.
 The [official requirements](https://twitchcon-codex.devpost.com/rules) were checked
 for the repository, description, session ID and under-three-minute YouTube demo.
 No calendar schedule is added here.
+
+
+## New-project rule and open-source foundation
+
+Section 4 of the official rules requires the submitted new project to be built
+during the submission period. Its Intellectual Property subsection explicitly
+permits enhancing underlying open-source software while respecting its licenses.
+The repository requirement calls for accessible source, assets and setup; it does
+not require a newly created Git hosting repository. A repository reset would not
+establish that old work is new. This entry identifies the new Twitch enhancement,
+preserves the existing engine's license and history, and supplies dated source
+changes in NEW_WORK.md. The organizers determine eligibility of that scope.
