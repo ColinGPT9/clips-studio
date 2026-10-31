@@ -725,6 +725,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         publish_worker.start()
         stream_watcher.start()
         channel_watcher.start()
+        clip_update_bot.start()
         account_runtime.start()
 
     @app.on_event("shutdown")
@@ -733,6 +734,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         publish_worker.stop()
         stream_watcher.stop()
         channel_watcher.stop()
+        clip_update_bot.stop()
         account_runtime.close()
 
     # Publishing lives in its own module: it is optional, self-contained and
@@ -831,7 +833,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     # Watched channels: a creator posts, the video is queued and its clips are
     # published without anyone pasting a link. Off until switched on.
-    from server import automation
+    from server import automation, text_updates, text_updates_api
+    from server.discord_bot import DiscordBot
+
+    clip_texts = text_updates.TextUpdates(db, data_dir, config)
+    clip_update_bot = DiscordBot(clip_texts)
+    clip_texts.bot = clip_update_bot
 
     def _watch_options(raw: dict) -> dict:
         # The same door a queued job's options go through, so a watch cannot
@@ -851,7 +858,10 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         data_dir=data_dir,
         interval_minutes=float(config.get("poll_interval_minutes") or 15),
         feed=connected_feed,
+        texts=clip_texts,
     )
+    clip_texts.wake = channel_watcher.wake
+    text_updates_api.install(app, runtime=clip_texts, session_secret=desktop_session, broadcaster=broadcaster)
 
     account_runtime = connected_accounts_api.install(
         app, data_dir=data_dir, db=db, session_secret=desktop_session,

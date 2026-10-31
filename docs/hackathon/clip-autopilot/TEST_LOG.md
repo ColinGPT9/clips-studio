@@ -29,8 +29,8 @@ counts test program behavior; they are never presented as actual views.
 | TypeScript | PASS | `npm.cmd run typecheck`. |
 | Desktop production build | PASS | `npm.cmd run build`. |
 | Ruff | PASS | `python -m ruff check .` at repository root, after final implementation. |
-| Full pytest | PASS | Latest run including scheduler corrections and deferred-backfill provenance: 5,465 passed, 10 skipped, zero failures/errors in 800 seconds with Bash on PATH and `PYTHONUTF8=1`, including the lookup-error and Automatic watch/scheduler regressions. Initial collection required explicit IDs for existing HTTPError fixtures; native Windows decoding required UTF-8. |
-| CI platform test set | PASS | Latest expanded set from `.github/workflows/ci.yml`, including test_automation.py: 1,498 passed, 8 skipped; zero failures/errors in 4m57s. JUnit report in local TEMP, not committed. |
+| Full pytest | PASS | Latest run including the optional approval add-on, scheduler corrections and deferred-backfill provenance: 5,510 passed, 10 skipped, zero failures/errors in 837 seconds with Bash on PATH and `PYTHONUTF8=1`. Initial collection required explicit IDs for existing HTTPError fixtures; native Windows decoding required UTF-8. |
+| CI platform test set | PASS | Latest expanded set from `.github/workflows/ci.yml`, including test_automation.py and test_text_updates_api.py: 1,509 passed, 8 skipped; zero failures/errors in 5m18s. JUnit report in local TEMP, not committed. |
 | API reference generation | PASS | `python scripts/gen_api_reference.py` completed. Its current generator lists routes, so this additive field-only change may produce identical output. |
 | Initial GitHub CI run | FAIL, test dependency corrected | Python job in run 41007548168 lacked FastAPI and the scheduler test imported the web-layer footer helper. The scheduler test now uses already-rendered footer text; the Automatic watch integration above verifies actual placeholder substitution. Desktop, plugin platform, Windows SDK, website, vendored-code and CodeQL jobs passed. For the newest commit's GitHub result, use the PR Checks tab rather than this initial run. |
 
@@ -84,3 +84,43 @@ updated build and enter credentials in Settings before the live checklist.
 
 Do not turn any pending live item into PASS based on unit tests or synthetic
 media. Submission text must retain these limits until real evidence exists.
+
+## Optional Clip updates add-on
+
+Branch: `feature/clip-autopilot-text-updates`, based on fetched entry head
+`6326b19`. The session ID and official protocol sources are in TEXT_UPDATES.md.
+All results in this section are offline unless explicitly marked live.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Discord protocol check before implementation | PASS | Current official Gateway, events, components, interaction, message, user, permission, OAuth and rate-limit docs were read first. Disabled privileged intents close with 4014; a Gateway bot needs no Interactions Endpoint URL. |
+| Request wording and action contracts | PASS | Core regressions initially failed for missing modules/behavior, then passed: one saved line, bounded/factual local-model output, plain fallback, exact-item intent checking, styles/custom IDs, owner checks, expiry and a non-mutating joke reply/edit. Latest owner-requested wording and the attorney popup replace the initial joke copy. |
+| Gateway and safe transport | PASS | Fake sockets exercise Hello, heartbeat/ACK, missing ACK, Resume, opcode 7/9 and 4014 fallback. Button handlers acknowledge without model work; callback and bot global rate limits are separate. A read timeout is ambiguous and is not retried. No real Discord calls. |
+| Guarded settings and secret handling | PASS | All new writes reject a missing desktop session header. A delivered test plus a connected bot is required for Away. Malformed bot tokens return a fixed error instead of framework errors that echo inputs; status never returns the token. |
+| Watcher decisions and gates | PASS | Away holds Automatic; Away off retains automatic publishing. App, button and typed decisions use shared helpers; first answer wins and publishing still works with watching off. Deny frees a clip-watch place. Existing pending asks are baselined on enable/re-enable. |
+| Once-only event updates | PASS | Real temporary-database watcher flow plus fixture transport: ready/request, scheduled, posted, run failure, publish failure and rejection, across repeats/restart. Existing Discord buttons update when the joke setting changes. Failed posts are not mislabeled Scheduled. |
+| Desktop approval fixture | PASS | `node scripts/test-text-updates.cjs`: saved wording, actual attorney popup/two-step text, zero requests for the joke, existing publish/skip endpoints, Discord-answer refresh and zero writes on mount. Fixture-only preview; no credentials or live media. |
+| Existing desktop regressions | PASS | Viewer-channel, Connected Accounts and watch-detector fixture scripts remain passing. |
+| TypeScript / desktop build | PASS | `npm.cmd run typecheck` and `npm.cmd run build`; optional approval UI and main/preload changes included. |
+| Lightweight dependencies | PASS | Core text-update tests run with FastAPI, HTTPX and WebSockets intentionally blocked; injected sockets keep this module runnable in the main CI job. |
+| Actual local Gemma, synthetic input | PASS | Installed `gemma4:e4b` generated a saved notification line, and actual inference classified “post it” as approve, “nah skip” as deny, and “dmca it” as the joke. The strict “damage control” alias also passed. The first real probe exposed destination-view wording and an unknown reply; clarified prompts and factual-output regressions corrected these. Inputs were explicitly synthetic; no Twitch crossing, Discord message or publication was performed. |
+| Ruff / API reference | PASS | Root Ruff and regenerated `scripts/gen_api_reference.py --check`; seven new internal routes, stable contracts retained. |
+| Full pytest / exact expanded CI platform set | PASS | Final full suite: 5,510 passed, 10 skipped in 13m57s. Exact expanded platform set: 1,509 passed, 8 skipped in 5m18s. Both JUnit reports have zero failures/errors. Includes typed/deny/failure cases and real-model prompt corrections. Superseded partial runs are not reported as passes. |
+
+Live add-on checks remain **PENDING**:
+
+1. Owner creates the bot in the existing app, enables Message Content Intent,
+   signs in, saves the token in Settings, invites it to a private destination
+   and delivers Send test. Verify the installed local-model status.
+2. A real Ask-first crossing displays the saved line and thumbnail in the app.
+   Open the generic attorney popup, observe both steps, close it and Approve;
+   verify the real schedule in Clip Studio and WoopSocial.
+3. Enable Away. A real new clip waits in both places. Use the Discord joke,
+   type an approval, then Deny another item in the app and inspect its Discord
+   edit. Record the first-answer/repeated-click behavior.
+4. Stop Ollama and repeat with real plain messages and functioning buttons.
+5. Restart with a waiting request; verify reconnect, restored card and no
+   duplicate messages or publication.
+6. Record the optional phone/demo beat only after it actually runs. Keep
+   credentials and personal Discord identifiers out of captures. Personal
+   satirical captions belong to the video material outside the repository.

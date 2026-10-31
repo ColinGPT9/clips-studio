@@ -28,8 +28,13 @@ contextBridge.exposeInMainWorld('studio', {
   openDonateWindow: (): Promise<void> => ipcRenderer.invoke('open-donate-window'),
   // Desktop notification when a queued video finishes. Text only — the main
   // process builds the toast, so the renderer cannot attach actions or links.
-  notify: (title: string, body: string): Promise<boolean> =>
-    ipcRenderer.invoke('notify', { title, body }),
+  notify: (title: string, body: string, action?: 'clip-approval'): Promise<boolean> =>
+    ipcRenderer.invoke('notify', { title, body, action }),
+  onClipApproval: (handler: () => void): (() => void) => {
+    const listener = (): void => handler()
+    ipcRenderer.on('open-clip-approval', listener)
+    return () => ipcRenderer.removeListener('open-clip-approval', listener)
+  },
   // Open a link in the real browser. The main process allow-lists which
   // hosts are permitted, so this cannot be used to launch arbitrary URLs.
   openExternal: (url: string): Promise<boolean> =>

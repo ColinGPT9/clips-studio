@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { AwayToggle } from '../components/ApprovalCard'
 import { api, errorText } from '../lib/api'
 import type { AutomationStatus, StudioEvent, Watch as WatchRow, WatchPlatform } from '../lib/types'
 import { useEvents } from '../lib/useEvents'
@@ -217,6 +218,7 @@ export default function Watch({
     <div className="p-6 space-y-5 w-full max-w-5xl">
       <div className="flex items-baseline gap-3 flex-wrap">
         <h1 className="text-xl font-bold">{t('Watched channels')}</h1>
+        <AwayToggle />
         <p className="text-sm text-muted">
           {t('When a channel posts, Clips Kitty clips the new video and publishes the clips the way you set it up.')}
         </p>

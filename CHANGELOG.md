@@ -12,6 +12,10 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Added
 
+- **Optional Clip updates.** App-wide Approve/Deny cards, private Discord
+  updates and an Away from desk approval gate, with local-model wording and
+  plain-text fallback. Includes a configurable attorney joke popup. Off by default.
+
 - **Connect your Twitch account** (new).
   In Settings → Connected accounts you register a free Twitch application once (the card
   lists the steps), paste its Client ID, then sign in on Twitch's own page with a code.

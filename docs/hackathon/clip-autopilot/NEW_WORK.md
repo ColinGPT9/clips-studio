@@ -48,6 +48,20 @@ Base: `8dab0ce` from `origin/main`, fetched before creating
 Exact self-inclusive history: `git log --oneline 8dab0ce..feature/twitch-clip-autopilot`.
 Do not count earlier main-branch work.
 
+## Optional approval add-on
+
+Branch `feature/clip-autopilot-text-updates` starts at fetched entry commit
+`6326b19`, with the PR targeting `feature/twitch-clip-autopilot`.
+The add-on adds an off-by-default approval/event ledger, shared decision
+helpers, the Away gate, a Discord Gateway bot, bounded local-model wording
+and typed intent reading, guarded internal routes, global approval cards,
+Settings, desktop notifications and a tray switch. Generic attorney satire
+uses the same button in the app and Discord. Personal video joke captions
+are excluded from source and documentation.
+
+Planned commit title: `Add optional clip approvals and Discord updates`.
+TEXT_UPDATES.md records this session ID, the protocol check and setup.
+
 ## Already existed; not this entry's new work
 
 Clips Kitty editor and pipeline; Watched Channels and tray polling; SQLite
