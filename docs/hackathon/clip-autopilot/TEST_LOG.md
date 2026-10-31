@@ -61,6 +61,39 @@ the test now fixes its clock and covers additional boundary/platform cases.
 The corrected scheduler's full and platform gates passed before push, as
 recorded above. Inspect the replacement head's PR Checks tab for GitHub status.
 
+## October 31: merged code and actual app preflight
+
+- PR #204 merged into the entry branch as `6eb02395`; #202 then merged into
+  main as `0963ff2e`. The separately authorized first-entry documentation PR
+  #199 merged as `f88bea2c`; this follow-up changes no first-entry files.
+- Post-merge main commit `f88bea2c40d33b945619c14597e1d25db074cc91` passed
+  [CI](https://github.com/ColinGPT9/clips-studio/actions/runs/41173928365)
+  and [CodeQL](https://github.com/ColinGPT9/clips-studio/actions/runs/41173928295).
+  Python, plugin platform, Windows SDK, desktop and website jobs passed;
+  the vendored-code job was skipped by its condition. Both CodeQL analyses passed.
+- After the owner confirmed quitting the older research-checkout app, Codex
+  launched this checkout's checked desktop build. Actual `/health` reports
+  app version 2.1.0; its OpenAPI schema includes clip-watch targets and the
+  text-updates routes. No fixture server was used for these prerequisite checks.
+- At this check, Twitch has no saved Client ID or connected account. The
+  owner requested setup help. No authorization or live Twitch API result
+  is claimed.
+- Actual WoopSocial status reports enabled with a saved key. Its connections
+  endpoint reports Instagram and TikTok; YouTube remains to be connected.
+  This verifies existing connections, not a new scheduled post.
+- Watching is off, no jobs are active, and optional Clip updates is off
+  without a connected Discord owner/bot. No watch, job or publication was
+  created by this preflight. The existing local settings edit is preserved.
+- Prepared a 22.021-second, 1920x1080/30-fps H.264 editorial insert outside
+  the repository (`codex-evidence-and-close-22s.mp4`). It shows the actual
+  Clips API source, verified build-session ID, saved JUnit totals and repo
+  end card. Re-reading the reports confirms 5,510 passed/10 skipped and
+  1,509 passed/8 skipped, with zero failures/errors. Its evidence manifest
+  records source/report hashes. Card screenshots were visually reviewed;
+  the final export's dimensions/duration and full FFmpeg decode passed.
+  This silent insert is not the client `/status` capture, a live demo,
+  or the completed public video. No pending live check changes to PASS.
+
 ## Live checks — owner-operated, pending
 
 Read-only check of the running desktop API: reachable; it has Connected
