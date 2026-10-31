@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import math
 import re
+import time
+from datetime import datetime
 from typing import Any, ClassVar
 from urllib.parse import urlsplit
 
@@ -107,6 +109,17 @@ def _clip_id(value: Any) -> str:
     return value
 
 
+def _rfc3339(value: Any) -> datetime:
+    if not isinstance(value, str) or not re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})", value
+    ):
+        raise AccountError("invalid_request", "Use RFC3339 timestamps with a time zone.")
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise AccountError("invalid_request", "Use valid RFC3339 timestamps.") from None
+
+
 def _clip_url(value: Any, clip_id: str) -> str:
     """Accept only an actual public URL returned by Helix, stripping tracking."""
     try:
@@ -149,6 +162,7 @@ class TwitchProvider:
     operation_scopes: ClassVar[dict[str, tuple[str, ...]]] = {
         "stream_context": (),
         "videos": (),
+        "clips": (),
         "create_clip": ("clips:edit",),
         # These grants are alternatives, checked explicitly in perform().
         "create_vod_clip": (),
@@ -165,6 +179,7 @@ class TwitchProvider:
         self.client_id = client_id
         self._session = session or requests.Session()
         self._closed = False
+        self._rate_until: dict[str, float] = {}
 
     def close(self) -> None:
         """Release transport resources when the host replaces or stops us."""
@@ -198,6 +213,8 @@ class TwitchProvider:
             headers["Authorization"] = f"{'OAuth' if validation else 'Bearer'} {access_token}"
         if url.startswith(_HELIX + "/"):
             headers["Client-Id"] = self.client_id
+            if self._rate_until.get(access_token or "", 0) > time.time():
+                raise AccountError("rate_limited", "Twitch's request budget resets shortly. Try again later.", status=429)
         try:
             response = self._session.request(
                 method, url, headers=headers, timeout=(5, 20), allow_redirects=False, **kwargs
@@ -206,6 +223,16 @@ class TwitchProvider:
             raise AccountError(
                 "provider_unavailable", "Twitch could not be reached. Try again.", status=503
             ) from None
+        if url.startswith(_HELIX + "/"):
+            rate = getattr(response, "headers", {})
+            if response.status_code == 429 or rate.get("Ratelimit-Remaining") == "0":
+                try:
+                    reset = float(rate.get("Ratelimit-Reset", time.time() + 60))
+                except (TypeError, ValueError):
+                    reset = time.time() + 60
+                if not math.isfinite(reset):
+                    reset = time.time() + 60
+                self._rate_until[access_token or ""] = max(time.time() + 1, reset)
         try:
             data = response.json() if response.status_code != 204 else {}
         except (ValueError, TypeError):
@@ -449,6 +476,7 @@ class TwitchProvider:
         if operation not in self.operation_scopes:
             raise AccountError("unsupported_operation", "This Twitch action is not supported.")
         permitted_params = {
+            "clips": {"broadcaster_id", "broadcaster_login", "started_at", "ended_at", "first", "after"},
             "stream_context": {"broadcaster_id", "broadcaster_login", "first"},
             "videos": {"broadcaster_id", "first"},
             "create_clip": {"broadcaster_id", "has_delay"},
@@ -469,6 +497,16 @@ class TwitchProvider:
             )
         subject = _numeric_id(account.get("user_id"), "account ID")
         broadcaster = _numeric_id(params.get("broadcaster_id", subject), "channel ID")
+        if operation == "clips":
+            first = params.get("first", 100)
+            if isinstance(first, bool) or not isinstance(first, int) or not 1 <= first <= 100:
+                raise AccountError("invalid_request", "Choose between 1 and 100 Twitch clips.")
+            dates = {key: _rfc3339(params[key]) for key in ("started_at", "ended_at") if key in params}
+            if len(dates) == 2 and dates["started_at"] >= dates["ended_at"]:
+                raise AccountError("invalid_request", "The clip window must end after it starts.")
+            cursor = params.get("after", "")
+            if not isinstance(cursor, str) or len(cursor) > 1024 or any(ord(c) < 32 for c in cursor):
+                raise AccountError("invalid_request", "Use a valid Twitch pagination cursor.")
         resolved_user = None
         if "broadcaster_login" in params:
             login = params["broadcaster_login"]
@@ -531,6 +569,33 @@ class TwitchProvider:
             if result["stream"] is not None:
                 result["stream"]["viewer_count"] = stream.get("viewer_count", 0)
             return result
+        if operation == "clips":
+            query = {"broadcaster_id": broadcaster, "first": first}
+            query.update({key: params[key] for key in ("started_at", "ended_at", "after") if key in params})
+            data = self._helix("GET", "/clips", access_token, params=query)
+            clips = []
+            for row in self._rows(data):
+                if row.get("broadcaster_id") != broadcaster:
+                    raise AccountError("permission_denied", "The clip does not belong to the requested channel.", status=403)
+                clip_id = _clip_id(row.get("id"))
+                views, duration, offset = row.get("view_count"), row.get("duration"), row.get("vod_offset")
+                if (isinstance(views, bool) or not isinstance(views, int) or views < 0
+                        or isinstance(duration, bool) or not isinstance(duration, (int, float))
+                        or not math.isfinite(duration) or not 0 < duration <= 31536000
+                        or (offset is not None and (isinstance(offset, bool) or not isinstance(offset, int)
+                                                   or not 0 <= offset <= 31536000))):
+                    raise AccountError("provider_response", "Twitch returned invalid clip metadata.", status=502)
+                clips.append({
+                    "id": clip_id, "url": _clip_url(row.get("url"), clip_id),
+                    "title": _text(row.get("title")), "view_count": views,
+                    "created_at": _text(row.get("created_at"), maximum=100), "duration": duration,
+                    "creator_name": _text(row.get("creator_name"), maximum=100),
+                    "game_id": _text(row.get("game_id"), maximum=30),
+                    "video_id": _text(row.get("video_id"), maximum=30), "vod_offset": offset,
+                })
+            pagination = data.get("pagination", {})
+            return {"clips": clips, "cursor": _text(pagination.get("cursor"), maximum=1024)
+                    if isinstance(pagination, dict) else ""}
         if operation == "create_clip":
             has_delay = params.get("has_delay", False)
             if not isinstance(has_delay, bool):

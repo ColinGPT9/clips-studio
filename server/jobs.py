@@ -257,6 +257,10 @@ class Worker(threading.Thread):
                         if wanted:
                             asked = cfg["clips"].get("focus") or ""
                             cfg["clips"]["focus"] = f"{asked} {wanted}".strip()
+                    if payload.get("whole"):
+                        cfg["clips"]["whole"] = True
+                        for key in ("longform", "long_clips", "sport", "pipeline", "rate", "edit", "focus"):
+                            cfg["clips"].pop(key, None)
                     if payload.get("long_clips"):
                         # TikTok monetization requires >60s: target 61-180s clips.
                         cfg["clips"]["min_duration"] = 61

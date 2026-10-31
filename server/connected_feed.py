@@ -10,10 +10,12 @@ from __future__ import annotations
 import hashlib
 import re
 import subprocess
-from datetime import datetime
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from connected_accounts.models import AccountError
 from sources import channel_feed
 
 _LOGIN = re.compile(r"^[a-zA-Z0-9_]{1,25}$")
@@ -132,6 +134,16 @@ class ConnectedFeed:
         return self.fallback.latest(platform, channel_key, **kwargs)
 
     def resolve(self, platform: str, text: str, **kwargs):
+        if platform == "twitch_clips":
+            login = _login(text)
+            if not login:
+                raise ValueError("Choose a Twitch channel name.")
+            # Validate using the connected user's public read, never a VOD listing.
+            try:
+                self.clips(login, lookback_days=1)
+            except AccountError as error:
+                raise ValueError(str(error)) from None
+            return channel_feed.Channel(platform, login, login)
         if platform == "twitch":
             account = self._for_login(_login(text))
             if account:
@@ -178,6 +190,67 @@ class ConnectedFeed:
                 published_at=_published(row.get("created_at") or row.get("published_at") or ""),
             ))
         return sorted(videos, key=lambda video: video.published_at, reverse=True)
+
+    def clips(self, channel_key: str, *, min_views: int = 0, lookback_days: int = 7,
+              now: float | None = None) -> list[channel_feed.NewSourceVideo]:
+        """Re-read public viewer clips, highest views first within each window.
+
+        Daily windows avoid the approximate 1,000-result cap. Saturated windows
+        are bisected further; a failure leaves the poll uncommitted for retry.
+        """
+        login = _login(channel_key)
+        if not login:
+            raise ValueError("Choose a Twitch channel name.")
+        account = next((a for a in self._accounts() if a.get("status") == "connected"), None)
+        if account is None:
+            raise ValueError("Connect Twitch in Settings to watch viewer clips.")
+        end = int(time.time() if now is None else now)
+        beginning = end - max(1, min(90, lookback_days)) * 86400
+        windows = [(max(beginning, stop - 86400), stop) for stop in range(end, beginning, -86400)]
+        found = {}
+        while windows:
+            start, stop = windows.pop(0)
+            cursor, cursors, count, rows = "", set(), 0, []
+            while True:
+                params = {"broadcaster_login": login, "first": 100,
+                          "started_at": datetime.fromtimestamp(start, timezone.utc).isoformat().replace("+00:00", "Z"),
+                          "ended_at": datetime.fromtimestamp(stop, timezone.utc).isoformat().replace("+00:00", "Z")}
+                if cursor:
+                    params["after"] = cursor
+                result = self.service.perform(account["id"], "clips", **params)
+                page = result.get("clips")
+                if not isinstance(page, list):
+                    raise ValueError("Twitch did not return a clip listing. Try again.")
+                count += len(page)
+                under = False
+                for row in page:
+                    if row.get("view_count", 0) < min_views:
+                        under = True
+                        break
+                    rows.append(row)
+                cursor = result.get("cursor", "")
+                if under or not cursor or count >= 1000:
+                    break
+                if cursor in cursors:
+                    raise ValueError("Twitch repeated a clip page. Try again later.")
+                cursors.add(cursor)
+            if count >= 1000:
+                if stop - start <= 1:
+                    raise ValueError("Too many Twitch clips in one second; narrow the lookback or raise the target.")
+                middle = (start + stop) // 2
+                windows[0:0] = [(middle, stop), (start, middle)]
+                continue
+            for row in rows:
+                slug = row.get("id", "")
+                if not isinstance(slug, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,200}", slug):
+                    continue
+                found[slug] = channel_feed.NewSourceVideo(
+                    "twitch_clips", login, f"tw_clip_{slug}", f"https://clips.twitch.tv/{slug}",
+                    title=row.get("title", ""), published_at=_published(row.get("created_at", "")),
+                    views=row.get("view_count", 0), clipper=row.get("creator_name", ""),
+                    duration=row.get("duration", 0), game_id=row.get("game_id", ""),
+                    source_video_id=row.get("video_id", ""), vod_offset=row.get("vod_offset"))
+        return sorted(found.values(), key=lambda video: video.published_at, reverse=True)
 
     def readiness(self, url: str, min_seconds: float = 0, **kwargs):
         return self.fallback.readiness(url, min_seconds, **kwargs)

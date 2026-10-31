@@ -52,6 +52,9 @@ class FakeFeed:
             raise self.fail
         return list(self.listings.get(channel_key, []))
 
+    def clips(self, channel_key, **kwargs):
+        return self.latest("twitch_clips", channel_key)
+
     def readiness(self, url, min_seconds=0):
         self.readiness_calls.append(url)
         found = self.ready.get(url, Readiness("ready", duration=3600))
@@ -80,7 +83,7 @@ class FakeBroadcaster:
 
 
 class Env:
-    def __init__(self, tmp_path, feed=None, options_from=dict):
+    def __init__(self, tmp_path, feed=None, options_from=dict, texts=None):
         self.now = START
         self.feed = feed or FakeFeed()
         self.db_path = tmp_path / "state.db"
@@ -93,7 +96,7 @@ class Env:
         self.watcher = automation.install(
             app, db=self.db, worker=self.worker, broadcaster=FakeBroadcaster(),
             options_from=options_from, feed=self.feed, clock=lambda: self.now,
-            interval_minutes=15, publisher=self.publisher, data_dir=tmp_path,
+            interval_minutes=15, publisher=self.publisher, data_dir=tmp_path, texts=texts,
         )
         self.client = TestClient(app, base_url="http://127.0.0.1")
 
@@ -152,6 +155,191 @@ def env(tmp_path):
     e = Env(tmp_path)
     e.enable()
     return e
+
+
+def viewer_clip(views, slug="Moment"):
+    return NewSourceVideo("twitch_clips", "streamer", f"tw_clip_{slug}",
+                          f"https://clips.twitch.tv/{slug}", "Viewer title", START - 100,
+                          views=views, clipper="HelpfulViewer", duration=42)
+
+
+def add_clip_watch(env, **changes):
+    response = env.client.post("/automation/watches", json={
+        "platform": "twitch_clips", "channel": "streamer", "min_views": 10000, **changes})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_clip_crossing_is_recorded_and_queued_once_across_restart(tmp_path):
+    env = Env(tmp_path)
+    env.enable()
+    clip = viewer_clip(9999)
+    env.feed.listings["streamer"] = [clip]
+    watch = add_clip_watch(env)
+    assert watch["min_minutes"] == 0 and watch["backlog"] == "all"
+    env.watcher.tick()
+    assert env.items() == [] and env.jobs() == []
+    clip.views = 12431
+    env.later()
+    item = env.item(clip.video_id)
+    assert item["views"] == 12431 and item["reached_at"] == env.now
+    assert item["clipper"] == "HelpfulViewer" and len(env.jobs()) == 1
+    payload = json.loads(env.jobs()[0]["payload"])
+    assert payload["whole"] is True and payload["gaming"] is True
+    env.later()
+    restarted = Env(tmp_path, feed=env.feed)
+    restarted.now = env.now + INTERVAL + 1
+    restarted.watcher.tick()
+    assert len(restarted.jobs()) == 1
+
+
+@pytest.mark.parametrize("backfill", [False, True])
+def test_clip_first_look_baseline_or_backfill(env, backfill):
+    clip = viewer_clip(12431)
+    env.feed.listings["streamer"] = [clip]
+    add_clip_watch(env, backfill=backfill)
+    env.watcher.tick()
+    assert env.item(clip.video_id)["status"] == ("queued" if backfill else "earlier")
+    assert env.item(clip.video_id)["reached_at"] == 0  # backfill is never claimed as a live crossing
+    assert len(env.jobs()) == int(backfill)
+
+
+def test_edited_clip_target_applies_on_next_poll(env):
+    clip = viewer_clip(8000)
+    env.feed.listings["streamer"] = [clip]
+    watch = add_clip_watch(env)
+    env.watcher.tick()
+    assert env.items() == []
+    response = env.client.patch(f"/automation/watches/{watch['id']}", json={"min_views": 7500})
+    assert response.status_code == 200
+    env.later()
+    assert len(env.jobs()) == 1
+
+
+def test_clip_watch_defaults_credit_the_actual_viewer(env):
+    watch = add_clip_watch(env)
+    assert watch["publish"]["footer"] == "Clipped by {clipper} on twitch.tv/{source_channel}"
+
+
+def test_automatic_clip_watch_uses_consecutive_real_schedule_slots_once(env, monkeypatch):
+    """Real watch orchestration and scheduler; only WoopSocial transport is offline."""
+    from test_woopsocial_once import FakeWoop
+
+    from server import woopsocial_service
+
+    woop = FakeWoop()
+    woop.install(monkeypatch)
+
+    def publish(d, **kwargs):
+        return woopsocial_service.publish_clips(d, env.data_dir, **kwargs)
+
+    monkeypatch.setattr(env.watcher, "_publisher", publish)
+    clips = [viewer_clip(12431, f"Automatic{i}") for i in range(5)]
+    env.feed.listings["streamer"] = clips
+    add_clip_watch(env, backfill=True, publish={
+        "mode": "auto", "platforms": ["youtube"], "per_day": 5, "gap_hours": 1, "day_start": "09:00"})
+    env.watcher.tick()
+    assert len(env.jobs()) == 5
+    for clip in clips:
+        env.finish(clip.video_id)
+        path = env.data_dir / f"{clip.video_id}.mp4"
+        path.write_bytes(b"offline rendered clip fixture")
+        env.run(lambda d, clip=clip, path=path: d.add_clip(
+            clip.video_id, 0, 42, 100, clip.title, title=clip.title, path=str(path)))
+    env.later(5)
+    rows = env.run(lambda d: [dict(r) for r in d.conn.execute(
+        "SELECT video_id, state, scheduled_for FROM clip_publishes ORDER BY scheduled_for")])
+    assert len(rows) == 5 and len(woop.posts) == 5
+    assert {row["state"] for row in rows} == {"queued"}
+    times = [datetime.fromisoformat(row["scheduled_for"]) for row in rows]
+    assert len(set(times)) == 5 and len({time.date() for time in times}) == 1
+    assert all((later - earlier).total_seconds() == 3600 for earlier, later in zip(times, times[1:]))
+    assert all("Clipped by HelpfulViewer" in post["text"] for post in woop.posts)
+    env.later()
+    restarted = Env(env.data_dir, feed=env.feed)
+    monkeypatch.setattr(restarted.watcher, "_publisher", publish)
+    restarted.now = env.now + INTERVAL + 1
+    restarted.watcher.tick()
+    assert len(woop.posts) == 5 and len(restarted.jobs()) == 5
+
+
+def test_busy_clip_channel_caps_upcoming_items_and_rechecks_the_rest(env):
+    clips = [viewer_clip(15000, f"Moment{i}") for i in range(20)]
+    env.feed.listings["streamer"] = clips
+    watch = add_clip_watch(env, backfill=True)
+    assert watch["max_pending"] == 5 and watch["publish"]["per_day"] == 5
+    env.watcher.tick()
+    assert len(env.jobs()) == 5 and len(env.items()) == 5
+    env.later()
+    assert len(env.jobs()) == 5 and len(env.items()) == 5
+    # A completed, fully delivered item frees one upcoming place.
+    env.finish(clips[0].video_id)
+    env.run(lambda d: d.set_watch_item(env.item(clips[0].video_id)["id"], publish_state="done"))
+    env.later()
+    assert len(env.jobs()) == 6 and len(env.items()) == 6
+
+
+def test_deferred_backfills_stay_backfills_after_restart_while_real_crossing_is_distinct(env):
+    clips = [viewer_clip(15000, f"Backfill{i}") for i in range(7)]
+    crossing = viewer_clip(9999, "ActualCrossing")
+    env.feed.listings["streamer"] = [*clips, crossing]
+    add_clip_watch(env, backfill=True)
+    env.watcher.tick()
+    assert len(env.jobs()) == 5 and all(item["reached_at"] == 0 for item in env.items())
+    for clip in clips[:5]:
+        env.finish(clip.video_id)
+        item_id = env.item(clip.video_id)["id"]
+        env.run(lambda d, item_id=item_id: d.set_watch_item(item_id, publish_state="done"))
+    crossing.views = 16000
+    restarted = Env(env.data_dir, feed=env.feed)
+    restarted.now = env.now + INTERVAL + 1
+    restarted.watcher.tick()
+    assert len(restarted.jobs()) == 8
+    assert all(restarted.item(clip.video_id)["reached_at"] == 0 for clip in clips)
+    assert restarted.item(crossing.video_id)["reached_at"] == restarted.now
+    messages = [event["text"] for event in restarted.watcher.activity()["events"]]
+    assert sum("already has" in message for message in messages) == 2
+    assert sum("reached 16,000 views" in message for message in messages) == 1
+
+
+def test_scheduled_clip_keeps_a_place_until_delivery(env):
+    env.feed.listings["streamer"] = [viewer_clip(15000, f"Moment{i}") for i in range(5)]
+    watch = add_clip_watch(env, backfill=True, max_pending=1)
+    env.watcher.tick()
+    first = env.items()[0]
+    env.finish(first["video_id"])
+    def scheduled(d):
+        d.set_watch_item(first["id"], publish_state="done")
+        clip_id = d.add_clip(first["video_id"], 0, 42, 100, "title")
+        d.record_clip_publish(clip_id, "youtube", {"provider": "woopsocial", "video_id": first["video_id"], "state": "queued", "scheduled_for": "2099-01-01T00:00:00Z"})
+    env.run(scheduled)
+    env.later()
+    assert len(env.jobs()) == 1 and watch["max_pending"] == 1
+
+
+def test_overlapping_viewer_clips_share_one_vod_moment(env):
+    first, overlap, later = [viewer_clip(15000, slug) for slug in ("First", "Overlap", "Later")]
+    for clip, offset in ((first, 100), (overlap, 105), (later, 200)):
+        clip.source_video_id = "12345"
+        clip.vod_offset = offset
+    env.feed.listings["streamer"] = [first, overlap, later]
+    add_clip_watch(env, backfill=True)
+    env.watcher.tick()
+    assert len(env.jobs()) == 2
+    assert env.item(overlap.video_id)["status"] == "skipped"
+    assert "same Twitch VOD moment" in env.item(overlap.video_id)["reason"]
+    env.later()
+    assert len(env.jobs()) == 2
+
+
+def test_clip_job_payload_removes_finder_modes_and_limits():
+    watch = {"platform": "twitch_clips", "options": json.dumps({
+        "longform": True, "long_clips": True, "sport": "football", "pipeline": "detector",
+        "max_clips": 5, "min_score": 99, "focus": "wins", "vertical_live": True, "podcast": True})}
+    payload = automation.job_payload(watch, "https://clips.twitch.tv/Moment")
+    assert payload["whole"] and payload["gaming"]
+    assert not any(key in payload for key in ("longform", "long_clips", "sport", "pipeline",
+                                             "max_clips", "min_score", "focus", "vertical_live", "podcast"))
 
 
 def watched(env, *videos, key=UC):
@@ -390,6 +578,228 @@ def with_publish_mode(env, mode):
     env.feed.listings[UC] = [yt("newnewnew01")]
     env.later()
     return watch
+
+
+class FakeTexts:
+    def __init__(self, away=True):
+        self.is_away = away
+        self.applied = self.ticks = 0
+
+    def away(self, d):
+        return self.is_away
+
+    def apply(self, d, watcher):
+        self.applied += 1
+
+    def tick(self, d, watcher):
+        self.ticks += 1
+
+
+def test_away_gate_holds_auto_without_replacing_publishing(tmp_path):
+    texts = FakeTexts()
+    env = Env(tmp_path, texts=texts)
+    env.enable()
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.later(5)
+    assert env.item('newnewnew01')['publish_state'] == 'ask' and not env.published
+    env.client.patch('/automation', json={'enabled': False})
+    item_id = env.item('newnewnew01')['id']
+    env.client.post(f'/automation/items/{item_id}/publish')
+    env.watcher.tick()
+    assert len(env.published) == 1 and texts.applied and texts.ticks
+    env.watcher.tick()
+    assert len(env.published) == 1
+
+
+def test_away_off_preserves_automatic_publishing(tmp_path):
+    env = Env(tmp_path, texts=FakeTexts(away=False))
+    env.enable()
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.later(5)
+    assert env.item('newnewnew01')['publish_state'] == 'done' and len(env.published) == 1
+
+
+@pytest.mark.parametrize('source', ['button', 'typed'])
+def test_remote_first_answer_wins_and_publishes_with_watching_off(tmp_path, monkeypatch, source):
+    from server import text_updates
+
+    runtime = text_updates.TextUpdates(lambda: StateDB(tmp_path / 'state.db'), tmp_path,
+                                       clock=lambda: env.now, model_factory=lambda *_: None)
+    env = Env(tmp_path, texts=runtime)
+    env.enable()
+    env.run(lambda d: runtime.configure(d, {'enabled': True}))
+    env.run(lambda d: text_updates.store_settings(d, {'away_from_desk': True}))
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.later(5)
+    item = env.item('newnewnew01')
+    assert item['publish_state'] == 'ask' and len(env.run(runtime.pending)) == 1
+    assert env.run(lambda d: text_updates.claim(d, item['id'], 'approve', 'discord', env.now, source=source))
+    assert not env.run(lambda d: text_updates.claim(d, item['id'], 'deny', 'discord', env.now))
+    env.client.post(f"/automation/items/{item['id']}/skip")
+    assert env.item('newnewnew01')['publish_state'] == 'ask'
+    env.client.patch('/automation', json={'enabled': False})
+    env.watcher.tick()
+    env.watcher.tick()
+    assert len(env.published) == 1 and env.item('newnewnew01')['publish_state'] == 'done'
+
+
+def test_remote_deny_frees_a_viewer_clip_place(tmp_path):
+    from server import text_updates
+
+    runtime = text_updates.TextUpdates(lambda: StateDB(tmp_path / 'state.db'), tmp_path,
+                                       clock=lambda: env.now, model_factory=lambda *_: None)
+    env = Env(tmp_path, texts=runtime)
+    env.enable()
+    env.run(lambda d: runtime.configure(d, {'enabled': True}))
+    env.run(lambda d: text_updates.store_settings(d, {'away_from_desk': True}))
+    env.feed.listings['streamer'] = [viewer_clip(12000, 'Pending')]
+    add_clip_watch(env, backfill=True, max_pending=1, publish={'mode': 'auto', 'platforms': ['youtube']})
+    env.watcher.tick()
+    first = env.items()[0]
+    env.finish(first['video_id'])
+    env.run(lambda d: d.add_clip(first['video_id'], 0, 10, 90, 'Viewer clip'))
+    env.later(5)
+    assert env.run(lambda d: text_updates.claim(d, first['id'], 'deny', 'discord', env.now))
+    env.watcher.tick()
+    assert env.item(first['video_id'])['publish_state'] == 'off' and not env.published
+    env.feed.listings['streamer'].append(viewer_clip(12000, 'Next'))
+    env.later()
+    assert len(env.jobs()) == 2
+
+
+@pytest.mark.parametrize('event', ['run_failed', 'publish_failed'])
+def test_failure_updates_send_once_after_retries_are_not_pending(tmp_path, event):
+    import secrets
+
+    from campaigns.discord_webhook import SendResult
+    from server import text_updates
+
+    class Bot:
+        connected = True
+
+        def __init__(self):
+            self.messages = []
+
+        def send(self, channel, payload):
+            self.messages.append(payload)
+            return SendResult('ok', message_id=str(secrets.randbits(62)))
+
+        def edit(self, *args):
+            return SendResult('ok')
+
+    bot = Bot()
+    runtime = text_updates.TextUpdates(lambda: StateDB(tmp_path / 'state.db'), tmp_path,
+                                       bot=bot, clock=lambda: env.now, model_factory=lambda *_: None)
+    env = Env(tmp_path, texts=runtime)
+    env.enable()
+    env.run(lambda d: runtime.configure(d, {'enabled': True, 'events': [event]}))
+    env.run(lambda d: text_updates.store_settings(d, {'channel_id': str(secrets.randbits(62))}))
+    publishing_watch(env, mode='ask')
+    if event == 'run_failed':
+        env.finish('newnewnew01', status='failed')
+    else:
+        finished_with_clips(env)
+        env.run(lambda d: d.set_watch_item(env.item('newnewnew01')['id'], publish_state='ask', publish_error='Fixture failure'))
+    env.later(5)
+    env.watcher.tick()
+    assert len(bot.messages) == 1 and 'failed' in bot.messages[0]['content'].lower()
+    restarted = Env(tmp_path, feed=env.feed, texts=runtime)
+    restarted.now = env.now
+    restarted.watcher.tick()
+    assert len(bot.messages) == 1
+
+
+def test_enabling_updates_baselines_old_asks_and_restart_keeps_new_request(tmp_path):
+    from server import text_updates
+
+    runtime = text_updates.TextUpdates(lambda: StateDB(tmp_path / 'state.db'), tmp_path,
+                                       clock=lambda: env.now, model_factory=lambda *_: None)
+    env = Env(tmp_path, texts=runtime)
+    env.enable()
+    publishing_watch(env, mode='ask')
+    finished_with_clips(env)
+    env.later(5)
+    env.run(lambda d: runtime.configure(d, {'enabled': True}))
+    env.watcher.tick()
+    assert env.run(runtime.pending) == []
+    env.feed.listings[UC] = [yt('nextnewnew01')]
+    env.later()
+    finished_with_clips(env, 'nextnewnew01')
+    env.later(5)
+    before = env.run(runtime.pending)
+    assert len(before) == 1
+    restarted = Env(tmp_path, feed=env.feed, texts=runtime)
+    restarted.now = env.now
+    restarted.watcher.tick()
+    assert env.run(runtime.pending)[0]['line'] == before[0]['line']
+    assert env.run(lambda d: d.conn.execute("SELECT COUNT(*) FROM text_updates WHERE event='ask' AND state!='baseline'").fetchone()[0]) == 1
+    env.run(lambda d: runtime.configure(d, {'enabled': False}))
+    env.run(lambda d: runtime.configure(d, {'enabled': True}))
+    env.watcher.tick()
+    assert env.run(runtime.pending) == []
+
+
+def test_clip_update_outbox_schedules_posts_and_failures_once(posted_env):
+    import secrets
+
+    from campaigns.discord_webhook import SendResult
+    from server import text_updates
+
+    env = posted_env
+
+    class Bot:
+        connected = True
+
+        def __init__(self):
+            self.posts, self.edits = [], []
+
+        def send(self, channel, payload):
+            self.posts.append(payload)
+            return SendResult('ok', message_id=str(secrets.randbits(62)))
+
+        def edit(self, channel, message, payload):
+            self.edits.append(payload)
+            return SendResult('ok')
+
+    bot = Bot()
+    runtime = text_updates.TextUpdates(env.db, env.data_dir, bot=bot, clock=lambda: env.now,
+                                       model_factory=lambda *_: None)
+    env.watcher._texts = runtime
+    env.run(lambda d: runtime.configure(d, {'enabled': True, 'events': ['ready', 'scheduled', 'live', 'rejected']}))
+    env.run(lambda d: text_updates.store_settings(d, {'channel_id': str(secrets.randbits(62)), 'away_from_desk': True}))
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.later(5)
+    item = env.item('newnewnew01')
+    assert len([post for post in bot.posts if post['components']]) == 1
+    env.watcher.tick()
+    assert len([post for post in bot.posts if post['components']]) == 1
+    env.run(lambda d: runtime.configure(d, {'show_dmca': False}))
+    env.watcher.tick()
+    assert bot.edits and len(bot.edits[-1]['components'][0]['components']) == 2
+    assert not any(button['disabled'] for button in bot.edits[-1]['components'][0]['components'])
+    env.client.post(f"/automation/items/{item['id']}/publish")
+    env.watcher.tick()
+    env.run(lambda d: d._write("UPDATE clip_publishes SET scheduled_for='2026-11-01T14:00:00Z'", ()))
+    env.watcher.tick()
+    assert any('Scheduled' in post['content'] and '2026-11-01T14:00:00Z' in post['content'] for post in bot.posts)
+    env.run(lambda d: d._write("UPDATE clip_publishes SET state='published'", ()))
+    env.watcher.tick()
+    assert any('Posted' in post['content'] for post in bot.posts)
+    env.run(lambda d: d._write("UPDATE clip_publishes SET state='failed'", ()))
+    env.run(lambda d: d.set_watch_item(item['id'], delivery_retries=3, publish_retry_at=0))
+    env.watcher.tick()
+    before = len(bot.posts)
+    env.watcher.tick()
+    assert len(bot.posts) == before and any('rejected' in post['content'] for post in bot.posts)
+    assert 'Scheduled' not in env.run(lambda d: runtime.real_state(d, item['id']))
+    assert bot.edits and all(button['disabled'] for button in bot.edits[-1]['components'][0]['components'])
+    env.run(lambda d: runtime.configure(d, {'enabled': False}))
+    env.watcher.tick()
+    assert len(bot.posts) == before
 
 
 @pytest.mark.parametrize("mode, expected", [("off", "off"), ("ask", "ask")])

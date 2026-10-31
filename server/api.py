@@ -39,6 +39,7 @@ API_VERSION = 1
 
 
 class JobIn(BaseModel):
+    whole: bool | None = None  # one candidate spanning the measured source
     url: str
     force: bool = False
     max_clips: int | None = None  # per-job override of clips.max_clips_per_video
@@ -83,6 +84,7 @@ class JobPatch(BaseModel):
     afterwards — a job whose configuration changed halfway would render some
     of its clips one way and the rest another."""
 
+    whole: bool | None = None
     max_clips: int | None = None
     caption_style: dict | None = None
     captions: bool | None = None
@@ -118,6 +120,7 @@ class BatchItemIn(BaseModel):
     longform" has to survive the trip. A batch-wide option set could not
     express that."""
 
+    whole: bool | None = None
     url: str
     force: bool = False
     max_clips: int | None = None
@@ -482,6 +485,8 @@ def _process_options(body, into: dict | None = None, data_dir: Path | None = Non
     chosen to rate or understand the moments or to suggest edits for the
     clips) must be installed."""
     payload: dict = dict(into or {})
+    if getattr(body, "whole", None) is not None:
+        payload["whole"] = body.whole
     if getattr(body, "max_clips", None) is not None:
         payload["max_clips"] = max(1, min(10, body.max_clips))
     if getattr(body, "caption_style", None):
@@ -595,6 +600,9 @@ def _process_options(body, into: dict | None = None, data_dir: Path | None = Non
     # toggle being switched off needs to say so.
     for key in getattr(body, "clear", []) or []:
         payload.pop(key, None)
+    if payload.get("whole") and any(payload.get(key) for key in
+                                    ("longform", "long_clips", "sport", "pipeline", "rate", "edit")):
+        raise HTTPException(400, "Whole clips can't be combined with Longform, long clips, Sports, a pipeline, Rate or Suggest edits.")
     # Vertical Live keeps a finished 9:16 layout as it is; Podcast reframes a
     # multi-camera set and Longform makes 16:9. Asking for both is a mistake
     # worth saying out loud rather than quietly picking one.
@@ -717,6 +725,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         publish_worker.start()
         stream_watcher.start()
         channel_watcher.start()
+        clip_update_bot.start()
         account_runtime.start()
 
     @app.on_event("shutdown")
@@ -725,6 +734,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         publish_worker.stop()
         stream_watcher.stop()
         channel_watcher.stop()
+        clip_update_bot.stop()
         account_runtime.close()
 
     # Publishing lives in its own module: it is optional, self-contained and
@@ -823,7 +833,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     # Watched channels: a creator posts, the video is queued and its clips are
     # published without anyone pasting a link. Off until switched on.
-    from server import automation
+    from server import automation, text_updates, text_updates_api
+    from server.discord_bot import DiscordBot
+
+    clip_texts = text_updates.TextUpdates(db, data_dir, config)
+    clip_update_bot = DiscordBot(clip_texts)
+    clip_texts.bot = clip_update_bot
 
     def _watch_options(raw: dict) -> dict:
         # The same door a queued job's options go through, so a watch cannot
@@ -843,7 +858,10 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         data_dir=data_dir,
         interval_minutes=float(config.get("poll_interval_minutes") or 15),
         feed=connected_feed,
+        texts=clip_texts,
     )
+    clip_texts.wake = channel_watcher.wake
+    text_updates_api.install(app, runtime=clip_texts, session_secret=desktop_session, broadcaster=broadcaster)
 
     account_runtime = connected_accounts_api.install(
         app, data_dir=data_dir, db=db, session_secret=desktop_session,

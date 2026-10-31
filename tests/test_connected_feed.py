@@ -114,6 +114,66 @@ def test_connected_listing_is_bounded():
     assert len(ConnectedFeed(service).latest("twitch", "streamer")) == 15
 
 
+def test_viewer_clips_page_until_under_target_and_keep_all_results():
+    class Pages(Service):
+        def perform(self, account_id, operation, **params):
+            self.calls.append((account_id, operation, params))
+            if params.get("after"):
+                return {"clips": [{"id": "Last", "view_count": 12}, {"id": "Low", "view_count": 9}],
+                        "cursor": "must-not-read"}
+            return {"clips": [{"id": f"Clip{i}", "view_count": 20,
+                               "created_at": "2026-10-29T12:00:00Z", "creator_name": "Viewer"}
+                              for i in range(20)], "cursor": "next"}
+    service = Pages()
+    found = ConnectedFeed(service).clips("other", min_views=10, lookback_days=1, now=1793404800)
+    assert len(found) == 21
+    assert found[0].video_id == "tw_clip_Clip0" and found[0].views == 20
+    assert found[0].url == "https://clips.twitch.tv/Clip0" and found[0].clipper == "Viewer"
+    assert len(service.calls) == 2
+    assert all(call[1] == "clips" and call[2]["broadcaster_login"] == "other" for call in service.calls)
+
+
+def test_clip_lookback_is_split_into_explicit_small_windows():
+    service = Service(result={"clips": [], "cursor": ""})
+    assert ConnectedFeed(service).clips("other", lookback_days=9, now=1793404800) == []
+    assert len(service.calls) == 9
+    from datetime import datetime
+    windows = [(datetime.fromisoformat(c[2]["started_at"].replace("Z", "+00:00")),
+                datetime.fromisoformat(c[2]["ended_at"].replace("Z", "+00:00"))) for c in service.calls]
+    assert all((end - start).total_seconds() == 86400 for start, end in windows)
+    assert all(windows[i][0] == windows[i + 1][1] for i in range(8))
+
+
+def test_clips_require_a_connected_account_without_public_fallback():
+    feed = ConnectedFeed(Service(accounts=[]), fallback=Fallback())
+    with pytest.raises(ValueError, match="Connect Twitch"):
+        feed.clips("other")
+
+
+def test_clip_channel_resolution_returns_a_readable_error_when_twitch_refuses_it():
+    from connected_accounts.models import AccountError
+
+    feed = ConnectedFeed(Service(error=AccountError("not_found", "The Twitch channel was not found.", status=404)))
+    with pytest.raises(ValueError, match="channel was not found"):
+        feed.resolve("twitch_clips", "missing")
+
+
+def test_saturated_clip_windows_are_split_again():
+    from datetime import datetime
+
+    class Saturated(Service):
+        def perform(self, account_id, operation, **params):
+            self.calls.append((account_id, operation, params))
+            start = datetime.fromisoformat(params["started_at"].replace("Z", "+00:00"))
+            end = datetime.fromisoformat(params["ended_at"].replace("Z", "+00:00"))
+            if (end - start).total_seconds() > 43200:
+                return {"clips": [{"id": f"Clip{i}", "view_count": 10} for i in range(1000)], "cursor": ""}
+            return {"clips": [{"id": f"Clip{int(start.timestamp())}", "view_count": 10}], "cursor": ""}
+    service = Saturated()
+    found = ConnectedFeed(service).clips("other", lookback_days=1, now=1793404800)
+    assert len(found) == 2 and len(service.calls) == 3
+
+
 @pytest.mark.parametrize("platform,key", [("twitch", "other"), ("youtube", "UCabc"), ("kick", "streamer")])
 def test_other_watches_use_the_existing_feed(platform, key):
     fallback = Fallback()

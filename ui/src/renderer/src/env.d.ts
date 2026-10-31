@@ -51,7 +51,8 @@ interface Window {
     pickFolder: () => Promise<string | null>
     openDonateWindow: () => Promise<void>
     /** Desktop notification. Resolves false if the OS refused it. */
-    notify: (title: string, body: string) => Promise<boolean>
+    notify: (title: string, body: string, action?: 'clip-approval') => Promise<boolean>
+    onClipApproval?: (handler: () => void) => () => void
     /** Opens an allow-listed URL in the user's browser. Resolves false if
      *  the main process refused it. */
     openExternal: (url: string) => Promise<boolean>

@@ -13,6 +13,31 @@ from datetime import date, datetime
 from pathlib import Path
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS text_updates (
+    item_id INTEGER NOT NULL,
+    event TEXT NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('sent', 'baseline', 'failed')),
+    sent_at REAL NOT NULL DEFAULT 0,
+    created_at REAL NOT NULL DEFAULT 0,
+    message_id TEXT NOT NULL DEFAULT '',
+    channel_id TEXT NOT NULL DEFAULT '',
+    line TEXT NOT NULL DEFAULT '',
+    answer TEXT NOT NULL DEFAULT '',
+    answered_where TEXT NOT NULL DEFAULT '',
+    answered_at REAL NOT NULL DEFAULT 0,
+    retry_at REAL NOT NULL DEFAULT 0,
+    edit_text TEXT NOT NULL DEFAULT '',
+    clarified INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(item_id, event)
+);
+CREATE TABLE IF NOT EXISTS text_update_replies (
+    id INTEGER PRIMARY KEY,
+    item_id INTEGER NOT NULL,
+    intent TEXT NOT NULL CHECK(intent IN ('approve', 'deny')),
+    source TEXT NOT NULL CHECK(source IN ('button', 'typed')),
+    received_at REAL NOT NULL,
+    applied INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS videos (
     video_id   TEXT PRIMARY KEY,
     channel_id TEXT,
@@ -455,12 +480,15 @@ STREAM_COLUMNS = frozenset({
 WATCH_COLUMNS = frozenset({
     "name", "enabled", "options", "publish", "backlog", "min_minutes",
     "last_ok_poll_at", "next_poll_at", "last_error",
+    "min_views", "lookback_days", "backfill", "max_pending",
 })
 WATCH_ITEM_COLUMNS = frozenset({
     "watch_id", "platform", "url", "title", "published_at", "detected_at", "state",
     "reason", "job_id", "next_check_at", "publish_state", "publish_error",
     "retries", "retry_at", "publish_attempts", "publish_retry_at", "delivery_retries",
     "source_freed", "requested", "orientation", "chosen_clips",
+    "views", "reached_at", "clipper",
+    "source_video_id", "vod_offset", "source_duration",
 })
 
 # Same rule for the campaign tables. A submission's identity (campaign, video,
@@ -687,8 +715,21 @@ class StateDB:
             self.conn.execute("ALTER TABLE creator_knowledge ADD COLUMN last_seen TEXT")
         if "last_video" not in knowledge_cols:
             self.conn.execute("ALTER TABLE creator_knowledge ADD COLUMN last_video TEXT")
+        watch_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(watches)")}
+        for column, decl in (("min_views", "INTEGER NOT NULL DEFAULT 0"),
+                             ("lookback_days", "INTEGER NOT NULL DEFAULT 7"),
+                             ("max_pending", "INTEGER NOT NULL DEFAULT 5"),
+                             ("backfill", "INTEGER NOT NULL DEFAULT 0")):
+            if column not in watch_cols:
+                self.conn.execute(f"ALTER TABLE watches ADD COLUMN {column} {decl}")
         item_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(watch_items)")}
         for column, decl in (
+            ("views", "INTEGER NOT NULL DEFAULT 0"),
+            ("reached_at", "REAL NOT NULL DEFAULT 0"),
+            ("clipper", "TEXT NOT NULL DEFAULT ''"),
+            ("source_video_id", "TEXT NOT NULL DEFAULT ''"),
+            ("vod_offset", "REAL"),
+            ("source_duration", "REAL NOT NULL DEFAULT 0"),
             # A hands-off channel runs on a PC nobody is looking at, so a
             # failure is tried again rather than left for a person. These count
             # the tries and say when the next one is due.
@@ -1719,6 +1760,9 @@ class StateDB:
 
     def insert_watch(self, platform: str, channel_key: str, **fields) -> int | None:
         """Create a watch. None if this channel is already watched."""
+        if platform == "twitch_clips":
+            fields.setdefault("min_minutes", 0)
+            fields.setdefault("backlog", "all")
         bad = set(fields) - WATCH_COLUMNS
         if bad:
             raise ValueError(f"unknown watch columns: {sorted(bad)}")

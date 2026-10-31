@@ -5,10 +5,12 @@ import { platformLabel } from '../../lib/uploadpost'
 import QueueItemSettings from '../queue/QueueItemSettings'
 import WatchPublishSettings from './WatchPublishSettings'
 import { t } from '../../lib/i18n'
+import { ApprovalActions, useClipUpdates } from '../ApprovalCard'
 
 export const WATCH_PLATFORM_LABEL: Record<string, string> = {
   youtube: 'YouTube',
   twitch: 'Twitch',
+  twitch_clips: 'Twitch clips',
   kick: 'Kick'
 }
 
@@ -157,6 +159,7 @@ export default function WatchCard({
       <div className="flex items-start gap-3 flex-wrap">
         <span className="text-xs font-semibold uppercase tracking-wide bg-raised rounded px-2 py-1 shrink-0">
           {WATCH_PLATFORM_LABEL[watch.platform] ?? watch.platform}
+          {watch.platform === 'twitch_clips' && ` · ${(watch.min_views ?? 0).toLocaleString()}+ views`}
         </span>
         <div className="min-w-0">
           <h3 className="font-semibold truncate flex items-center gap-2">
@@ -243,7 +246,14 @@ export default function WatchCard({
         </button>
       </div>
 
-      {openClips && (
+      {openClips && watch.platform === 'twitch_clips' && <div className="space-y-2 text-sm">
+        <p>Gaming layout · Viewer clips are posted whole, with no trimming.</p>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={watch.options.captions !== false}
+          onChange={(e) => void act(() => api.patchWatch(watch.id, {
+            options: { ...watch.options, captions: e.target.checked }
+          }))} />Captions</label>
+      </div>}
+      {openClips && watch.platform !== 'twitch_clips' && (
         <div className="space-y-2">
           <label className="text-sm flex items-center gap-3 flex-wrap mt-3">
             <span className="label">{t('Preset')}</span>
@@ -393,6 +403,7 @@ function ItemRow({
   onOpenInStudio?: (videoId: string) => void
 }): JSX.Element {
   const { text, tone } = statusText(item)
+  const clipUpdates = useClipUpdates()
   const deliveries = deliverySummary(item)
   const anyFailed = deliveries.some((d) => d.failed > 0 || d.skipped > 0)
   const when = item.published_at || item.detected_at
@@ -430,6 +441,11 @@ function ItemRow({
           </button>
           <p className="text-xs text-muted">
             {when ? relative(when) : ''}
+            {item.platform === 'twitch_clips' && <span className="ml-2">
+              {(item.views ?? 0).toLocaleString()} views
+              {item.reached_at ? ` · crossed ${relative(item.reached_at)}` : ' · already over target on first look'}
+              {item.clipper && ` · clipped by ${item.clipper}`}
+            </span>}
             <span className={`ml-2 ${tone}`}>{t(text)}</span>
             {detail && <span className="ml-2">{t(detail)}</span>}
           </p>
@@ -474,6 +490,11 @@ function ItemRow({
           {item.publish_state === 'ask' && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-warn">{t('Ready to publish.')}</span>
+              {clipUpdates.status?.enabled ? <>
+                <span>#{item.id}</span>
+                <ApprovalActions itemId={item.id} showDMCA={clipUpdates.status.show_dmca} disabled={busy}
+                  onChanged={() => { void clipUpdates.refresh(); void act(async () => {}) }} />
+              </> : <>
               <button
                 className="btn-accent !px-2 !py-1 text-xs"
                 disabled={busy}
@@ -488,6 +509,7 @@ function ItemRow({
               >
                 {t("Don't publish")}
               </button>
+              </>}
             </div>
           )}
           {item.publish_state === 'publishing' &&

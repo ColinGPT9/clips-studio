@@ -272,6 +272,7 @@ def install(
         if row["provider"] != "twitch" or body.operation not in {
             "stream_context",
             "videos",
+            "clips",
             "create_clip",
             "create_vod_clip",
             "get_clip",
@@ -281,6 +282,7 @@ def install(
             raise HTTPException(400, "This account operation is not supported.")
         params = dict(body.params)
         allowed = {
+            "clips": {"broadcaster_id", "broadcaster_login", "started_at", "ended_at", "first", "after"},
             "stream_context": {"broadcaster_id", "broadcaster_login"},
             "videos": {"broadcaster_id", "first"},
             "create_clip": {"broadcaster_id", "has_delay"},
@@ -293,7 +295,7 @@ def install(
             raise HTTPException(400, "This account operation received unsupported parameters.")
         # Public reads may target another channel. Writes retain their
         # existing connected-channel gate; EventSub uses the host socket.
-        selected_channel = body.operation in {"stream_context", "videos", "vod_link", "create_clip"}
+        selected_channel = body.operation in {"stream_context", "videos", "clips", "vod_link", "create_clip"}
         if not selected_channel and "broadcaster_id" in params and params["broadcaster_id"] != row["user_id"]:
             raise HTTPException(403, "Choose this connected broadcaster's channel.")
         if body.operation != "vod_link" and "broadcaster_login" not in params:

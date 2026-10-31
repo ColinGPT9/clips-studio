@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { AwayToggle } from '../components/ApprovalCard'
 import { api, errorText } from '../lib/api'
 import type { AutomationStatus, StudioEvent, Watch as WatchRow, WatchPlatform } from '../lib/types'
 import { useEvents } from '../lib/useEvents'
@@ -29,6 +30,7 @@ const ADD_MODES: { id: AddMode; label: string }[] = [
 const PLACEHOLDER: Record<WatchPlatform, string> = {
   youtube: 'https://www.youtube.com/@channel or @handle',
   twitch: 'https://www.twitch.tv/channel or channel name',
+  twitch_clips: 'https://www.twitch.tv/channel or channel name',
   kick: 'https://kick.com/channel or channel name'
 }
 
@@ -51,6 +53,11 @@ export default function Watch({
   const [version, setVersion] = useState(0)
   const [platform, setPlatform] = useState<WatchPlatform>('youtube')
   const [channel, setChannel] = useState('')
+  const [minViews, setMinViews] = useState(10000)
+  const [lookbackDays, setLookbackDays] = useState(7)
+  const [backfill, setBackfill] = useState(false)
+  const [maxPending, setMaxPending] = useState(5)
+  const clipWatch = platform === 'twitch_clips'
   const [adding, setAdding] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -192,7 +199,11 @@ export default function Watch({
     setError(null)
     try {
       const choices = addChoices()
-      const added = await api.addWatch(platform, channel.trim(), choices.publish, choices.options)
+      const clipOptions = { captions: addClip.captions !== false, whole: true, gaming: true }
+      const added = await api.addWatch(platform, channel.trim(),
+        clipWatch ? { ...choices.publish, footer: 'Clipped by {clipper} on twitch.tv/{source_channel}' } : choices.publish,
+        clipWatch ? clipOptions : choices.options,
+        clipWatch ? { min_views: minViews, lookback_days: lookbackDays, backfill, max_pending: maxPending } : undefined)
       setJustAdded(added.id)
       setChannel('')
       await refresh()
@@ -207,6 +218,7 @@ export default function Watch({
     <div className="p-6 space-y-5 w-full max-w-5xl">
       <div className="flex items-baseline gap-3 flex-wrap">
         <h1 className="text-xl font-bold">{t('Watched channels')}</h1>
+        <AwayToggle />
         <p className="text-sm text-muted">
           {t('When a channel posts, Clips Kitty clips the new video and publishes the clips the way you set it up.')}
         </p>
@@ -330,13 +342,14 @@ export default function Watch({
         <h2 className="font-semibold">{t('Add a channel')}</h2>
         <div className="flex gap-2 flex-wrap">
           <select
-            className="input !w-36"
+            className="input !w-72"
             value={platform}
             onChange={(e) => setPlatform(e.target.value as WatchPlatform)}
             aria-label={t('Platform')}
           >
             <option value="youtube">YouTube</option>
             <option value="twitch">Twitch</option>
+            <option value="twitch_clips">Twitch clips (made by viewers)</option>
             <option value="kick">Kick</option>
           </select>
           <input
@@ -354,6 +367,31 @@ export default function Watch({
           </button>
         </div>
         <div className="space-y-2">
+          {clipWatch && <div className="space-y-2 text-sm">
+            <label className="flex items-center gap-2">Post a clip once it has
+              <input type="number" className="input !w-32" min={0} max={10000000} value={minViews}
+                aria-label="Post a clip once it has views"
+                onChange={(e) => setMinViews(Math.max(0, Math.min(10000000, Number(e.target.value) || 0)))} /> views
+            </label>
+            <label className="flex items-center gap-2">Look back
+              <input type="number" className="input !w-24" min={1} max={90} value={lookbackDays}
+                aria-label="Look back days"
+                onChange={(e) => setLookbackDays(Math.max(1, Math.min(90, Number(e.target.value) || 1)))} /> days
+            </label>
+            <label className="flex items-center gap-2">Keep at most
+              <input type="number" className="input !w-24" min={1} max={100} value={maxPending}
+                aria-label="Maximum upcoming clips"
+                onChange={(e) => setMaxPending(Math.max(1, Math.min(100, Number(e.target.value) || 1)))} /> upcoming clips
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={backfill} onChange={(e) => setBackfill(e.target.checked)}
+                aria-label="Also post clips already over the target from the lookback window" />
+              Also post clips already over the target from the lookback window
+            </label>
+            <p className="text-muted">Viewer clips are posted whole, with no trimming.</p>
+            <p className="text-muted">Gaming layout · Viewer credited on every post · View counts can lag.</p>
+            <p className="text-muted">Overlapping clips of the same VOD moment are skipped. Other qualifying clips wait for space.</p>
+          </div>}
           <div className="flex items-center gap-3 flex-wrap">
             <span className="label">{t('When it posts')}</span>
             <select
@@ -422,7 +460,7 @@ export default function Watch({
                   ? ([['sport', 'Sports', Boolean(addClip.sport)]] as const)
                   : [])
               ] as const
-            ).map(([key, label, on]) => (
+            ).filter(([key]) => !clipWatch || key === 'captions').map(([key, label, on]) => (
               <label
                 key={key}
                 className="flex items-center gap-2 cursor-pointer"
@@ -479,7 +517,7 @@ export default function Watch({
               {t('Starts from your Generate settings. Caption style and more are in Clip settings after you add it.')}
             </span>
           </div>
-          {addClip.sport && offeredSports.length > 0 && (
+          {!clipWatch && addClip.sport && offeredSports.length > 0 && (
             <div className="flex items-center gap-3 flex-wrap">
               <SportFields
                 value={addClip.sport}
@@ -489,7 +527,7 @@ export default function Watch({
               />
             </div>
           )}
-          {addClip.gaming && (
+          {!clipWatch && addClip.gaming && (
             <div className="flex items-center gap-3 flex-wrap">
               <PipelineFields
                 value={addClip.pipeline ?? { id: '' }}
@@ -509,7 +547,7 @@ export default function Watch({
               />
             </div>
           )}
-          {addClip.vertical_live && (
+          {!clipWatch && addClip.vertical_live && (
             <div className="flex items-center gap-3 flex-wrap">
               <span className="label shrink-0">{t('Vertical Live content')}</span>
               <select

@@ -116,6 +116,41 @@ def test_twenty_clips_are_twenty_posts_and_a_rerun_sends_nothing(db, tmp_path, w
     assert len(woop.posts) == 20
 
 
+@pytest.mark.parametrize("hour", [9, 20, 23])
+@pytest.mark.parametrize("platforms", [("youtube",), ("youtube", "tiktok")])
+def test_separate_whole_clip_items_share_daily_schedule_and_viewer_credit(db, tmp_path, woop, monkeypatch, hour, platforms):
+    from collections import Counter
+    from datetime import datetime, timezone
+
+    from publish import schedule
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            moment = datetime(2026, 10, 30, hour, tzinfo=timezone.utc)
+            return moment.astimezone(tz) if tz else moment.replace(tzinfo=None)
+
+    monkeypatch.setattr(service, "datetime", Clock)
+    monkeypatch.setattr(schedule, "datetime", Clock)
+
+    times = []
+    for i in range(6):
+        ids = clips(db, tmp_path, 1, video=f"tw_clip_Viewer{i}")
+        # Template substitution is exercised through the real watch workflow
+        # in test_automation; this transport/scheduler module needs no web layer.
+        footer = "Clipped by RealViewer on twitch.tv/streamer"
+        result = publish(db, tmp_path, ids, platforms=platforms, once=True, per_day=5, gap_hours=1, footer=footer)
+        times.append(datetime.fromisoformat(result["started"][0]["scheduled_for"]))
+        assert publish(db, tmp_path, ids, once=True, per_day=5)["started"] == []
+    assert times == sorted(set(times))
+    assert all((later - earlier).total_seconds() >= 3600 for earlier, later in zip(times, times[1:]))
+    assert len({time.date() for time in times}) >= 2
+    assert max(Counter(time.date() for time in times).values()) <= 5
+    if hour == 9:
+        assert Counter(time.date() for time in times).most_common(1)[0][1] == 5
+    assert all("Clipped by RealViewer on twitch.tv/streamer" in post["text"] for post in woop.posts)
+
+
 def test_only_the_platform_that_failed_is_sent_again(db, tmp_path, woop):
     ids = clips(db, tmp_path, 1)
     woop.outcome = {"youtube": "published", "tiktok": "failed", "instagram": "published"}
@@ -237,6 +272,17 @@ def test_a_send_in_progress_holds_its_slot_in_the_schedule(db, tmp_path, woop):
         "provider": "woopsocial", "state": "sending", "scheduled_for": "2099-01-01T09:00:00+00:00",
     })
     assert service.committed_times(db) == ["2099-01-01T09:00:00+00:00"]
+
+
+def test_platform_fanout_holds_one_slot_but_distinct_clips_hold_separate_slots(db, tmp_path):
+    ids = clips(db, tmp_path, 2)
+    when = "2099-01-01T09:00:00+00:00"
+    for clip_id in ids:
+        for platform in ("youtube", "tiktok"):
+            db.record_clip_publish(clip_id, platform, {
+                "provider": "woopsocial", "state": "queued", "scheduled_for": when,
+            })
+    assert service.committed_times(db) == [when, when]
 
 
 # ---- captions a creator can leave running -------------------------------------

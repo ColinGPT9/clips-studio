@@ -10,7 +10,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feature/twitch-clip-autopilot]
   push:
     branches: [main]
   workflow_dispatch:
@@ -126,7 +126,7 @@ jobs:
           python -m pytest -q --tb=short tests/test_api_contract.py tests/test_plugin_*.py
           tests/test_example_pipeline.py tests/test_catalog.py
           tests/test_connected_accounts_*.py tests/test_connected_feed.py tests/test_twitch_*.py
-          tests/test_stream_workflow*.py
+          tests/test_stream_workflow*.py tests/test_automation.py tests/test_text_updates_api.py
 
   sdk-windows:
     name: SDK (Windows)

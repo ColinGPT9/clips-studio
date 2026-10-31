@@ -187,13 +187,16 @@ def render(intermediate: Path, output: Path, g: dict, config: dict, ass_path: Pa
     from core.modes import probe_size
 
     cam = g.get("cam")
+    whole = bool(config.get("clips", {}).get("whole"))
     tracking = config["tracking"]
     use = None
     look_again = False
     if g.get("by") in TRUSTED:
         seen = _trusted_look(intermediate, cam, tracking)
         if seen == "camera":
-            return None
+            if not whole:
+                return None
+            cam = None
         use = cam
         look_again = seen == "elsewhere" and cam is not None
     else:
@@ -206,7 +209,9 @@ def render(intermediate: Path, output: Path, g: dict, config: dict, ass_path: Pa
             finding = detect.judge(tracks, n, w, h, detect.speaking_scores(intermediate, tracks, ids, duration, fps))
             face = finding.camera
             if face is not None and not face.overlay:
-                return None
+                if not whole:
+                    return None
+                face = None
             if face is not None and g.get("by") in (None, "clip"):
                 # Nothing decided for the video: this clip's own webcam.
                 use = list(face.box)
@@ -222,6 +227,10 @@ def render(intermediate: Path, output: Path, g: dict, config: dict, ass_path: Pa
     if "panels" not in g:
         g = {**g, "panels": _panels(intermediate)}
     settings = {**g, "cam": list(use) if use else None}
+    if whole:
+        settings["game_fit"] = "fit"
+        if use is None:
+            settings.update(preset="blurred", game_box=[0, 0, 1, 1], panels=[], cam2=None)
     # The streamer's head in each webcam, so the crop keeps it on screen and
     # clear of the platform's UI (gaming/framing.py).
     detector = config["tracking"]["detector"]
@@ -238,6 +247,6 @@ def render(intermediate: Path, output: Path, g: dict, config: dict, ass_path: Pa
     if cam_el is not None and "cam" in heads:
         face = framing.face_clear(heads["cam"], cam_el.src, cam_el.dest, cam_el.shift,
                                   framing.safe_zone(p.safe))
-    return {**g, "layout": p.kind, "used_preset": p.preset,
+    return {**(settings if whole else g), "layout": p.kind, "used_preset": p.preset,
             "used_cam": [round(v, 4) for v in use] if use else None,
             **({"face": face} if face is not None else {})}

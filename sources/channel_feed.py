@@ -73,6 +73,12 @@ class NewSourceVideo:
     # A YouTube Short. There is nothing to clip from one, so watching skips
     # them outright: only full videos and finished streams are for clipping.
     short: bool = False
+    views: int = 0
+    clipper: str = ""
+    duration: float = 0.0
+    game_id: str = ""
+    source_video_id: str = ""
+    vod_offset: float | None = None
 
 
 @dataclass

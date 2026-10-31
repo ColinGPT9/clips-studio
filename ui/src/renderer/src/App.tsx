@@ -16,6 +16,7 @@ import { api } from './lib/api'
 import type { StudioEvent } from './lib/types'
 import { useEvents } from './lib/useEvents'
 import { useQueueNotifications } from './lib/queueNotifications'
+import { ApprovalCards, ClipUpdatesProvider } from './components/ApprovalCard'
 import { OPEN_MARKETPLACE, checkOnlineListAtStart } from './lib/plugins'
 import mascot from './assets/mascot.png'
 
@@ -153,7 +154,8 @@ export default function App(): JSX.Element {
   }
 
   return (
-    <div className="flex h-screen" key={locale}>
+    <ClipUpdatesProvider><div className="flex h-screen" key={locale}>
+      <ApprovalCards onOpen={videoId => { setStudioTarget({videoId}); setPage('studio') }} />
       <aside className="w-52 shrink-0 bg-surface border-r border-raised/60 flex flex-col">
         {/* Same lockup as the website header: Clippy, then the name and
             tagline stacked beside him. `min-w-0` on the text column so a
@@ -250,6 +252,6 @@ export default function App(): JSX.Element {
           }}
         />
       )}
-    </div>
+    </div></ClipUpdatesProvider>
   )
 }

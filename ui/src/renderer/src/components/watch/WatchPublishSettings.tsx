@@ -97,6 +97,10 @@ export default function WatchPublishSettings({
   )
   const [backlog, setBacklog] = useState(watch.backlog)
   const [minMinutes, setMinMinutes] = useState(watch.min_minutes)
+  const [minViews, setMinViews] = useState(watch.min_views ?? 0)
+  const [lookbackDays, setLookbackDays] = useState(watch.lookback_days ?? 7)
+  const [maxPending, setMaxPending] = useState(watch.max_pending ?? 5)
+  const clipWatch = watch.platform === 'twitch_clips'
   const woop = useWoopAccounts()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -127,7 +131,7 @@ export default function WatchPublishSettings({
           overrides
         },
         backlog,
-        min_minutes: minMinutes
+        ...(clipWatch ? { min_views: minViews, lookback_days: lookbackDays, max_pending: maxPending } : { min_minutes: minMinutes })
       })
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
@@ -142,7 +146,7 @@ export default function WatchPublishSettings({
   // Every change saves itself a moment later: one panel, no button to forget.
   // Only real changes, compared with what was last saved.
   const current = JSON.stringify([
-    mode, platforms, schedule, hashtags, aiHashtags, footer, overrides, backlog, minMinutes, discordDestination
+    mode, platforms, schedule, hashtags, aiHashtags, footer, overrides, backlog, minMinutes, minViews, lookbackDays, maxPending, discordDestination
   ])
   const lastSaved = useRef(current)
   useEffect(() => {
@@ -305,16 +309,28 @@ export default function WatchPublishSettings({
           </select>
         </label>
         <label className="text-sm space-y-1">
-          <span className="label block">{t('Skip videos shorter than (minutes)')}</span>
+          <span className="label block">{clipWatch ? 'Post a clip once it has views' : t('Skip videos shorter than (minutes)')}</span>
           <input
             type="number"
             min={0}
-            max={600}
+            max={clipWatch ? 10000000 : 600}
             className="input !w-24"
-            value={minMinutes}
-            onChange={(e) => setMinMinutes(Math.max(0, Number(e.target.value) || 0))}
+            value={clipWatch ? minViews : minMinutes}
+            onChange={(e) => clipWatch
+              ? setMinViews(Math.max(0, Math.min(10000000, Number(e.target.value) || 0)))
+              : setMinMinutes(Math.max(0, Number(e.target.value) || 0))}
           />
         </label>
+        {clipWatch && <label className="text-sm space-y-1">
+          <span className="label block">Look back days</span>
+          <input type="number" min={1} max={90} className="input !w-24" value={lookbackDays}
+            onChange={(e) => setLookbackDays(Math.max(1, Math.min(90, Number(e.target.value) || 1)))} />
+        </label>}
+        {clipWatch && <label className="text-sm space-y-1">
+          <span className="label block">Maximum upcoming clips</span>
+          <input type="number" min={1} max={100} className="input !w-24" value={maxPending}
+            onChange={(e) => setMaxPending(Math.max(1, Math.min(100, Number(e.target.value) || 1)))} />
+        </label>}
       </div>
 
       <div className="flex items-center gap-3">

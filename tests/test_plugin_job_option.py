@@ -660,6 +660,79 @@ def test_a_gaming_job_without_a_pipeline_still_gets_gaming_scoring(pipeline_run)
     assert calls.get("gaming_inputs") is True and "find_clips" in calls
 
 
+def test_whole_clip_has_one_measured_candidate_and_never_finds_or_refines(pipeline_run, monkeypatch):
+    import core.pipeline as pipeline
+    monkeypatch.setattr(pipeline, "_whole_duration", lambda path: 42.75, raising=False)
+    monkeypatch.setattr(pipeline, "_refine_windows", lambda *a: pytest.fail("Whole clip was refined"))
+    _, calls = pipeline_run(whole=True, gaming=True)
+    assert "find_clips" not in calls and "plugin" not in calls and "gaming_inputs" not in calls
+    assert [(c.start, c.end) for c in calls["titles"]] == [(0, 42.75)]
+
+
+@pytest.mark.parametrize("other", [{"longform": {"mode": "highlights"}}, {"long_clips": True},
+                                   {"sport": {"name": "soccer"}}, {"pipeline": "fixture-dev/echo"}])
+def test_whole_clip_refuses_other_finders(api, other):
+    client, data_dir, install = api
+    install(data_dir, ECHO)
+    response = client.post("/jobs", json={"url": URL, "whole": True, **other})
+    assert response.status_code == 400 and "whole" in response.json()["detail"].lower()
+
+
+def test_whole_option_is_preserved_for_jobs_patches_and_batches(api):
+    client, _, _ = api
+    response = client.post("/jobs", json={"url": URL, "whole": True, "gaming": True})
+    assert response.status_code == 200, response.text
+    job_id = response.json()["job_id"]
+    assert _payload(client, job_id)["whole"] is True
+    assert client.patch(f"/jobs/{job_id}", json={"whole": False}).status_code == 200
+    assert _payload(client, job_id).get("whole") is False
+    response = client.post("/jobs/batch", json={"items": [{"url": _vod(99), "whole": True}]})
+    assert response.status_code == 200, response.text
+    assert _payload(client, response.json()["created"][0]["job_id"])["whole"] is True
+
+
+def test_whole_clip_detector_is_understand_only_and_keeps_its_window(pipeline_run, monkeypatch):
+    import core.pipeline as pipeline
+    from plugins import steps
+
+    monkeypatch.setattr(pipeline, "_whole_duration", lambda path: 42.75)
+    seen = []
+    def understand(candidates, rejections, **kwargs):
+        clips = kwargs["config"]["clips"]
+        assert clips["understand"] == [{"id": "fixture-dev/gta"}]
+        assert not any(clips.get(key) for key in ("rate", "edit", "pipeline"))
+        seen.extend((c.start, c.end) for c in candidates)
+        return candidates, rejections, []
+    monkeypatch.setattr(steps, "after_finding", understand)
+    _, calls = pipeline_run(whole=True, gaming=True, understand=[{"id": "fixture-dev/gta"}],
+                            rate=[{"id": "fixture-dev/gta"}], edit=[{"id": "fixture-dev/gta"}])
+    assert seen == [(0, 42.75)] and [(c.start, c.end) for c in calls["titles"]] == seen
+
+
+def test_whole_pipeline_registers_one_clip_with_the_viewers_title(pipeline_run, monkeypatch, db, tmp_path):
+    from analysis.metadata import ClipMetadata
+    from core import pipeline
+
+    monkeypatch.setattr(pipeline, "_whole_duration", lambda path: 42.75)
+    monkeypatch.setattr(pipeline, "generate_metadata_batch", lambda *a, **k: [ClipMetadata("AI title", "Caption")])
+    monkeypatch.setattr(pipeline, "_gaming_prepare", lambda *a: {"gaming": {"cam": None}})
+    monkeypatch.setattr(pipeline, "_share_the_cpu", lambda *a: None)
+    monkeypatch.setattr(pipeline, "_remote_renderer", lambda *a: None)
+    output = tmp_path / "render-fixture.mp4"
+    def render(source, candidate, segments, clip_dir, config, *args):
+        assert config["clips"]["whole"] and config["clips"]["outro"] is False
+        assert (candidate.start, candidate.end) == (0, 42.75) and segments
+        output.write_bytes(b"offline-render-fixture")
+        return output, json.dumps({"whole": True})
+    monkeypatch.setattr(pipeline, "_render_files", render)
+    watch_id = db.insert_watch("twitch_clips", "streamer")
+    db.insert_watch_item("vid001", watch_id=watch_id, title="Original viewer title")
+    result, calls = pipeline_run(whole=True, gaming=True)
+    assert len(result) == 1 and "find_clips" not in calls
+    rows = list(db.clips_for_video("vid001"))
+    assert len(rows) == 1 and rows[0]["title"] == "Original viewer title"
+
+
 def test_a_job_with_a_pipeline_asks_the_plugin_instead(pipeline_run, tmp_path):
     out, calls = pipeline_run(pipeline={"id": "fixture-dev/echo"})
     assert out == [] and "find_clips" not in calls

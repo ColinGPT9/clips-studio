@@ -211,12 +211,13 @@ def committed_times(db) -> list[str]:
     posts, which spend their own allowance rather than WoopSocial's.
     """
     rows = db.conn.execute(
-        "SELECT state, scheduled_for, updated_at FROM clip_publishes "
+        "SELECT clip_id, state, scheduled_for, updated_at FROM clip_publishes "
         "WHERE state IN ('queued', 'processing', 'published', 'sending') "
         "AND provider = 'woopsocial'"
     ).fetchall()
     today = datetime.now(timezone.utc).date().isoformat()
     out: list[str] = []
+    seen: set[tuple[int, str]] = set()
     for r in rows:
         when = r["scheduled_for"] or ""
         if r["state"] == "published":
@@ -226,7 +227,11 @@ def committed_times(db) -> list[str]:
             if not stamp.startswith(today):
                 continue
             when = stamp
-        if when:
+        # A clip fanned out to YouTube and TikTok is one scheduling slot.
+        # Separate clips at the same instant must still count separately.
+        identity = (r["clip_id"], when)
+        if when and identity not in seen:
+            seen.add(identity)
             out.append(when)
     return out
 
@@ -293,6 +298,7 @@ def schedule_times(db, count: int, *, per_day: int, gap_hours: float = 1,
         int(per_day),
         float(gap_hours or 1),
         to_rfc3339(first),
+        local_start=bool(day_start and not start_at),
     )
 
 

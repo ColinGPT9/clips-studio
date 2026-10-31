@@ -34,6 +34,11 @@ function send(title: string, body: string): void {
   void window.studio?.notify?.(title, body)
 }
 
+export function notifyApproval(itemId: number, joke: boolean): void {
+  if (document.hasFocus()) return
+  void window.studio?.notify?.('Clips Kitty', `Clip #${itemId} is waiting: Approve, Deny${joke ? ' or Damage Control' : ''}?`, 'clip-approval')
+}
+
 export function useQueueNotifications(): void {
   useEvents((e: StudioEvent) => {
     if (e.type !== 'job') return

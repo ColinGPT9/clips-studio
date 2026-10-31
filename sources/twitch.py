@@ -1,4 +1,4 @@
-"""Twitch VOD source — VODs ONLY, by design.
+"""Twitch source for finished VODs and viewer clips.
 
 Live streams are deliberately rejected: processing a live channel means
 capturing it in real time for however long the stream runs — open-ended,
@@ -13,6 +13,7 @@ can never collide with YouTube's 11-character ids anywhere in the app
 
 import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import yt_dlp
 
@@ -34,12 +35,29 @@ def extract_vod_id(url: str) -> str | None:
     return f"tw_{m.group(1)}" if m else None
 
 
+def extract_clip_id(url: str) -> str | None:
+    try:
+        parsed = urlsplit(url)
+        if (parsed.scheme != "https" or parsed.username or parsed.password
+                or parsed.port not in (None, 443)):
+            return None
+        if parsed.hostname == "clips.twitch.tv":
+            match = re.fullmatch(r"/([A-Za-z0-9_-]{1,200})/?", parsed.path)
+        elif parsed.hostname in {"twitch.tv", "www.twitch.tv"}:
+            match = re.fullmatch(r"/[A-Za-z0-9_]{1,25}/clip/([A-Za-z0-9_-]{1,200})/?", parsed.path)
+        else:
+            return None
+        return f"tw_clip_{match.group(1)}" if match else None
+    except ValueError:
+        return None
+
+
 def download(url: str, output_dir: Path, vertical: bool = False) -> DownloadedVideo:
     """`vertical`: the vertical version only, for Vertical Live (sources/vertical.py)."""
-    video_id = extract_vod_id(url)
+    video_id = extract_clip_id(url) or extract_vod_id(url)
     if video_id is None:
         raise ValueError(
-            "Only Twitch VODs are supported — paste a link like "
+            "Paste a finished Twitch clip or VOD link like "
             "twitch.tv/videos/123456789. Live channels can't be processed "
             "(that would mean capturing the stream in real time); wait for "
             "the VOD to appear on the channel's Videos page."

@@ -67,6 +67,8 @@ def audience_signals(url: str, video_id: str, duration: float) -> tuple[np.ndarr
     the gaming profile's reading of what chat said (analysis/chat_moments.py);
     empty for the other sources. Never raises."""
     try:
+        if video_id.startswith("tw_clip_"):
+            return None, []
         if video_id.startswith("tw_"):
             messages = _twitch_chat(video_id[3:], duration)
             return _chatters_to_curve(messages, duration), messages
