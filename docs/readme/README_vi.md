@@ -951,6 +951,7 @@ Tài liệu về đóng gói và phát hành:
 [![X (Twitter): @ClipsKitty2](https://img.shields.io/badge/X%20(Twitter)-%40ClipsKitty2-000000?logo=x&logoColor=white)](https://x.com/ClipsKitty2)
 [![Instagram: @ClipsKitty2](https://img.shields.io/badge/Instagram-%40ClipsKitty2-E4405F?logo=instagram&logoColor=white)](https://www.instagram.com/clipskitty2/)
 [![YouTube: @ClipsKitty2](https://img.shields.io/badge/YouTube-%40ClipsKitty2-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/@ClipsKitty2)
+[![TikTok: @ClipsKitty2](https://img.shields.io/badge/TikTok-%40ClipsKitty2-000000?logo=tiktok&logoColor=white)](https://www.tiktok.com/@clipskitty2)
 
 <a id="roadmap-detail"></a>
 
