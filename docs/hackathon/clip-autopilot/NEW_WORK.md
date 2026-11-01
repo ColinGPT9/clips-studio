@@ -62,6 +62,19 @@ are excluded from source and documentation.
 Planned commit title: `Add optional clip approvals and Discord updates`.
 TEXT_UPDATES.md records this session ID, the protocol check and setup.
 
+## Follow-up from actual desktop testing
+
+Branch `followup/clip-autopilot-live-evidence` is based on main `f88bea2c`,
+which contains merged PRs #202, #204 and the separately authorized #199.
+Local commit `6be3d55` records the actual merged-code preflight.
+The follow-up fixes recovery from missed terminal job events during watch
+activity, distinguishes provider account limits from credit errors, displays
+connected profile handles before approval, and corrects tomorrow's first
+schedule slot across daylight saving. TEST_LOG.md records real Twitch counts,
+whole renders, owner decisions, cancellation of an unintended destination,
+the verified brand Instagram replacement, and actual restart/recheck results.
+Pending evidence stays explicitly pending.
+
 ## Already existed; not this entry's new work
 
 Clips Kitty editor and pipeline; Watched Channels and tray polling; SQLite

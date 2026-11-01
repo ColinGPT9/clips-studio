@@ -61,29 +61,165 @@ the test now fixes its clock and covers additional boundary/platform cases.
 The corrected scheduler's full and platform gates passed before push, as
 recorded above. Inspect the replacement head's PR Checks tab for GitHub status.
 
-## Live checks — owner-operated, pending
+## October 31: merged code and actual app preflight
 
-Read-only check of the running desktop API: reachable; it has Connected
-Accounts routes but not `twitch_clips` watches. WoopSocial reports disabled
-and no key configured. No live watch or publication was created. Use the
-updated build and enter credentials in Settings before the live checklist.
+- PR #204 merged into the entry branch as `6eb02395`; #202 then merged into
+  main as `0963ff2e`. The separately authorized first-entry documentation PR
+  #199 merged as `f88bea2c`; this follow-up changes no first-entry files.
+- Post-merge main commit `f88bea2c40d33b945619c14597e1d25db074cc91` passed
+  [CI](https://github.com/ColinGPT9/clips-studio/actions/runs/41173928365)
+  and [CodeQL](https://github.com/ColinGPT9/clips-studio/actions/runs/41173928295).
+  Python, plugin platform, Windows SDK, desktop and website jobs passed;
+  the vendored-code job was skipped by its condition. Both CodeQL analyses passed.
+- After the owner confirmed quitting the older research-checkout app, Codex
+  launched this checkout's checked desktop build. Actual `/health` reports
+  app version 2.1.0; its OpenAPI schema includes clip-watch targets and the
+  text-updates routes. No fixture server was used for these prerequisite checks.
+- At this check, Twitch has no saved Client ID or connected account. The
+  owner requested setup help. No authorization or live Twitch API result
+  is claimed.
+- Actual WoopSocial status reports enabled with a saved key. Its connections
+  endpoint reports Instagram and TikTok; YouTube remains to be connected.
+  This verifies existing connections, not a new scheduled post.
+- Watching is off, no jobs are active, and optional Clip updates is off
+  without a connected Discord owner/bot. No watch, job or publication was
+  created by this preflight. The existing local settings edit is preserved.
+- Prepared a 22.021-second, 1920x1080/30-fps H.264 editorial insert outside
+  the repository (`codex-evidence-and-close-22s.mp4`). It shows the actual
+  Clips API source, verified build-session ID, saved JUnit totals and repo
+  end card. Re-reading the reports confirms 5,510 passed/10 skipped and
+  1,509 passed/8 skipped, with zero failures/errors. Its evidence manifest
+  records source/report hashes. Card screenshots were visually reviewed;
+  the final export's dimensions/duration and full FFmpeg decode passed.
+  This silent insert is not the client `/status` capture, a live demo,
+  or the completed public video. No pending live check changes to PASS.
 
-1. **PENDING:** Twitch connected and WoopSocial enabled with destination accounts.
-2. **PENDING:** Add a permitted channel's clip watch; record actual qualifying
-   counts, lookback, captions, layout and chosen backfill setting.
-3. **PENDING:** Check now, repeat check and app restart: preserve item/job counts.
-4. **PENDING:** A genuinely fresh clip crosses a target naturally. Record the
-   real channel, clip URL, observed counts, poll times and evidence. Never
-   invent views, crossings or timestamps. Backfill is not this test.
-5. **PENDING:** Actual Twitch clip renders whole, 9:16, captions, facecam/gameplay
-   (or full-frame fit when no webcam is present). Compare measured durations.
-6. **PENDING:** At least 16 minutes ahead: record WatchLive, Clip Studio Schedule
-   and the WoopSocial dashboard showing the same scheduled post.
+## Owner amendment: Instagram-only live test
+
+The owner explicitly limits the remaining test to Instagram. Do not connect,
+schedule or post to YouTube or TikTok for it. Keep five posts/day and five
+upcoming clips. This narrows the test destination, not the product's existing
+multi-platform support.
+
+An actual stdio MCP session (`python main.py mcp`) initialized successfully,
+listed the app's 19 tools and called `engine_status`, `queue_status` and
+`woopsocial_status`. The engine is running, nothing is processing or waiting,
+and WoopSocial reports connected with Instagram last used. The local API
+also confirms Instagram is the selected destination. No publishing tool was
+called and no connection request was started. The current MCP tool list
+does not expose Twitch application registration or account sign-in; Twitch
+still has no saved Client ID or connected account.
+
+## Live checks — October 31, partial completion
+
+The earlier stale-app preflight is historical. The updated app is now running
+against its actual database and the owner's connected services. Evidence
+files remain outside the repo; they contain no OAuth tokens or media URLs.
+
+1. **PASS:** Actual account status confirms a connected Twitch viewer with no
+   extra scopes. WoopSocial is enabled with Instagram selected and connected.
+2. **PARTIAL:** Actual watch #4 uses the permitted channel, a 45-day lookback
+   covering the requested beta, target 2, Gaming/whole/captions, five/day and
+   five upcoming. Backfill is off for the first-look observation. Publishing
+   is Ask first during inspection; the Automatic live phase remains pending.
+   The existing non-test watch is temporarily disabled so it cannot send to
+   another destination. Its original state is saved outside the repo.
+3. **PARTIAL:** First look recorded 1,283 Earlier clips and queued none. The
+   app was gracefully quit and restarted: all 1,283 remained, with no new
+   jobs. Two recent clips at one view remain absent below the two-view target.
+   Later qualifying older clips produced jobs 214/215 exactly once across
+   repeated checks. After jobs 217/218 completed, another graceful restart
+   preserved all 1,288 items and the brand schedule exactly, with an idle
+   queue. A real repeat poll then retained fresh item 1317 and its single
+   job 217; no second job or post was created for that clip. Explicit first-look
+   backfill with the checkbox remains pending live verification.
+4. **PASS (natural count crossing and delayed admission):** Twitch clip
+   `CuriousSilkyYamPunchTrees-x6atpLw5Edvgq4jv`, made at 22:50:32 UTC,
+   was observed at one view from 23:04:19 through 23:35:51 UTC, then at two
+   views at 23:36:36 UTC. The target was already two; no counts were changed
+   or views stimulated. The watch was paused during destination correction.
+   After resuming, it admitted the clip once at November 1 00:10:37 UTC as
+   item 1317/job 217. Admission was delayed, not claimed at the first count
+   crossing. This is a fresh observed crossing, not a lookback backfill.
+   Job 217 completed and produced one whole clip (#4307): source and output
+   both 13.683333 seconds, output 1080x1920, captions visible, full decode
+   passed. The existing fit/blur Gaming fallback preserves the full source.
+   This extra clip is held for review and has not been approved or scheduled.
+   The source channel was live during setup; it had ended by the later
+   verification at 00:11 UTC. No continuously live claim is made for admission.
+5. **PASS:** Actual job 214 produced exactly one whole clip (#4304), starting
+   at zero. FFprobe: source 1920x1080, 60.015 s; output 1080x1920, 60.000 s.
+   The difference is under one video frame. Stored render options retain whole
+   and split/fit Gaming; actual frames at 8/35 seconds show captions and the
+   facecam/gameplay layout. A full FFmpeg decode passed.
+6. **PARTIAL (destination corrected):** The owner approved #4304 and used
+   the app's Approve action. Its original October 31 19:48 Eastern schedule
+   appeared in WatchLive, Clip Studio and WoopSocial at least 21 minutes ahead.
+   The owner then identified the connected Instagram profile as the wrong
+   destination. That pending post was deleted at 23:38 UTC, before delivery;
+   an actual provider GET confirmed its absence. The three screenshots are
+   historical evidence of this canceled schedule, not delivery evidence.
+   After the owner authorized replacing the old connections and connected
+   Instagram @ClipsKitty2, the same approved clip was scheduled again through
+   the app's actual MCP for October 31 20:47 Eastern / November 1 00:47 UTC.
+   Provider GET confirms exactly one destination, Instagram @ClipsKitty2,
+   with the viewer credit retained and delivery NOT_STARTED. No second
+   WoopSocial approval was needed. New dashboard capture and delivery remain
+   pending. No YouTube or TikTok post was created for this test.
 7. **PENDING:** Public YouTube demo under three minutes and client `/status`
    screenshot/session capture. Record URLs without exposing credentials.
 
 Do not turn any pending live item into PASS based on unit tests or synthetic
 media. Submission text must retain these limits until real evidence exists.
+
+### Live app approvals and popup
+
+The owner also denied the second item in the app; its clip remains in the
+library and has no publication. The live Damage Control popup was recorded
+for nine seconds: Ringing, then the generic attorney text. Before/after
+checks prove item #1314 unchanged, zero new publish rows and the rendered
+file retained. The 1920x1080 recording's full decode passed. The app's saved
+line, Approve and Deny are live evidence; Discord/phone operation is not.
+
+### Progress recovery discovered during the live run
+
+The UI retained a processing banner after the queue became idle. Continuous
+watch events reset the shared quiet timer, starving the authoritative job
+check after a terminal event was missed. A regression executes the actual
+hook with continuing events and an idle backend; it failed before the fix.
+The hook now verifies periodically during activity as well as quiet periods.
+Its regression passes for completed, running/queued, unreachable and idle
+cases and is included in desktop CI. The final follow-up gates passed below.
+
+### Account identity, error wording and daylight saving follow-up
+
+The actual account-link error was HTTP 402 with `social account limit reached`.
+It was incorrectly shown as monthly credits exhausted. The classifier now
+recognizes connected-account limits, reads the provider's `error_message`,
+and avoids inventing monthly credit exhaustion for other 402 responses.
+The connections API returns only platform, account ID and username; approval,
+watch-publishing and Settings controls show the connected handles. Regression
+checks verify the identity is visible before approving and tokens are omitted.
+The owner deferred TikTok setup; only Instagram @ClipsKitty2 is authorized for
+this post. The wrong destination's canceled post is not a public delivery.
+
+The first follow-up full/platform gates exposed a separate first-slot bug on
+the eve of daylight saving: tomorrow's chosen local clock inherited today's
+fixed UTC offset. The scheduler now selects the local calendar date before
+UTC conversion. Fall and spring boundary regressions and the failed preview
+check pass after the correction. The complete final gates passed before push;
+the superseded daylight-saving failures are not reported as final passes.
+
+The updated desktop was built and restarted successfully after completed
+jobs. The live connections endpoint now reports the actual connected handles.
+The exact expanded platform suite passed with 1,509 passed, eight skipped,
+zero failures/errors. Ruff, API-reference consistency, TypeScript, desktop
+build, viewer-channel, Connected Accounts, watch-detector, text-updates and
+job-watch recovery checks passed. The final full suite passed with 5,515
+passed, ten skipped, zero failures/errors in 14m14s. The exact expanded
+platform run took 5m37s. Saved JUnit reports confirm both totals. GitHub
+follow-up checks must be inspected on the pushed commit before claiming CI
+passed for these fixes; the earlier main CI links apply to the merged base.
 
 ## Optional Clip updates add-on
 

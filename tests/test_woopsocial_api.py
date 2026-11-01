@@ -87,6 +87,10 @@ def test_a_project_is_created_rather_than_asked_for(client, monkeypatch):
     service.save_settings(d, {"enabled": True})
     d.close()
     made = []
+    from uuid import uuid4
+
+    account_id = "fixture-" + uuid4().hex
+    private_token = "private-" + uuid4().hex
 
     class FakeClient:
         def projects(self):
@@ -95,6 +99,10 @@ def test_a_project_is_created_rather_than_asked_for(client, monkeypatch):
         def create_project(self, name):
             made.append(name)
             return {"id": "new-proj"}
+
+        def social_accounts(self, project_id):
+            return [{"id": account_id, "platform": "YOUTUBE", "username": "fixturechannel",
+                     "accessToken": private_token}]
 
         def connected_platforms(self, project_id):
             return ["youtube"]
@@ -105,6 +113,10 @@ def test_a_project_is_created_rather_than_asked_for(client, monkeypatch):
     got = client.get("/woopsocial/connections")
     assert got.status_code == 200
     assert got.json()["connected"] == ["youtube"]
+    assert got.json()["accounts"] == [
+        {"id": account_id, "platform": "youtube", "username": "fixturechannel"}
+    ]
+    assert private_token not in got.text
     assert made == [service.DEFAULT_PROJECT_NAME]
 
     # Remembered, so it is not created again on the next call.

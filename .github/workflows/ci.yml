@@ -180,6 +180,9 @@ jobs:
       - name: Connected Accounts client boundary
         run: node scripts/test-connected-accounts.cjs
 
+      - name: Job completion recovery during watch activity
+        run: node scripts/test-job-watch.cjs
+
       - name: Build
         # A build failure is the difference between "types are fine" and
         # "this actually packages", and it is what the installer depends on.

@@ -71,7 +71,7 @@ class WoopSocialError(PublishError):
 
 def _classify(status: int, payload: dict, body: str) -> PublishError:
     detail = str(
-        payload.get("message") or payload.get("error") or payload.get("detail") or body
+        payload.get("message") or payload.get("error_message") or payload.get("error") or payload.get("detail") or body
     )[:500]
 
     if status == 401 or status == 403:
@@ -91,9 +91,22 @@ def _classify(status: int, payload: dict, body: str) -> PublishError:
         return RateLimited(
             "WoopSocial asked us to slow down. Trying again shortly.", detail=detail
         )
-    if status == 402 or "credit" in detail.lower():
+    problem = (str(payload.get("code") or "").replace("_", " ") + " " + detail).lower()
+    if 400 <= status < 500 and ("social account" in problem or "connected account" in problem) and any(
+        word in problem for word in ("limit", "maximum", "quota", "too many")
+    ):
+        return WoopSocialError(
+            "WoopSocial's connected-account limit is reached. Manage your connected accounts before adding another profile.",
+            detail=detail,
+        )
+    if "credit" in problem:
         return QuotaExceeded(
-            "Your WoopSocial credits are used up for this month.", detail=detail
+            "WoopSocial reports insufficient credits for this request.", detail=detail
+        )
+    if status == 402:
+        return QuotaExceeded(
+            "WoopSocial's current plan or usage allowance does not permit this request. Check your limits in WoopSocial.",
+            detail=detail,
         )
     if status >= 500:
         err = WoopSocialError("WoopSocial had a server error.", detail=detail)

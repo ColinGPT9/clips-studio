@@ -6,22 +6,23 @@ import { platformLabel, WOOPSOCIAL_PLATFORMS } from '../../lib/uploadpost'
 import { t } from '../../lib/i18n'
 import WatchPlatformOptions, { type PlatformOverrides } from './WatchPlatformOptions'
 import WatchSchedule, { type ScheduleValue } from './WatchSchedule'
+import { woopTargetLabel, type WoopAccount } from '../../lib/woopTargets'
 
 /** Whether WoopSocial can publish, and which accounts it has. Null while
  *  loading. Shared by the add form and each channel's settings, so both offer
  *  the same platforms. */
-export function useWoopAccounts(): { ready: boolean; connected: string[] } | null {
-  const [woop, setWoop] = useState<{ ready: boolean; connected: string[] } | null>(null)
+export function useWoopAccounts(): { ready: boolean; connected: string[]; accounts: WoopAccount[] } | null {
+  const [woop, setWoop] = useState<{ ready: boolean; connected: string[]; accounts: WoopAccount[] } | null>(null)
   useEffect(() => {
     let live = true
     const load = async (): Promise<void> => {
       try {
         const status = await api.woopSocialStatus()
         const ready = status.enabled && status.has_key
-        const connected = ready ? (await api.woopSocialConnections()).connected : []
-        if (live) setWoop({ ready, connected })
+        const connections = ready ? await api.woopSocialConnections() : {connected: [], accounts: []}
+        if (live) setWoop({ ready, connected: connections.connected, accounts: connections.accounts ?? [] })
       } catch {
-        if (live) setWoop({ ready: false, connected: [] })
+        if (live) setWoop({ ready: false, connected: [], accounts: [] })
       }
     }
     void load()
@@ -233,7 +234,7 @@ export default function WatchPublishSettings({
                           )
                         }
                       />
-                      {platformLabel(id)}
+                      {woopTargetLabel(id, woop.accounts)}
                       {!woop.connected.includes(id) && (
                         <span className="text-xs text-warn">{t('(not connected)')}</span>
                       )}

@@ -369,6 +369,18 @@ def test_a_daily_schedule_keeps_to_the_chosen_time(db):
     assert (times[2] - times[0]).days == 1
 
 
+@pytest.mark.parametrize("evening,next_morning", [
+    ((2026, 10, 31, 20, 0), (2026, 11, 1, 9, 0)),
+    ((2026, 3, 7, 20, 0), (2026, 3, 8, 9, 0)),
+])
+def test_first_slot_tomorrow_uses_that_dates_local_offset(evening, next_morning):
+    from datetime import datetime, timezone
+
+    now = datetime(*evening).astimezone()
+    expected = datetime(*next_morning).astimezone(timezone.utc)
+    assert service.first_slot_at("09:00", now=now) == expected
+
+
 
 def test_hashtags_the_model_ran_together_are_split():
     from analysis.metadata import _clean_hashtags

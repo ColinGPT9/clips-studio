@@ -1,3 +1,4 @@
+import type { WoopAccount } from './woopTargets'
 import type {
   AIModelList,
   AISignIn,
@@ -800,7 +801,7 @@ export const api = {
     }),
   deleteWoopSocialKey: () =>
     request<UploadPostStatus & { removed: boolean }>('/woopsocial/key', { method: 'DELETE' }),
-  woopSocialConnections: () => request<{ connected: string[] }>('/woopsocial/connections'),
+  woopSocialConnections: () => request<{ connected: string[]; accounts?: WoopAccount[] }>('/woopsocial/connections'),
   /** WoopSocial authorises one platform at a time, so the caller names it. */
   woopSocialConnect: (platform: string) =>
     request<{ url: string; platform: string }>('/woopsocial/connect', {

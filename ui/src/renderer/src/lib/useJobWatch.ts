@@ -14,8 +14,8 @@ import { api } from './api'
  *    progress for minutes, and nothing protects the terminal event from being
  *    the one discarded.
  *
- *  ProcessingBar learned this first and grew the fix inline: when events go
- *  quiet, stop believing them and ask the server what is actually running.
+ *  ProcessingBar learned this first and grew the fix inline: periodically
+ *  ask the server what is actually running, even if other events continue.
  *  The Dashboard and the clip list never got it, so a finished run could leave
  *  them showing an empty page until someone reloaded — which reads as "no
  *  clips were created" and turns into a bug report.
@@ -31,7 +31,7 @@ export const RECHECK_EVERY_MS = 10_000
 interface Options {
   /** Only watch while this is true, so an idle page never polls. */
   active: boolean
-  /** Called when the stream went quiet and the server says nothing is running
+  /** Called when the server says nothing is running
    *  any more — i.e. something finished and the event was missed. */
   onSettled: () => void
   /** Bump this whenever an event arrives, to restart the quiet timer. */
@@ -48,8 +48,14 @@ export function useJobWatch({ active, onSettled, lastEventAt }: Options): void {
 
   useEffect(() => {
     if (!active) return
+    let lastCheckedAt = Date.now()
     const id = setInterval(() => {
-      if (Date.now() - lastEventAt.current < SILENCE_BEFORE_RECHECK_MS) return
+      const now = Date.now()
+      // Watch activity and other unrelated events may never go quiet. They
+      // must not starve recovery of a missed terminal job event.
+      if (now - lastEventAt.current < SILENCE_BEFORE_RECHECK_MS &&
+          now - lastCheckedAt < SILENCE_BEFORE_RECHECK_MS) return
+      lastCheckedAt = now
       void api
         .jobs()
         .then((jobs) => {
