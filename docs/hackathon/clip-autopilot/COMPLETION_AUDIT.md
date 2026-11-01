@@ -61,7 +61,9 @@ first slot across daylight saving. Its final gates passed: 5,515 full-suite
 tests (10 skips), 1,509 exact expanded platform tests (8 skips), Ruff,
 API-reference consistency, TypeScript, desktop build and all five renderer/
 hook regression scripts. Both JUnit reports have zero failures or errors.
-Follow-up GitHub CI is separate from the earlier merged-base CI evidence.
+Follow-up CI run 41256603085 passed all six jobs; CodeQL run 41256602980
+passed both analyses on `275edf67`. PR #205 merged as `fb1b002b`. These
+results are separate from the earlier merged-base CI evidence.
 
 ## Required live evidence still missing
 
@@ -78,8 +80,10 @@ captions/Gaming/whole mode, and Instagram-only Ask-first publishing during
 inspection. The pre-existing watch is temporarily disabled, with its prior
 state saved for restoration. One actual 60-second clip was approved by the
 owner; its initial schedule to an unintended profile was canceled before
-sending. The replacement is scheduled to the verified Instagram @ClipsKitty2
-at 20:47 Eastern. TikTok setup is deferred. A second item was denied in the app.
+sending. The replacement was scheduled to the verified Instagram @ClipsKitty2
+at 20:47 Eastern and published at 20:48:33 Eastern, confirmed by the app and
+provider: https://www.instagram.com/reel/DfLetHQFB85/. TikTok setup is deferred.
+A second item was denied in the app.
 A fresh clip was observed crossing naturally from one view to two and was
 admitted once after the destination-correction pause; its whole render completed.
 
@@ -87,11 +91,11 @@ admitted once after the destination-correction pause; its whole render completed
 |---|---|---|
 | Owner connects Twitch viewer and the authorized Instagram destination | Actual app account status: connected, scopes empty; app MCP status and actual WoopSocial post | Verified live |
 | zackrawrr lookback covering the beta, real counts, whole/Gaming/captions, Automatic, five/day and five upcoming | Actual watch #4 has the 45-day window, real counts and five/five limits | Ask-first inspection verified; Automatic live phase pending |
-| Backfill queue, repeat Check now and app restart without duplicates | 1,283 Earlier items survived the initial restart; all 1,288 items and brand schedule survived a post-job restart unchanged. A repeat actual poll retained exactly one fresh item/job 217 | Baseline, repeat poll and post-job restart verified; explicit first-look checkbox backfill pending |
+| Backfill queue, repeat Check now and app restart without duplicates | 1,283 Earlier items survived the initial restart; all 1,288 items and brand schedule survived a post-job restart unchanged. A repeat actual poll retained exactly one fresh item/job 217; manual Earlier backfill retained one job/clip across another restart (1,289 items unchanged) | Baseline, manual Earlier backfill, repeat action/poll and post-job restart verified; first-look checkbox backfill pending |
 | Natural crossing on the live-test channel | Real clip CuriousSilkyYamPunchTrees-x6atpLw5Edvgq4jv observed 1 view through 23:35:51 UTC, 2 at 23:36:36; admitted after account-correction pause as item 1317/job 217 | Verified natural counts, delayed admission, repeat poll and restart |
 | Whole 9:16 Twitch output with captions and appropriate facecam/gameplay layout | Actual job 214 / clip 4304: source 60.015 s, output 60.000 s at 1080x1920; split/fit Gaming and captions visually reviewed; full decode passed | Verified live |
-| Scheduled at least 16 minutes ahead in WatchLive, Clip Studio Schedule and WoopSocial | All three displays verified for original 19:48 schedule, subsequently canceled before sending. Replacement provider GET verifies Instagram @ClipsKitty2 only, 20:47 Eastern / November 1 00:47 UTC | Replacement scheduled; updated display captures and delivery pending |
-| Record every live result without secrets | TEST_LOG.md evidence entries | Pending |
+| Scheduled at least 16 minutes ahead in WatchLive, Clip Studio Schedule and WoopSocial | All three displays verified for original 19:48 schedule, subsequently canceled before sending. Replacement provider GET verifies Instagram @ClipsKitty2 only, 20:47 Eastern / November 1 00:47 UTC | Replacement published, verified by app/provider; new dashboard screenshot pending |
+| Record every live result without secrets | TEST_LOG.md records completed checks and explicitly retains unfinished phases | Verified for completed checks |
 | Public demo under three minutes showing Twitch and Codex, with proper credits/backfill disclosure | Public YouTube URL and actual video | Pending |
 | Owner submits Devpost | Owner's Devpost form | Owner action, not delegated to Codex |
 
