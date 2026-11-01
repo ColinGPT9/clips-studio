@@ -5,7 +5,7 @@ to enable app/Discord approvals. It requires the owner's Discord sign-in,
 bot token, private channel or DM and a successful test before Away from desk
 can be enabled. The base entry works with Clip updates off.
 
-Use Windows and the entry branch. This feature runs inside the existing
+Use Windows and the merged `main` branch. This feature runs inside the existing
 Clips Kitty desktop app; it is not an additional hosted service.
 
 You do not need to stream yourself. Connect a viewer account and watch a
@@ -13,12 +13,13 @@ public channel you have permission to reuse, such as the demo channel in
 the brief. Five posts/day plus five upcoming clips controls volume even
 when that channel has a large audience making many clips.
 
-1. Clone https://github.com/ColinGPT9/clips-studio and check out
-   `feature/twitch-clip-autopilot`. Follow the root README for Python 3.11,
-   engine dependencies, FFmpeg and desktop setup. From the repository root,
-   `python main.py serve` starts the loopback API. In `ui`, use `npm ci` and
-   `npm run dev` for the development desktop. Use `npm.cmd` in PowerShell
-   when its script execution policy blocks `npm.ps1`.
+1. Clone https://github.com/ColinGPT9/clips-studio and check out `main`.
+   PRs #202/#204 and the live-test fixes in #205 are merged there. The original
+   entry branch remains available for entry history. Follow the root README
+   for Python 3.11, engine dependencies, FFmpeg and desktop setup. In `ui`,
+   use `npm ci` and `npm run dev` for the development desktop; it starts the
+   engine automatically. Use `npm.cmd` in PowerShell when script policy
+   blocks `npm.ps1`.
 2. Configure an available AI backend in Settings. Caption transcription
    needs the configured Whisper model/provider. The app's existing model
    checks apply; it does not bundle account credentials for judges.

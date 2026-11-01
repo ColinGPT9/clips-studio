@@ -131,8 +131,17 @@ files remain outside the repo; they contain no OAuth tokens or media URLs.
    repeated checks. After jobs 217/218 completed, another graceful restart
    preserved all 1,288 items and the brand schedule exactly, with an idle
    queue. A real repeat poll then retained fresh item 1317 and its single
-   job 217; no second job or post was created for that clip. Explicit first-look
-   backfill with the checkbox remains pending live verification.
+   job 217; no second job or post was created for that clip. A real Earlier
+   WoW item (#309) was then queued through the existing Clip this action as
+   job 219, with whole/Gaming/captions. It retains `reached_at=0` and an
+   explicit manual-request marker, so it is not mislabeled a fresh crossing.
+   Pressing Clip this again retained job 219 and one job for that video.
+   Job 219 finished with exactly one whole 1080x1920 output: source 60.01 s,
+   output 60.00 s, full decode passed. Another graceful restart preserved all
+   1,289 items, the single backfill job/clip and the published brand Reel
+   unchanged, with no active jobs. Publishing for the extra clip remains held
+   for review. The first-look backfill checkbox itself remains pending live
+   verification.
 4. **PASS (natural count crossing and delayed admission):** Twitch clip
    `CuriousSilkyYamPunchTrees-x6atpLw5Edvgq4jv`, made at 22:50:32 UTC,
    was observed at one view from 23:04:19 through 23:35:51 UTC, then at two
@@ -163,9 +172,12 @@ files remain outside the repo; they contain no OAuth tokens or media URLs.
    Instagram @ClipsKitty2, the same approved clip was scheduled again through
    the app's actual MCP for October 31 20:47 Eastern / November 1 00:47 UTC.
    Provider GET confirms exactly one destination, Instagram @ClipsKitty2,
-   with the viewer credit retained and delivery NOT_STARTED. No second
-   WoopSocial approval was needed. New dashboard capture and delivery remain
-   pending. No YouTube or TikTok post was created for this test.
+   with the viewer credit retained. No second WoopSocial approval was needed.
+   Provider delivery completed October 31 at 20:48:33 Eastern / November 1
+   00:48:33 UTC. The app ledger and provider now both report PUBLISHED for
+   Instagram @ClipsKitty2: https://www.instagram.com/reel/DfLetHQFB85/.
+   A new dashboard screenshot was not captured; the provider API confirms
+   delivery. No YouTube or TikTok post was created for this test.
 7. **PENDING:** Public YouTube demo under three minutes and client `/status`
    screenshot/session capture. Record URLs without exposing credentials.
 
@@ -218,8 +230,36 @@ build, viewer-channel, Connected Accounts, watch-detector, text-updates and
 job-watch recovery checks passed. The final full suite passed with 5,515
 passed, ten skipped, zero failures/errors in 14m14s. The exact expanded
 platform run took 5m37s. Saved JUnit reports confirm both totals. GitHub
-follow-up checks must be inspected on the pushed commit before claiming CI
-passed for these fixes; the earlier main CI links apply to the merged base.
+follow-up checks passed on `275edf671af96b45090c052049fe77fa1bd5043b`:
+[CI](https://github.com/ColinGPT9/clips-studio/actions/runs/41256603085)
+and [CodeQL](https://github.com/ColinGPT9/clips-studio/actions/runs/41256602980).
+All six CI jobs and both CodeQL analyses passed before PR #205 merged as
+`fb1b002b33356afe10ac65b0c1687021fc7ed053`. The earlier main CI links
+apply to the merged base, not these follow-up checks.
+
+### Published brand Reel and contest video handoff
+
+The final provider receipt verifies the social-account ID still belongs to
+Instagram @ClipsKitty2, one destination, PUBLISHED status and delivery time
+00:48:33 UTC. The app refresh also reports published and the same public
+Reel URL. No send was retried. The original pending wrong-destination post
+was canceled before it could send, and is not represented as published.
+
+The initial silent export was replaced after owner feedback. The corrected
+144.321-second, 1920x1080 contest video has locally generated English
+narration, original clip audio lowered beneath it, and captions. It was
+assembled outside the repo from actual source/render excerpts, earlier
+app recordings and labeled API evidence. It includes the real natural count
+crossing with delayed admission disclosed, the Gaming and fallback renders,
+the non-mutating popup, actual brand publication, source/session ID and
+final JUnit totals. Full decode passed; FFprobe confirms stereo AAC and
+measured audio RMS is -19.76 dB, not silence. Opening release dates were
+checked against Blizzard, Nintendo and Rockstar; personal satire remains
+video-only. Export and report hashes are preserved with the artifact.
+The owner explicitly chose to upload the contest demo to YouTube themselves.
+YouTube remains disabled in Clips Kitty. The public demo URL, client `/status`
+capture and remaining live phases are still pending; this is not a claim
+that the complete submission is finished.
 
 ## Optional Clip updates add-on
 

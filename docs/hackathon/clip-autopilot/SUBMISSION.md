@@ -45,6 +45,7 @@ footage or a live crossing. See [TEST_LOG.md](TEST_LOG.md).
   metadata. Client `/status` capture remains pending; the agent cannot invoke
   that client command.
 - Repository: https://github.com/ColinGPT9/clips-studio
+- Current runnable code: https://github.com/ColinGPT9/clips-studio/tree/main
 - Entry branch: https://github.com/ColinGPT9/clips-studio/tree/feature/twitch-clip-autopilot
 - Public YouTube demonstration: **PENDING — record actual operation and add URL.**
 
@@ -60,8 +61,10 @@ Live bot operation remains pending. See [TEXT_UPDATES.md](TEXT_UPDATES.md).
 Read [RULES_CHECK.md](RULES_CHECK.md), [NEW_WORK.md](NEW_WORK.md) and
 [JUDGE_SETUP.md](JUDGE_SETUP.md). [COMPLETION_AUDIT.md](COMPLETION_AUDIT.md)
 maps the brief to evidence and distinguishes incomplete requirements.
-A natural Twitch count crossing, actual whole-clip renders and an Instagram
-@ClipsKitty2 schedule are verified in the test log. The observed crossing was
-admitted after a pause for destination correction. Public delivery, the public
-demo and remaining live checks are not yet claimed. Do not submit this draft as a claim that those steps ran. The owner
-submits the Devpost form.
+A natural Twitch count crossing, actual whole-clip renders and publication
+to Instagram @ClipsKitty2 are verified in the test log. The observed crossing
+was admitted after a pause for destination correction. Published Reel:
+https://www.instagram.com/reel/DfLetHQFB85/. A 2:24 local contest video is
+prepared; the owner will upload it to YouTube. The public demo URL, client
+`/status` capture and remaining live checks are still pending. Do not submit
+this draft as a claim that those steps ran. The owner submits the Devpost form.

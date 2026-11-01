@@ -66,7 +66,9 @@ TEXT_UPDATES.md records this session ID, the protocol check and setup.
 
 Branch `followup/clip-autopilot-live-evidence` is based on main `f88bea2c`,
 which contains merged PRs #202, #204 and the separately authorized #199.
-Local commit `6be3d55` records the actual merged-code preflight.
+Commit `6be3d55` records the actual merged-code preflight; `275edf67`
+implements the live-test fixes. PR #205 merged both as `fb1b002b` after all
+six CI jobs and both CodeQL analyses passed.
 The follow-up fixes recovery from missed terminal job events during watch
 activity, distinguishes provider account limits from credit errors, displays
 connected profile handles before approval, and corrects tomorrow's first
