@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
 import { PLATFORMS, WOOPSOCIAL_PLATFORMS, platformLabel } from '../lib/uploadpost'
+import { woopTargetLabel, type WoopAccount } from '../lib/woopTargets'
 
 /** Settings for publishing through WoopSocial.
  *
@@ -53,6 +54,7 @@ export default function WoopSocialCard(): JSX.Element {
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [connected, setConnected] = useState<string[]>([])
+  const [accounts, setAccounts] = useState<WoopAccount[]>([])
   const [offered, setOffered] = useState('')
   const [affiliateDraft, setAffiliateDraft] = useState('')
   const mounted = useRef(true)
@@ -69,7 +71,11 @@ export default function WoopSocialCard(): JSX.Element {
         if (s.enabled && s.has_key)
           api
             .woopSocialConnections()
-            .then((got) => mounted.current && setConnected(got.connected))
+            .then((got) => {
+              if (!mounted.current) return
+              setConnected(got.connected)
+              setAccounts(got.accounts ?? [])
+            })
             .catch(() => {
               /* the linked accounts show once WoopSocial answers */
             })
@@ -154,7 +160,11 @@ export default function WoopSocialCard(): JSX.Element {
           () => {
             api
               .woopSocialConnections()
-              .then((c) => mounted.current && setConnected(c.connected))
+              .then((c) => {
+                if (!mounted.current) return
+                setConnected(c.connected)
+                setAccounts(c.accounts ?? [])
+              })
               .catch(() => {})
           },
           { once: true }
@@ -328,7 +338,7 @@ export default function WoopSocialCard(): JSX.Element {
                       title={on ? t('Connected - click to reconnect') : t('Click to connect')}
                     >
                       {on ? '● ' : '○ '}
-                      {p.label}
+                      {on ? woopTargetLabel(p.id, accounts) : p.label}
                     </button>
                   )
                 })}

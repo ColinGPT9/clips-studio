@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from campaigns import post_links
 from publish.errors import PublishError
+from publish.woopsocial import FROM_PLATFORM
 from server import posts
 from server import woopsocial_service as service
 from server.feedback import redact
@@ -172,7 +173,17 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
             _guard(d)
             client = _client()
             try:
-                return {"connected": client.connected_platforms(_project(d, client))}
+                rows = client.social_accounts(_project(d, client))
+                accounts = []
+                for row in rows:
+                    platform = FROM_PLATFORM.get(str(row.get("platform") or "").upper())
+                    identifier = row.get("id")
+                    if not platform or not identifier:
+                        continue
+                    username = row.get("username")
+                    accounts.append({"id": str(identifier), "platform": platform,
+                                     "username": username[:100] if isinstance(username, str) else ""})
+                return {"connected": sorted({row["platform"] for row in accounts}), "accounts": accounts}
             except PublishError as e:
                 raise _fail(e) from e
         finally:

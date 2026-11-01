@@ -53,25 +53,44 @@ Automatic watch publishing regression runs in the job with FastAPI installed.
 The lightweight scheduler test keeps its transport/schedule coverage without
 importing the HTTP layer; the watch integration verifies template substitution.
 
+## Actual-test follow-up verification
+
+The local follow-up corrects stale processing recovery during watch events,
+provider account-limit wording, connected-handle display and tomorrow's
+first slot across daylight saving. Its final gates passed: 5,515 full-suite
+tests (10 skips), 1,509 exact expanded platform tests (8 skips), Ruff,
+API-reference consistency, TypeScript, desktop build and all five renderer/
+hook regression scripts. Both JUnit reports have zero failures or errors.
+Follow-up GitHub CI is separate from the earlier merged-base CI evidence.
+
 ## Required live evidence still missing
 
 The initial local API was reachable, but its loaded build lacked clip watches
 and WoopSocial was disabled with no key. On October 31 the owner quit that
 older research-checkout app and Codex launched the checked desktop build from
 this checkout. Its running API now exposes clip watches and text updates.
-WoopSocial has a saved key and reports Instagram and TikTok connected;
-YouTube is not yet connected. Twitch has no configured Client ID or connected
-account. Watching is off and no jobs are active. These prerequisite checks did
-not create a watch, schedule a post or prove any live crossing or render.
+WoopSocial has a saved key and reports Instagram and TikTok connected.
+The owner now limits the live test to Instagram only; connecting or posting
+to YouTube or TikTok is not authorized for this test. The owner subsequently
+connected a Twitch viewer account without extra scopes. Live watch #4 now
+uses a 45-day lookback, a two-view observation target, five upcoming clips,
+captions/Gaming/whole mode, and Instagram-only Ask-first publishing during
+inspection. The pre-existing watch is temporarily disabled, with its prior
+state saved for restoration. One actual 60-second clip was approved by the
+owner; its initial schedule to an unintended profile was canceled before
+sending. The replacement is scheduled to the verified Instagram @ClipsKitty2
+at 20:47 Eastern. TikTok setup is deferred. A second item was denied in the app.
+A fresh clip was observed crossing naturally from one view to two and was
+admitted once after the destination-correction pause; its whole render completed.
 
 | Live requirement | What proves it | State |
 |---|---|---|
-| Owner connects Twitch viewer and WoopSocial YouTube/TikTok | Updated desktop account/connection state | Pending owner setup |
-| zackrawrr lookback covering the beta, real counts, whole/Gaming/captions, Automatic, five/day and five upcoming | Actual saved watch plus Twitch API results | Pending |
-| Backfill queue, repeat Check now and app restart without duplicates | Actual item/job counts before and after checks/restart | Pending |
-| Natural crossing on a currently live channel | Real clip URL, observed counts/times and resulting event; no fabricated views | Pending |
-| Whole 9:16 Twitch output with captions and appropriate facecam/gameplay layout | Actual render, measured duration and visual review | Pending |
-| Scheduled at least 16 minutes ahead in WatchLive, Clip Studio Schedule and WoopSocial | Matching actual post/time across all three displays | Pending |
+| Owner connects Twitch viewer and the authorized Instagram destination | Actual app account status: connected, scopes empty; app MCP status and actual WoopSocial post | Verified live |
+| zackrawrr lookback covering the beta, real counts, whole/Gaming/captions, Automatic, five/day and five upcoming | Actual watch #4 has the 45-day window, real counts and five/five limits | Ask-first inspection verified; Automatic live phase pending |
+| Backfill queue, repeat Check now and app restart without duplicates | 1,283 Earlier items survived the initial restart; all 1,288 items and brand schedule survived a post-job restart unchanged. A repeat actual poll retained exactly one fresh item/job 217 | Baseline, repeat poll and post-job restart verified; explicit first-look checkbox backfill pending |
+| Natural crossing on the live-test channel | Real clip CuriousSilkyYamPunchTrees-x6atpLw5Edvgq4jv observed 1 view through 23:35:51 UTC, 2 at 23:36:36; admitted after account-correction pause as item 1317/job 217 | Verified natural counts, delayed admission, repeat poll and restart |
+| Whole 9:16 Twitch output with captions and appropriate facecam/gameplay layout | Actual job 214 / clip 4304: source 60.015 s, output 60.000 s at 1080x1920; split/fit Gaming and captions visually reviewed; full decode passed | Verified live |
+| Scheduled at least 16 minutes ahead in WatchLive, Clip Studio Schedule and WoopSocial | All three displays verified for original 19:48 schedule, subsequently canceled before sending. Replacement provider GET verifies Instagram @ClipsKitty2 only, 20:47 Eastern / November 1 00:47 UTC | Replacement scheduled; updated display captures and delivery pending |
 | Record every live result without secrets | TEST_LOG.md evidence entries | Pending |
 | Public demo under three minutes showing Twitch and Codex, with proper credits/backfill disclosure | Public YouTube URL and actual video | Pending |
 | Owner submits Devpost | Owner's Devpost form | Owner action, not delegated to Codex |
@@ -91,7 +110,7 @@ opening the PR cannot substitute for the pending live-account and video evidence
 | Bot token, owner identity, private channel/DM, invitation and Send test | Existing credential store and Discord identity reused; text_updates_api.py; settings API tests | Verified offline; real setup pending |
 | Gateway lifecycle, intents, heartbeat/resume and prompt click replies | discord_bot.py and fake socket/transport tests; separate callback rate limits | Verified offline; real Gateway pending |
 | Approval popup/card across pages, existing watch-row actions, notifications, Settings and Watch/tray switches | ApprovalCard.tsx, ClipUpdatesCard.tsx, main/preload bridge; real Electron fixture, typecheck/build | Verified offline |
-| Damage Control satire with generic attorney popup, no state change or filing | Front-end-only popup and one Discord response/edit; transport/state and browser assertions | Verified offline; live demo pending |
+| Damage Control satire with generic attorney popup, no state change or filing | Front-end-only popup; real nine-second app recording and unchanged-item/file/publish checks; Discord response/edit regressions | App verified live; Discord live demo pending |
 | Personal video joke stays outside source/tests/docs | Add-on wording is generic; no personal caption text added | Verified for the add-on diff |
 | Additive internal API reference, CI coverage, lint/full Python/platform gates | Generated reference; workflow platform list and entry-branch PR triggers; TEST_LOG.md | Ruff passed; full suite 5,510 passed/10 skipped; platform 1,509 passed/8 skipped |
 | Owner live checks and optional 25-second phone/demo beat, total under three minutes | TEXT_UPDATES.md, TEST_LOG.md and alternate 2:55 recording plan | Pending owner/live evidence |

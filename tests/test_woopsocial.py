@@ -184,6 +184,26 @@ def test_rate_limit_is_retryable_but_credits_are_not():
     assert not out_of_credits.retryable
 
 
+@pytest.mark.parametrize("payload", [
+    {"error_message": "social account limit reached"},
+    {"code": "SOCIAL_ACCOUNT_LIMIT_REACHED", "message": "Plan limit reached"},
+])
+def test_account_limit_is_not_misreported_as_monthly_credits(payload):
+    error = _classify(402, payload, "")
+    assert isinstance(error, WoopSocialError)
+    assert not isinstance(error, QuotaExceeded)
+    assert "connected-account limit" in error.message
+    assert "month" not in error.message.lower()
+    assert not error.retryable
+
+
+def test_unspecified_payment_limit_does_not_invent_monthly_credit_exhaustion():
+    error = _classify(402, {"message": "Plan allowance exceeded"}, "")
+    assert isinstance(error, QuotaExceeded)
+    assert "month" not in error.message.lower()
+    assert "credit" not in error.message.lower()
+
+
 def test_server_errors_are_retryable():
     assert _classify(500, {}, "boom").retryable
 

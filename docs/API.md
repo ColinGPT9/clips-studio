@@ -1247,7 +1247,7 @@ PATCH takes any of the following, and changes only what it is sent:
 | `preset` | An `id` from `GET /automation` (the same presets as integrations). |
 | `options` | The same per-video options as `PATCH /jobs/{id}`, validated the same way. |
 | `publish.mode` | `off`: leave the clips alone. `ask`: stop at "ready to publish" (the default). `auto`: publish as soon as the clips exist, and retry on failure (see below). |
-| `publish.platforms` | Lower-case names of connected WoopSocial platforms. With none chosen, an automatic watch asks instead. |
+| `publish.platforms` | Lower-case names of connected WoopSocial platforms. With none chosen, an automatic watch asks instead. The desktop shows connected profile handles in publishing settings and approval cards. `/woopsocial/connections` adds an `accounts` list containing only `id`, `platform` and `username`, alongside `connected`. |
 | `publish.max_posts` | How many of each video's clips to post, best-scoring first. `0` (the default) posts every clip; the rest stay in the library. |
 | `publish.spread` | `true` (the default) spaces posts on the daily budget below. `false` posts each clip the moment it is made, like the Publish dialog with "Space them out" off; pair it with a small `max_posts`. |
 | `publish.per_day`, `publish.gap_hours` | A daily budget, queued around existing reservations with the requested minimum gap, including across midnight. One clip sent to several platforms uses one shared slot. WoopSocial's free plan allows about 5 YouTube posts a day. |

@@ -60,7 +60,8 @@ Live bot operation remains pending. See [TEXT_UPDATES.md](TEXT_UPDATES.md).
 Read [RULES_CHECK.md](RULES_CHECK.md), [NEW_WORK.md](NEW_WORK.md) and
 [JUDGE_SETUP.md](JUDGE_SETUP.md). [COMPLETION_AUDIT.md](COMPLETION_AUDIT.md)
 maps the brief to evidence and distinguishes incomplete requirements.
-Live Twitch crossing, user-account scheduling
-evidence and the public demo are pending unless marked passed in the test
-log. Do not submit this draft as a claim that those steps ran. The owner
+A natural Twitch count crossing, actual whole-clip renders and an Instagram
+@ClipsKitty2 schedule are verified in the test log. The observed crossing was
+admitted after a pause for destination correction. Public delivery, the public
+demo and remaining live checks are not yet claimed. Do not submit this draft as a claim that those steps ran. The owner
 submits the Devpost form.

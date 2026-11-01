@@ -257,9 +257,11 @@ def first_slot_at(day_start: str, *, now: datetime | None = None) -> datetime:
     from publish.schedule import MIN_LEAD_SECONDS
 
     hours, minutes = (int(part) for part in day_start.split(":", 1))
-    earliest = (now or datetime.now().astimezone()) + timedelta(seconds=MIN_LEAD_SECONDS + 60)
-    first = earliest.replace(hour=hours, minute=minutes, second=0, microsecond=0)
-    if first < earliest:
+    earliest = ((now or datetime.now().astimezone()) + timedelta(seconds=MIN_LEAD_SECONDS + 60)).astimezone()
+    # astimezone() returns the offset for that instant, not a timezone with
+    # future DST rules. Choose the local calendar date before converting it.
+    first = earliest.replace(hour=hours, minute=minutes, second=0, microsecond=0, tzinfo=None)
+    if first.astimezone() < earliest:
         first += timedelta(days=1)
     return first.astimezone(timezone.utc)
 

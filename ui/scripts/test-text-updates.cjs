@@ -15,8 +15,9 @@ if (!process.versions.electron) {
       plugins:[{name:'events',setup(build){build.onLoad({filter:/useEvents\.ts$/},()=>({contents:'export function useEvents(fn){window.emit=fn}',loader:'ts'}))}}]
     })
     fs.writeFileSync(path.join(dir,'fixture.html'), `<!doctype html><style>${css}</style><div id="root"></div><script>
-      window.writes=[];window.pending=[{item_id:42,title:'Viewer clip',line:'Saved approval wording.',platforms:['youtube'],first_slot:'',thumbnail_url:'',video_id:'tw_clip_fixture',answer:'',answered_where:'',show_dmca:true}];
-      window.studio={pluginSession:async()=>'',notify:async()=>true};window.fetch=async(url,init={})=>{const route=new URL(url).pathname;if(init.method&&init.method!=='GET')window.writes.push(route);let body=route.endsWith('/pending')?window.pending:route.endsWith('/status')?{enabled:true,show_dmca:true}: {publish_state:route.endsWith('/skip')?'off':'publishing'};return {ok:true,status:200,json:async()=>body};};
+      window.writes=[];window.pending=[{item_id:42,title:'Viewer clip',line:'Saved approval wording.',platforms:['instagram'],first_slot:'',thumbnail_url:'',video_id:'tw_clip_fixture',answer:'',answered_where:'',show_dmca:true}];
+      window.accounts=[{id:'${require('node:crypto').randomUUID()}',platform:'instagram',username:'fixture_brand'}];
+      window.studio={pluginSession:async()=>'',notify:async()=>true};window.fetch=async(url,init={})=>{const route=new URL(url).pathname;if(init.method&&init.method!=='GET')window.writes.push(route);let body=route.endsWith('/pending')?window.pending:route.endsWith('/status')?{enabled:true,show_dmca:true}:route.endsWith('/connections')?{connected:['instagram'],accounts:window.accounts}: {publish_state:route.endsWith('/skip')?'off':'publishing'};return {ok:true,status:200,json:async()=>body};};
       </script><script src="fixture.js"></script>`)
     const env={...process.env};delete env.ELECTRON_RUN_AS_NODE
     const report=path.join(dir,'result.json')
@@ -36,6 +37,7 @@ if (!process.versions.electron) {
       await win.loadFile(path.join(dir,'fixture.html'));await delay(400)
       if(await js('window.writes.length'))throw Error('Write on mount')
       if(!await js('document.body.innerText.includes("Saved approval wording.")'))throw Error('Saved line absent')
+      if(!await js('document.body.innerText.includes("Instagram @fixture_brand")'))throw Error('Destination account is not visible before approval')
       await click('Damage Control');await delay(100)
       if(!await js('Boolean(document.querySelector("dialog[open]")) && document.body.innerText.includes("Contact your attorney")'))throw Error('Attorney popup absent')
       if(!await js('document.body.innerText.includes("Ringing")'))throw Error('Missing ringing')

@@ -15,6 +15,7 @@ import type { JobOptions } from '../lib/types'
 import { platformLabel, WOOPSOCIAL_PLATFORMS } from '../lib/uploadpost'
 import { t } from '../lib/i18n'
 import { useAIStatus } from '../lib/useAIStatus'
+import { woopTargetLabel } from '../lib/woopTargets'
 import OpenRouterPrompt from '../components/OpenRouterPrompt'
 import SportFields from '../components/SportFields'
 import { fitSport, sportForVertical, startingSport, useSports, verticalSports, verticalValue } from '../lib/sports'
@@ -440,7 +441,7 @@ export default function Watch({
                         )
                       }
                     />
-                    {platformLabel(id)}
+                    {woopTargetLabel(id, woop?.accounts)}
                   </label>
                 ))
               )}
