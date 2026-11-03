@@ -40,7 +40,7 @@
 marketing budget sa likod nito, kaya ang kuwentuhan ng mga tao lang ang paraan para
 malaman ng susunod na maliit na YouTuber o streamer na may libreng opsyon pala.
 
-**Ginawa ko ito para sa maliliit na YouTuber at streamer** na hindi kayang bayaran ang
+**Ginawa ko ito para sa mga YouTuber, Twitch streamer at content creator** na hindi kayang bayaran ang
 ibang opsyon o ang isang editor. Libre itong alternatibo sa Opus Clip, Vizard at Klap na
 nagpapatakbo ng **Google Gemma** sa sarili mong PC: walang bayad sa server, walang bayad
 kada clip, walang bayad sa paggamit ng AI.

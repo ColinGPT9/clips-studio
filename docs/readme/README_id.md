@@ -40,7 +40,7 @@
 anggaran pemasaran di baliknya, jadi cerita dari mulut ke mulut adalah satu-satunya cara
 YouTuber atau streamer kecil berikutnya tahu bahwa ada pilihan yang gratis.
 
-**Saya membuatnya untuk YouTuber dan streamer kecil** yang tidak sanggup membayar
+**Saya membuatnya untuk YouTuber, streamer Twitch, dan kreator konten** yang tidak sanggup membayar
 pilihan lain atau seorang editor. Ini adalah alternatif gratis untuk Opus Clip, Vizard, dan Klap yang
 menjalankan **Google Gemma** di PC kamu sendiri: tanpa biaya server, tanpa biaya per klip, tanpa biaya
 pemakaian AI.

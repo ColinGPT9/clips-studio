@@ -40,7 +40,7 @@
 non c'è alcun budget di marketing, quindi il passaparola è l'unico modo in cui il prossimo
 piccolo YouTuber o streamer scopre che esiste un'opzione gratuita.
 
-**L'ho creato per i piccoli YouTuber e streamer** che non possono permettersi le altre
+**L'ho creato per YouTuber, streamer di Twitch e creatori di contenuti** che non possono permettersi le altre
 opzioni o un montatore. È un'alternativa gratuita a Opus Clip, Vizard e Klap che
 esegue **Google Gemma** sul tuo PC: nessun costo di server, nessuna tariffa per clip, nessun
 costo di utilizzo dell'IA.

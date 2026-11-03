@@ -31,10 +31,10 @@
 marketing budget behind this, so word of mouth is the only way the next small
 YouTuber or streamer finds out a free option exists.
 
-**I made it for small YouTubers and streamers** who cannot afford the other
-options or an editor. It is a free Opus Clip, Vizard and Klap alternative that
-runs **Google Gemma** on your own PC: no server cost, no per-clip fee, no AI
-usage fee.
+**I made it for YouTubers, Twitch streamers, and content creators** who cannot
+afford the other options or an editor. It is a free Opus Clip, Vizard and Klap
+alternative that runs **Google Gemma** on your own PC: no server cost, no
+per-clip fee, no AI usage fee.
 
 > **Clips Kitty was called Clips Studio until version 1.1.3**, renamed to meet
 > Microsoft Store naming requirements. Same app, same repository, same data.
