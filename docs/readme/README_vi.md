@@ -40,7 +40,7 @@
 ngân sách quảng cáo nào, nên truyền miệng là cách duy nhất để những YouTuber hay
 streamer nhỏ tiếp theo biết rằng có một lựa chọn miễn phí.
 
-**Tôi làm ra nó cho các YouTuber và streamer nhỏ**, những người không đủ tiền dùng các
+**Tôi làm ra nó cho các YouTuber, streamer Twitch và nhà sáng tạo nội dung**, những người không đủ tiền dùng các
 công cụ khác hay thuê người dựng video. Đây là lựa chọn thay thế miễn phí cho Opus Clip,
 Vizard và Klap, chạy **Google Gemma** ngay trên PC của bạn: không tốn tiền máy chủ, không
 tính phí theo clip, không tính phí sử dụng AI.

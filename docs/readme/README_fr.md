@@ -40,7 +40,7 @@
 n'y a aucun budget marketing derrière ce projet : le bouche-à-oreille est donc le seul
 moyen pour le prochain petit YouTubeur ou streamer de découvrir qu'une option gratuite existe.
 
-**Je l'ai créé pour les petits YouTubeurs et streamers** qui n'ont pas les moyens des
+**Je l'ai créé pour les YouTubeurs, les streamers Twitch et les créateurs de contenu** qui n'ont pas les moyens des
 autres solutions ni d'un monteur. C'est une alternative gratuite à Opus Clip, Vizard et
 Klap qui fait tourner **Google Gemma** sur votre propre PC : pas de coût de serveur, pas de
 frais par clip, pas de frais d'utilisation de l'IA.

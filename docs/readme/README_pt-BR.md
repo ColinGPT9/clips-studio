@@ -40,7 +40,7 @@
 existe orçamento de marketing por trás disso, então o boca a boca é a única forma
 de o próximo pequeno YouTuber ou streamer descobrir que existe uma opção gratuita.
 
-**Eu fiz isto para pequenos YouTubers e streamers** que não podem pagar pelas outras
+**Eu fiz isto para YouTubers, streamers da Twitch e criadores de conteúdo** que não podem pagar pelas outras
 opções nem por um editor. É uma alternativa gratuita ao Opus Clip, Vizard e Klap que
 roda o **Google Gemma** no seu próprio PC: sem custo de servidor, sem taxa por clipe,
 sem taxa de uso de IA.

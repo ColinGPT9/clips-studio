@@ -40,7 +40,7 @@
 dem Projekt steht kein Marketingbudget. Mundpropaganda ist also der einzige Weg,
 wie der nächste kleine YouTuber oder Streamer erfährt, dass es eine kostenlose Option gibt.
 
-**Ich habe es für kleine YouTuber und Streamer gemacht**, die sich die anderen
+**Ich habe es für YouTuber, Twitch-Streamer und Content-Creator gemacht**, die sich die anderen
 Angebote oder einen Cutter nicht leisten können. Es ist eine kostenlose Alternative
 zu Opus Clip, Vizard und Klap, die **Google Gemma** auf deinem eigenen PC ausführt:
 keine Serverkosten, keine Gebühr pro Clip, keine KI-Nutzungsgebühr.

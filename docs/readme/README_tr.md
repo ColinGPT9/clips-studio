@@ -40,8 +40,8 @@
 arkasında bir pazarlama bütçesi de yok; bir sonraki küçük YouTuber'ın ya da yayıncının
 ücretsiz bir seçenek olduğunu öğrenmesinin tek yolu kulaktan kulağa yayılması.
 
-**Bunu, diğer seçeneklere ya da bir editöre bütçesi yetmeyen küçük YouTuber'lar ve
-yayıncılar için yaptım.** Kendi bilgisayarınızda **Google Gemma** çalıştıran ücretsiz bir
+**Bunu, diğer seçeneklere ya da bir editöre bütçesi yetmeyen YouTuber'lar, Twitch
+yayıncıları ve içerik üreticileri için yaptım.** Kendi bilgisayarınızda **Google Gemma** çalıştıran ücretsiz bir
 Opus Clip, Vizard ve Klap alternatifi: sunucu maliyeti yok, klip başına ücret yok, yapay
 zekâ kullanım ücreti yok.
 
