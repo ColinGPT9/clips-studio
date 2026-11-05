@@ -77,4 +77,5 @@ def test_successful_test_is_required_for_away_and_tokens_never_return(tmp_path, 
     assert client.patch('/text-updates/settings', json={'away_from_desk': True}, headers=headers).status_code == 400
     assert client.post('/text-updates/test', headers=headers).json()['ok']
     assert client.patch('/text-updates/settings', json={'away_from_desk': True}, headers=headers).json()['away_from_desk']
-    assert client.delete('/text-updates/credentials', headers=headers).json()['has_token'] is False
+    response = client.delete('/text-updates/credentials', headers=headers)
+    assert response.json()['has_token'] is False

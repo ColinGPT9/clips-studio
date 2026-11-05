@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from campaigns import service as discord
-from core.scrub import scrub_secrets
+from core.scrub import redact_secrets
 
 KEY = 'text_updates'
 BOT_SECRET = 'clip_updates_discord_bot'
@@ -110,7 +110,7 @@ def ensure_event(d, item_id, event, item, *, now, model=None, baseline=False):
     row = event_row(d, item_id, event)
     if row:
         return row
-    title = scrub_secrets(str(item.get('title') or 'Untitled clip')).replace('\n', ' ')[:180]
+    title = redact_secrets(str(item.get('title') or 'Untitled clip')).replace('\n', ' ')[:180]
     views = max(0, int(item.get('views') or 0))
     plain = f'A clip of "{title}" reached {views:,} views and is ready to post.'
     platforms = ', '.join(str(value) for value in item.get('platforms', []))
@@ -135,7 +135,7 @@ def ensure_event(d, item_id, event, item, *, now, model=None, baseline=False):
         ready_line = isinstance(candidate, str) and 'ready' in candidate.casefold() and ('post' in candidate.casefold() or 'publish' in candidate.casefold())
         if isinstance(candidate, str) and candidate.strip() and '#' not in candidate and (event not in ('ask', 'ready') or ready_line) and _factual_line(
                 candidate, title, views, item.get('platforms', []), item.get('first_slot', '')):
-            line = scrub_secrets(' '.join(candidate.split()))[:300]
+            line = redact_secrets(' '.join(candidate.split()))[:300]
         elif hasattr(model, 'last_ok'):
             model.last_ok = False
     d._write('INSERT OR IGNORE INTO text_updates (item_id,event,state,created_at,line,retry_at) VALUES (?,?,?,?,?,?)',
@@ -308,7 +308,7 @@ class TextUpdates:
                 detail['first_slot'] = schedule_times(d, 1, per_day=publish['per_day'],
                     gap_hours=publish.get('gap_hours', 1), day_start=publish.get('day_start', ''))[0]
             except Exception:
-                pass
+                pass  # no slot to show: the card leaves the time out rather than fail
         return detail
 
     def events(self, d):
@@ -355,20 +355,21 @@ class TextUpdates:
                         'answered_where': row['answered_where'], 'show_dmca': settings(d)['show_dmca']})
         return out
 
-    def apply(self, d, watcher):
+    def apply(self, d, watcher, *, approve, decline):
+        """Carry out the Discord replies not applied yet. The watcher passes its
+        own approve_item and decline_item, so this module never imports
+        server.automation, which imports this one."""
         if not settings(d)['enabled']:
             return
-        from server.automation import approve_item, decline_item
-
         for reply in d.conn.execute('SELECT * FROM text_update_replies WHERE applied=0 ORDER BY id').fetchall():
             item = d.get_watch_item(reply['item_id'])
             request = event_row(d, reply['item_id'])
             job = d.get_job(item['job_id']) if item and item['job_id'] else None
             if item and item['publish_state'] == 'ask' and job and job['status'] == 'done' and request \
                     and request['answer'] == reply['intent'] and request['answered_where'] == 'discord':
-                helper = approve_item if reply['intent'] == 'approve' else decline_item
+                helper = approve if reply['intent'] == 'approve' else decline
                 helper(d, item, where='discord')
-                watcher._say(f"{'Approved' if reply['intent'] == 'approve' else 'Denied'} on Discord: {scrub_secrets(item['title'])} (#{item['id']})", 'info')
+                watcher._say(f"{'Approved' if reply['intent'] == 'approve' else 'Denied'} on Discord: {redact_secrets(item['title'])} (#{item['id']})", 'info')
             d._write('UPDATE text_update_replies SET applied=1 WHERE id=?', (reply['id'],))
             watcher._broadcaster.publish({'type': 'automation'})
 

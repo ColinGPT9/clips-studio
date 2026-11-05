@@ -24,7 +24,7 @@ from urllib.parse import quote, urlencode
 
 from campaigns import discord_http
 from campaigns.discord_http import DiscordError
-from core.scrub import scrub_secrets
+from core.scrub import redact_secrets
 from llm.providers.oauth import pkce_pair
 
 #: Clips Kitty's Discord application. Public by design (it is in every
@@ -95,7 +95,7 @@ def _tokens(http, form: dict) -> dict:
         if error in ("invalid_client", "unauthorized_client"):
             raise DiscordError("denied", "Discord didn't accept Clips Kitty's application ID. "
                                          "Check it under Settings → Discord → Advanced.")
-        detail = scrub_secrets(str(got.get("error_description") or error or ""))[:200]
+        detail = redact_secrets(str(got.get("error_description") or error or ""))[:200]
         raise DiscordError("bad_response", f"Discord refused the sign-in ({status}{': ' + detail if detail else ''}).")
     if not str(got.get("access_token") or ""):
         raise DiscordError("bad_response", "Discord signed you in but sent no token back. Try again.")

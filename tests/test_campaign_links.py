@@ -9,7 +9,7 @@ scrubber takes it out of any text it cleans.
 import pytest
 
 from campaigns import links
-from core.scrub import scrub_secrets
+from core.scrub import redact_secrets
 
 GUILD, CHANNEL, MESSAGE = "100000000000000001", "200000000000000002", "300000000000000003"
 HOOK = "400000000000000004"
@@ -87,7 +87,7 @@ def test_a_webhook_url_is_parsed_and_its_token_never_echoed(url):
         links.parse_channel_link(url)
     assert TOKEN not in str(caught.value)
 
-    assert TOKEN not in scrub_secrets(f"sending to {url} failed")
+    assert TOKEN not in redact_secrets(f"sending to {url} failed")
 
 
 @pytest.mark.parametrize("url", [
@@ -97,7 +97,7 @@ def test_a_webhook_url_is_parsed_and_its_token_never_echoed(url):
 def test_the_scrubber_takes_out_a_webhook_url_whatever_its_token_looks_like(url):
     # A token too short or plain for the generic key patterns is still taken
     # out, with the whole webhook path.
-    cleaned = scrub_secrets(f"POST {url} answered 404")
+    cleaned = redact_secrets(f"POST {url} answered 404")
     assert "short-token" not in cleaned and "[redacted]" in cleaned
 
 

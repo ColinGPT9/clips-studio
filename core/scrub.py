@@ -29,7 +29,7 @@ SECRET_PATTERNS = [
 ]
 
 
-def scrub_secrets(text: str) -> str:
+def redact_secrets(text: str) -> str:
     """Replace every key-shaped run with "[redacted]". Only secrets: paths and
     email addresses are left alone, unlike a bug report's full redaction."""
     if not text:

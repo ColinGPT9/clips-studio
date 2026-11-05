@@ -626,7 +626,7 @@ class ChannelWatcher(threading.Thread):
         try:
             if self._texts is not None:
                 try:
-                    self._texts.apply(d, self)
+                    self._texts.apply(d, self, approve=approve_item, decline=decline_item)
                 except Exception:
                     print('Clip updates could not apply a reply.')
             if not is_enabled(d):

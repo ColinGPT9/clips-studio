@@ -400,11 +400,11 @@ def test_no_provider_key_ships_with_the_app():
     "sk-" + "0a1b2c3d" * 4,  # DeepSeek and Qwen (Alibaba Cloud Model Studio) keys
 ])
 def test_every_providers_key_format_is_scrubbed(key):
-    from core.scrub import scrub_secrets
+    from core.scrub import redact_secrets
     from server.feedback import redact
 
     line = f"request failed with key {key} (Authorization: Bearer {key})"
-    assert key not in scrub_secrets(line)
+    assert key not in redact_secrets(line)
     assert key not in redact(line)
 
 

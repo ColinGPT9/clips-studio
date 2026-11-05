@@ -588,7 +588,7 @@ class FakeTexts:
     def away(self, d):
         return self.is_away
 
-    def apply(self, d, watcher):
+    def apply(self, d, watcher, *, approve, decline):
         self.applied += 1
 
     def tick(self, d, watcher):
