@@ -1,0 +1,804 @@
+{
+  "schema_version": 1,
+  "name": "Clips Kitty editor suite",
+  "updated": "2026-11-05",
+  "about": "Machine-readable tracker for the editor suite. STATUS.md is the readable view of this file; when they disagree, this file wins. Acceptance criteria are copied from the plan's Proof column; step 0 also carries the checks from the plan's section on keeping plain auto-clipping identical. depends_on is read from the plan's text (which earlier step's output a step uses): the plan gives the run order, not a dependency list.",
+  "now": "1",
+  "stop_after_phase": 2,
+  "statuses": {
+    "step": [
+      "todo",
+      "in_progress",
+      "blocked",
+      "done"
+    ],
+    "phase": [
+      "todo",
+      "in_progress",
+      "done",
+      "later"
+    ]
+  },
+  "sizes": {
+    "S": "small",
+    "M": "medium",
+    "L": "large"
+  },
+  "record_shapes": {
+    "result": {
+      "date": "YYYY-MM-DD",
+      "agent": "who checked",
+      "check": "which acceptance item or budget",
+      "outcome": "pass | fail | partial",
+      "evidence": "what was measured, and how"
+    },
+    "defect": {
+      "id": "step id plus a number, such as 1-D1",
+      "date": "YYYY-MM-DD",
+      "found_by": "agent",
+      "summary": "what is wrong",
+      "routed_to": "agent",
+      "status": "open | fixed | wont_fix"
+    }
+  },
+  "issues": {
+    "192": {
+      "title": "A fully manual editor",
+      "url": "https://github.com/ColinGPT9/clips-studio/issues/192",
+      "steps": {
+        "5": "foundation",
+        "7": "engine",
+        "8": ""
+      }
+    },
+    "144": {
+      "title": "A whole video they can edit, choosing their own clips",
+      "url": "https://github.com/ColinGPT9/clips-studio/issues/144",
+      "steps": {
+        "6": "foundation",
+        "7": "engine",
+        "8": ""
+      }
+    },
+    "190": {
+      "title": "Reusing an uploaded video with different settings",
+      "url": "https://github.com/ColinGPT9/clips-studio/issues/190",
+      "steps": {
+        "2": ""
+      }
+    },
+    "177": {
+      "title": "Resolutions other than 1080p",
+      "url": "https://github.com/ColinGPT9/clips-studio/issues/177",
+      "steps": {
+        "1": "sizes",
+        "11": "aspects"
+      }
+    },
+    "203": {
+      "title": "FFmpeg settings, because clips go over WoopSocial's 100 MB limit",
+      "url": "https://github.com/ColinGPT9/clips-studio/issues/203",
+      "steps": {
+        "1": ""
+      }
+    },
+    "174": {
+      "title": "Fonts, animated captions, sound effects, and a description of the creator for the AI",
+      "url": "https://github.com/ColinGPT9/clips-studio/issues/174",
+      "steps": {
+        "3": "fonts and captions",
+        "4": "creator notes",
+        "9": "",
+        "10": "SFX"
+      }
+    },
+    "155": {
+      "title": "Music and sound effects",
+      "url": "https://github.com/ColinGPT9/clips-studio/issues/155",
+      "steps": {
+        "4": "library",
+        "10": ""
+      }
+    }
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Setup: working documents, agent graph files, promo kit and baseline benchmarks",
+      "status": "in_progress",
+      "tasks": [
+        {
+          "id": "docs",
+          "title": "Working documents in docs/editor-suite/: README, RESEARCH, DECISIONS, state.json, STATUS, USER-GUIDE",
+          "status": "done"
+        },
+        {
+          "id": "graph",
+          "title": "Agent graph files: .claude/workflows/editor-increment.js and .claude/agents/blackbox-tester.md (local, committed only if Colin wants)",
+          "status": "in_progress",
+          "note": "blackbox-tester agent written (local); the step workflow is saved per step"
+        },
+        {
+          "id": "promo_kit",
+          "title": "Promo kit, outside the repository: Kokoro narration (one WAV per line, word times, loudness) plus an FFmpeg assembly script; nothing downloaded",
+          "status": "todo"
+        },
+        {
+          "id": "baseline",
+          "title": "Baseline benchmarks before any change: render time on CPU and on NVENC, file sizes (#203 evidence), RAM and VRAM during a run, app startup time, time to open the current editor; footage: one real VOD copied into scratch data, and the tracking test footage",
+          "status": "done",
+          "note": "Render baseline recorded on the CPU encoder (synthetic and real 1080p60 footage). NVENC unavailable on the dev PC: the bundled FFmpeg needs NVIDIA driver 610+ (NVENC API 13.1). App startup and editor-open times move to step 1's checks, which run the app."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "The essential editor that closes all seven issues, plus a built-in voice-over",
+      "status": "in_progress",
+      "closes": [
+        192,
+        144,
+        190,
+        177,
+        203,
+        174,
+        155
+      ],
+      "steps": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "V1",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "V2",
+        "11",
+        "E"
+      ],
+      "milestone": "One packaged black-box pass marks the end of Phase 2, on Colin's go",
+      "stop_after": true
+    },
+    {
+      "id": 3,
+      "title": "Competitive AI editing: best takes, smooth joins, filler and pause detection, face-aware caption placement, QA report with an auto-fix loop, review-before-render, styles and style packs, reference-video style matching, B-roll",
+      "status": "later",
+      "starts_on": "Colin's go"
+    },
+    {
+      "id": 4,
+      "title": "Advanced editing: keyframes UI, transitions, filters and LUTs, speed ramps, native 4K masters, an allow-listed Advanced FFmpeg section, OTIO in and out, optional FilmCraft handoff",
+      "status": "later",
+      "starts_on": "Colin's go"
+    },
+    {
+      "id": 5,
+      "title": "AI-assisted editing: ops with dry-run, preview, approve and undo; AI chat on projects; MCP protocol 2026-07-28 with editing tools; Sign in with ChatGPT",
+      "status": "later",
+      "starts_on": "Colin's go"
+    },
+    {
+      "id": 6,
+      "title": "Motion graphics: JSON layers and keyframes compiled to HyperFrames-compatible HTML, rendered in Electron's own Chromium; Lottie through ThorVG; import of Remotion output; optional EffectCraft plugin",
+      "status": "later",
+      "starts_on": "Colin's go"
+    },
+    {
+      "id": 7,
+      "title": "Audio and voice: optional-components framework, audio.cpp for AI sound effects and music, dubbing, consent-gated voice cloning, Store policy disclosures",
+      "status": "later",
+      "starts_on": "Colin's go"
+    }
+  ],
+  "rules": {
+    "plain_pipeline": {
+      "guarantee": "The same argv and files for the same inputs, and bit-exact output on the same machine with the CPU encoder. NVENC output can't be bit-exact across driver versions.",
+      "guards": [
+        "Argv snapshots across 14 cases",
+        "Golden renders of a CC0 10-second fixture with the CPU encoder and CPU tracking",
+        "Import guard: core/pipeline.py never imports video_editor.project"
+      ],
+      "max_regression": "The plain pipeline must not regress by more than 10% in render time, RAM or VRAM against the baseline"
+    },
+    "order_inside_a_step": [
+      "Engineering",
+      "QC and regression",
+      "Black-box tester",
+      "Performance engineer",
+      "UX and accessibility",
+      "Colin's click-through",
+      "Promo producer"
+    ],
+    "click_through": "Colin's click-through is the final gate for every user-visible step; the Promo producer runs only after it",
+    "one_at_a_time": "Agents run one after another, because they share the engine port 8765, the GPU and the clock. Colin's own Clips Kitty must be closed during check runs. Performance always runs alone.",
+    "fix_loops": {
+      "max": 2,
+      "then": "Colin decides",
+      "routing": {
+        "missing information": "Research",
+        "design conflict": "Architect",
+        "broken feature": "Engineering",
+        "slowdown": "Performance engineer and Engineering",
+        "poor usability": "UX and accessibility"
+      }
+    },
+    "honest_reporting": "A builder never signs off its own work. Results are reported as measured, such as \"verified the API, not the clicks\".",
+    "landing": "Each step becomes one PR, merged when Colin says so after his click-through and once that PR's CI is green",
+    "packaging": "Packaged builds happen only on Colin's go",
+    "strings": "New UI strings go through t(), with English as the fallback; translation is a separate pass, on Colin's word",
+    "done_means": [
+      "It builds, the tests pass, the black-box run passes and the output is verified",
+      "The plain pipeline is unchanged and the budgets are met",
+      "USER-GUIDE.md and CHANGELOG are updated, and licences are recorded (NOTICE, manifests)",
+      "The packaged-app check counts only at the Phase 2 milestone"
+    ]
+  },
+  "steps": [
+    {
+      "id": "0",
+      "title": "Guardrails",
+      "size": "S",
+      "scope": "Guardrails: argv snapshots, golden renders, import guard, an i18n check for new editor code (no bare JSX text)",
+      "closes": [],
+      "depends_on": [],
+      "status": "done",
+      "user_visible": false,
+      "acceptance": [
+        "Snapshots recorded from main",
+        "Argv snapshots: with subprocess, probing and tracking mocked, argv, ASS text and render_opts JSON are recorded across 14 cases: plain, captions, highlight, cuts, speed, music, hook, watermarks, filters, letterbox, center, landscape, vertical live, gaming",
+        "Snapshots change only with --update-snapshots and a review",
+        "Golden renders: a CC0 10-second fixture rendered with the CPU encoder and CPU tracking; sha256, framemd5 and ffprobe output compared against main",
+        "Import guard: core/pipeline.py never imports video_editor.project",
+        "i18n check: new editor code has no bare JSX text"
+      ],
+      "files": [
+        "tests/render_harness.py (new)",
+        "tests/test_render_argv_snapshots.py (new)",
+        "tests/fixtures/render_opts/ (new, 16 files)",
+        "tests/snapshots/render_argv/ (new, 38 snapshots)",
+        "tests/test_editor_import_guard.py (new)",
+        "tests/test_ui_i18n_editor.py (new)",
+        "tests/conftest.py (--update-snapshots option)",
+        ".github/workflows/ci.yml (snapshot test added to the Plugin platform job)",
+        "scripts/golden_renders.py (new)",
+        "scripts/bench_render.py (new)",
+        "docs/editor-suite/ (new)"
+      ],
+      "notes": [
+        "Written before any refactor; every later \"plain argv unchanged\" check relies on these guards",
+        "Engine-only: a cloud run may take it, only as a draft PR on Colin's go",
+        "Found while building, in existing app code (not changed in step 0): ducked music ends up to 0.26 s early and differently each run (sidechaincompress stops when either input ends; padding both inputs and trimming the output was byte-identical in 8 of 8 trial runs)",
+        "Found while building: finished clips carry 96 kHz audio (loudnorm resamples to 192 kHz), so the shipped 48 kHz end cards are never reused and each format's card is rebuilt on first use (about 20 s)",
+        "The golden cuts_music case runs without ducking because of the ducking issue above"
+      ],
+      "results": [
+        {
+          "date": "2026-11-05",
+          "agent": "QC",
+          "check": "CI-light run of the whole suite",
+          "outcome": "pass",
+          "evidence": "compileall and ruff clean; the new tests pass or skip cleanly; the 27 failures on this PC are Windows-only and identical on origin/main (shown in a throwaway worktree)"
+        },
+        {
+          "date": "2026-11-05",
+          "agent": "QC",
+          "check": "Mutation proof (the guard guards)",
+          "outcome": "pass",
+          "evidence": "x264 CRF, a caption style default, the music duck ratio and the vertical scale were each changed in turn; snapshot tests failed every time with a readable diff and passed after revert; the golden check also caught the CRF change"
+        },
+        {
+          "date": "2026-11-05",
+          "agent": "QC",
+          "check": "Snapshots independent of OS, temp names, hash seed and order",
+          "outcome": "pass",
+          "evidence": "no machine paths in any snapshot; four hash seeds and reverse order all pass; zero real process launches recorded. Linux not run locally: CI is the first Linux check"
+        },
+        {
+          "date": "2026-11-05",
+          "agent": "Performance",
+          "check": "Golden renders stable",
+          "outcome": "pass",
+          "evidence": "4 cases recorded, then checked twice: sha256, framemd5, ffprobe and render options identical"
+        },
+        {
+          "date": "2026-11-05",
+          "agent": "Performance",
+          "check": "Baseline (#203 evidence)",
+          "outcome": "pass",
+          "evidence": "real 1080p60 clips on the CPU encoder: 47.9-54.2 MB per minute, so a vertical clip passes 100 MB after about 2.1 minutes; vertical renders run about 2.0x realtime on the dev PC"
+        },
+        {
+          "date": "2026-11-05",
+          "agent": "Orchestrator",
+          "check": "Import guard follows imports through other modules",
+          "outcome": "pass",
+          "evidence": "QC defect 0-D1 fixed: an import of video_editor.project inside video_editor/timeline.py is now caught and reported as core.pipeline -> video_editor.timeline"
+        }
+      ],
+      "defects": [
+        {
+          "id": "0-D1",
+          "date": "2026-11-05",
+          "found_by": "QC",
+          "summary": "Import guard read only core/pipeline.py, not the modules it imports",
+          "routed_to": "Orchestrator",
+          "status": "fixed"
+        }
+      ]
+    },
+    {
+      "id": "1",
+      "title": "Export presets, encoder fix and editor lane",
+      "size": "M",
+      "scope": "Encoder fix, export presets, editor lane (export jobs), WoopSocial \"make a copy under 100 MB\" (opt-in), Settings → Export card",
+      "closes": [
+        203,
+        177
+      ],
+      "depends_on": [
+        "0"
+      ],
+      "status": "todo",
+      "user_visible": true,
+      "acceptance": [
+        "140 MB clip exports under 100 MB",
+        "ffprobe size/codec/fps per preset",
+        "Upscale warning shown",
+        "Plain argv unchanged"
+      ],
+      "files": [
+        "video/encoding.py",
+        "video/export_presets.py (new)",
+        "server/editor_lane.py (new)",
+        "server/api.py:2462",
+        "publish/woopsocial.py:270",
+        "ui/src/renderer/src/pages/Settings.tsx"
+      ],
+      "notes": [
+        "#177: sizes only; aspects come in step 11",
+        "Until Phase 4, sizes above 1080 upscale from the 1080 master, with a warning",
+        "Only its maths may run in the cloud, as a draft PR on Colin's go"
+      ],
+      "results": [],
+      "defects": []
+    },
+    {
+      "id": "2",
+      "title": "Make clips again; edits follow a widened clip",
+      "size": "S",
+      "scope": "Fix edits landing at the wrong time after a clip is widened (timeline.shift_edit). Library \"Make clips again…\" prefilled from the last run; replaces only untouched clips, and only after the new run succeeds",
+      "closes": [
+        190
+      ],
+      "depends_on": [
+        "0"
+      ],
+      "status": "todo",
+      "user_visible": true,
+      "acceptance": [
+        "Edited, published and project clips survive a re-run",
+        "A widened clip keeps its cuts in place"
+      ],
+      "files": [
+        "server/jobs.py:784-982",
+        "video_editor/timeline.py",
+        "ui/src/renderer/src/pages/ClipStudio.tsx",
+        "ui/src/renderer/src/lib/api.ts",
+        "core/state.py"
+      ],
+      "notes": [
+        "The plan lists it with the engine-only steps a cloud run may take, only as a draft PR on Colin's go",
+        "Open: the proof names project clips, which only exist from step 5"
+      ],
+      "results": [],
+      "defects": []
+    },
+    {
+      "id": "3",
+      "title": "Caption fonts and animated presets",
+      "size": "M",
+      "scope": "12 OFL caption fonts plus animated presets (pop, fade, bounce, karaoke fill, slide, safe zones)",
+      "closes": [
+        174
+      ],
+      "depends_on": [
+        "0"
+      ],
+      "status": "todo",
+      "user_visible": true,
+      "acceptance": [
+        "fontsdir appears only when a bundled font is used (snapshot)",
+        "Licence-manifest test",
+        "Frames show the animation"
+      ],
+      "files": [
+        "assets/fonts/ (new)",
+        "video/fonts.py (new)",
+        "config/caption_presets.json (new)",
+        "video/captions.py",
+        "ui/src/renderer/src/components/CaptionStyleControls.tsx",
+        "NOTICE"
+      ],
+      "notes": [
+        "#174: fonts and captions",
+        "The research's 12-font starter set is 10 OFL fonts plus 2 Apache-2.0 fonts (Luckiest Guy, Permanent Marker); see RESEARCH.md"
+      ],
+      "results": [],
+      "defects": []
+    },
+    {
+      "id": "4",
+      "title": "Creator description; CC0 sound and music library",
+      "size": "S",
+      "scope": "Creator description for the AI (used only when filled in); CC0 SFX/music library (<25 MB, sha256 manifest); music picked from the library can render on a remote PC",
+      "closes": [
+        174,
+        155
+      ],
+      "depends_on": [
+        "0"
+      ],
+      "status": "todo",
+      "user_visible": true,
+      "acceptance": [
+        "Prompts byte-identical when the description is empty"
+      ],
+      "files": [
+        "core/state.py",
+        "creator/retrieval.py",
+        "ui/src/renderer/src/pages/Creators.tsx",
+        "assets/library/ (new)",
+        "video_editor/timeline.py",
+        "remote_render/dispatch.py:75"
+      ],
+      "notes": [
+        "#174: creator notes; #155: library",
+        "Today any clip with music renders on this PC, never on a remote render PC (remote_render/dispatch.py:75-81)"
+      ],
+      "results": [],
+      "defects": []
+    },
+    {
+      "id": "V1",
+      "title": "Voice service (Voicebox)",
+      "size": "M",
+      "scope": "Voice service with Voicebox. Starts with a 1-day spike: run its pinned CPU server headless from inside our package. The server isn't published on its own, so it's taken from the pinned release installer, SHA-256-checked, into vendor/voicebox/. Clips Kitty starts and stops it like Ollama, on loopback, with --parent-pid and its own data dir. Our PyTorch is untouched. POST /voice/speak returns a WAV plus word times (a Whisper alignment if Voicebox gives none). Voices: Kokoro af_heart by default, plus Qwen3-TTS and Chatterbox. Non-commercial models are hidden. A Settings → Voice card. From here on, the promo agent uses this.",
+      "closes": [],
+      "depends_on": [
+        "0"
+      ],
+      "status": "todo",
+      "user_visible": true,
+      "acceptance": [
+        "Speaks with no GPU and no AI",
+        "Same text gives the same WAV on CPU",
+        "Word times within ±80 ms of a Whisper check",
+        "−16 LUFS",
+        "The server exits when the app closes",
+        "No port clash",
+        "The core environment is unchanged (torch/CUDA check)",
+        "Packaged-build check at the milestone"
+      ],
+      "files": [
+        "scripts/fetch_voicebox.py (new)",
+        "core/binaries.py",
+        "ui/src/main/index.ts",
+        "voice/ (new)",
+        "server/api.py",
+        "ui/src/renderer/src/pages/Settings.tsx",
+        "clips-studio.spec",
+        "ui/electron-builder.yml",
+        "docs/msstore-submission-sheet.md",
+        "NOTICE"
+      ],
+      "notes": [
+        "No issue: it serves the promo videos and step V2",
+        "The Store build is CPU-only; Voicebox's GPU add-on is skipped",
+        "Voicebox becomes a 4th background process, which goes into the Store submission notes; the listing discloses the AI voice (Store policy 11.16)"
+      ],
+      "results": [],
+      "defects": []
+    },
+    {
+      "id": "5",
+      "title": "Project core",
+      "size": "M",
+      "scope": "Project core: model, ops, store, undo/redo, import of AI clips, projection back",
+      "closes": [
+        192
+      ],
+      "depends_on": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "status": "todo",
+      "user_visible": false,
+      "acceptance": [
+        "Random op sequences undo back to the start",
+        "projection(import(x)) == x on fixtures",
+        "409 on stale edits",
+        "≤40 ms per op round trip at 300 items"
+      ],
+      "files": [
+        "video_editor/project/model.py (new)",
+        "video_editor/project/ops.py (new)",
+        "video_editor/project/store.py (new)",
+        "video_editor/project/importer.py (new)",
+        "video_editor/project/projection.py (new)",
+        "video_editor/project/migrate.py (new)",
+        "core/state.py",
+        "server/api.py"
+      ],
+      "notes": [
+        "#192: foundation",
+        "New routes carry the INTERNAL stability label",
+        "Engine-only: a cloud run may take it, only as a draft PR on Colin's go",
+        "Needs step 1 (set_export_preset accepts only a codec this PC can encode) and step 3 (add_text takes fonts from the registry)"
+      ],
+      "results": [],
+      "defects": []
+    },
+    {
+      "id": "6",
+      "title": "Media serving",
+      "size": "M",
+      "scope": "Media serving: Range source route, on-demand proxies, peaks, thumbnails, media cache plus clean-up; projects pin their sources",
+      "closes": [
+        144
+      ],
+      "depends_on": [
+        "1",
+        "5"
+      ],
+      "status": "todo",
+      "user_visible": false,
+      "acceptance": [
+        "206 Range with correct bytes",
+        "The cache survives clean-up",
+        "On Windows a file can be replaced while it streams",
+        "Peaks ≤90 s and thumbnails ≤3 min for 2 h on CPU"
+      ],
+      "files": [
+        "server/api.py",
+        "server/editor_lane.py",
+        "core/housekeeping.py",
+        "server/automation.py:1181"
+      ],
+      "notes": [
+        "#144: foundation",
+        "Proxies are made only when needed (DECISIONS.md ED7)"
+      ],
+      "results": [],
+      "defects": []
+    },
+    {
+      "id": "7",
+      "title": "Export compiler (engine)",
+      "size": "L",
+      "scope": "Export compiler, engine only: Branch B, frame_intermediate extraction, multi-track audio mix, ASS captions and text, draft render, still frames. Tested through ops and ffprobe",
+      "closes": [
+        192,
+        144
+      ],
+      "depends_on": [
+        "1",
+        "3",
+        "5",
+        "6"
+      ],
+      "status": "todo",
+      "user_visible": false,
+      "acceptance": [
+        "Plan snapshots",
+        "framemd5 identical on CPU",
+        "SSIM ≥0.97 on GPU",
+        "Duration = program + card ±1 frame",
+        "60 s 1080x1920 export ≤1.5× realtime on CPU, ≤0.5× on an RTX 2060",
+        "A still in ≤600 ms",
+        "Plain argv unchanged"
+      ],
+      "files": [
+        "video_editor/compose.py (new)",
+        "core/framing.py (new)",
+        "core/pipeline.py (extraction only)",
+        "server/jobs.py"
+      ],
+      "notes": [
+        "#192 and #144: engine",
+        "Project exports render on this PC; remote render can't fetch project media yet"
+      ],
+      "results": [],
+      "defects": []
+    },
+    {
+      "id": "8",
+      "title": "New editor UI (beta)",
+      "size": "L",
+      "scope": "New editor UI (behind a \"New editor (beta)\" toggle): media bin with import-for-editing (no AI run), viewer, inspector, multi-track timeline (split, trim, ripple, magnet, snap, zoom, frame step, undo/redo, keyboard + ARIA, numeric in/out), export dialog using step 1's presets",
+      "closes": [
+        192,
+        144
+      ],
+      "depends_on": [
+        "1",
+        "5",
+        "6",
+        "7"
+      ],
+      "status": "todo",
+      "user_visible": true,
+      "acceptance": [
+        "Black-box: 2 h VOD → mark 3 ranges → reorder → export",
+        "Black-box: own short video → edit → export",
+        "Black-box: edited AI clip identical to Apply",
+        "60 fps with 500 items",
+        "Opens in ≤1 s",
+        "≤1-frame glitch at cuts"
+      ],
+      "files": [
+        "ui/src/renderer/src/components/editor/ (new)",
+        "ui/src/renderer/src/App.tsx",
+        "ui/src/renderer/src/lib/api.ts"
+      ],
+      "notes": [
+        "Timeline seeded from OpenCut classic's MIT code, credited",
+        "Step E must land before this step reaches users",
+        "Expect several layout rounds: Colin judges layout by looking",
+        "Whether the new editor becomes the default instead of beta is Colin's call after Phase 2"
+      ],
+      "results": [],
+      "defects": []
+    },
+    {
+      "id": "9",
+      "title": "Captions and text in the editor",
+      "size": "M",
+      "scope": "Captions and text in the editor: engine-made ASS, JASSUB preview, CSP update, caption and text panels",
+      "closes": [
+        174
+      ],
+      "depends_on": [
+        "3",
+        "7",
+        "8"
+      ],
+      "status": "todo",
+      "user_visible": true,
+      "acceptance": [
+        "JASSUB frame vs burned frame: SSIM ≥0.98 on the caption area"
+      ],
+      "files": [
+        "server/api.py",
+        "ui/src/renderer/index.html",
+        "ui/src/renderer/src/components/editor/"
+      ],
+      "notes": [
+        "The CSP gains 'wasm-unsafe-eval', worker-src blob: and font-src for 127.0.0.1:8765"
+      ],
+      "results": [],
+      "defects": []
+    },
+    {
+      "id": "10",
+      "title": "Audio in the editor",
+      "size": "M",
+      "scope": "Audio in the editor: music, SFX and voice tracks, ducking, fades, bleep, WebAudio preview, the library panel",
+      "closes": [
+        155,
+        174
+      ],
+      "depends_on": [
+        "4",
+        "7",
+        "8"
+      ],
+      "status": "todo",
+      "user_visible": true,
+      "acceptance": [
+        "−14 ±1 LUFS",
+        "True peak ≤−1 dBTP",
+        "A synthetic click lands within ±1 audio frame"
+      ],
+      "files": [
+        "ui/src/renderer/src/components/editor/ (audio panel)",
+        "video_editor/compose.py"
+      ],
+      "notes": [
+        "#174: SFX",
+        "Ducking in the WebAudio preview is approximate, and labelled as approximate"
+      ],
+      "results": [],
+      "defects": []
+    },
+    {
+      "id": "V2",
+      "title": "Voice-over tool",
+      "size": "M",
+      "scope": "Voice-over tool in the editor: write a script, or give instructions and let the AI draft one (optional; works without AI). Pick a voice and generate a voice track plus word-timed captions. Redo one line; music ducks under the voice",
+      "closes": [],
+      "depends_on": [
+        "V1",
+        "9",
+        "10"
+      ],
+      "status": "todo",
+      "user_visible": true,
+      "acceptance": [
+        "Black-box: instructions → script → voice-over → export",
+        "Captions within ±1 frame of the spoken words"
+      ],
+      "files": [
+        "ui/src/renderer/src/components/editor/ (voice panel)",
+        "video_editor/project/ops.py (add_voiceover)",
+        "voice/"
+      ],
+      "notes": [
+        "No issue: it is for every user, and for the promo videos",
+        "Works without AI; the AI script draft is optional"
+      ],
+      "results": [],
+      "defects": []
+    },
+    {
+      "id": "11",
+      "title": "Any aspect ratio for AI framing",
+      "size": "M",
+      "scope": "Any aspect ratio for AI framing: cropper, gaming layouts and tracker take the canvas",
+      "closes": [
+        177
+      ],
+      "depends_on": [
+        "0",
+        "1",
+        "7"
+      ],
+      "status": "todo",
+      "user_visible": true,
+      "acceptance": [
+        "Default argv unchanged (snapshots)",
+        "1:1 and 4:5 frames keep the face in frame"
+      ],
+      "files": [
+        "video/cropper.py",
+        "gaming/layouts.json",
+        "core/modes.py",
+        "video/outro.py"
+      ],
+      "notes": [
+        "#177: aspects"
+      ],
+      "results": [],
+      "defects": []
+    },
+    {
+      "id": "E",
+      "title": "Electron upgrade",
+      "size": "M",
+      "scope": "Electron 31 (end-of-life) → current, plus electron-builder and an MSIX re-test, before the new editor (step 8) reaches users. Needs Colin's one-line OK first",
+      "closes": [],
+      "depends_on": [],
+      "status": "todo",
+      "user_visible": false,
+      "acceptance": [
+        "Full UI click-through"
+      ],
+      "files": [
+        "ui/package.json",
+        "ui/electron-builder.yml"
+      ],
+      "notes": [
+        "Needs Colin's one-line OK first",
+        "Must land before the new editor (step 8) reaches users"
+      ],
+      "results": [],
+      "defects": []
+    }
+  ]
+}

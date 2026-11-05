@@ -1,0 +1,145 @@
+{
+  "about": "video/cutter.py: a one-encode clip (horizontal, Vertical Live): captions burned from their folder, a colour look, loudness normalised, the final MP4 flags.",
+  "cpu": {
+    "commands": [
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-hwaccel",
+          "auto",
+          "-ss",
+          "10.00",
+          "-i",
+          "<SRC>",
+          "-t",
+          "10.40",
+          "-vsync",
+          "cfr",
+          "-af",
+          "aresample=async=1,loudnorm=I=-14:TP=-1.5:LRA=11",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "20",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "-vf",
+          "eq=saturation=1.35:contrast=1.08,subtitles=clip.ass",
+          "<OUT>"
+        ],
+        "via": "run",
+        "cwd": "<TMP>",
+        "ass": {
+          "clip.ass": [
+            "[Script Info]",
+            "ScriptType: v4.00+",
+            "PlayResX: 1920",
+            "PlayResY: 1080",
+            "WrapStyle: 0",
+            "",
+            "[V4+ Styles]",
+            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+            "Style: Default,Arial,47,&H00FFFFFF,&H00FFFFFF,&H00000000,&H7F000000,-1,0,0,0,100,100,0,0,1,7,2,2,60,60,248,1",
+            "",
+            "[Events]",
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+            "Dialogue: 0,0:00:00.02,0:00:00.55,Default,,0,0,0,,SO THIS IS",
+            "Dialogue: 0,0:00:00.58,0:00:01.30,Default,,0,0,0,,THE PART WHERE",
+            "Dialogue: 0,0:00:01.33,0:00:02.05,Default,,0,0,0,,IT ALL GOES",
+            "Dialogue: 0,0:00:02.10,0:00:03.58,Default,,0,0,0,,WRONG WATCH THE",
+            "Dialogue: 0,0:00:03.62,0:00:05.05,Default,,0,0,0,,LEFT SIDE, RIGHT",
+            "Dialogue: 0,0:00:05.10,0:00:07.02,Default,,0,0,0,,THERE. NO WAY",
+            "Dialogue: 0,0:00:07.10,0:00:08.35,Default,,0,0,0,,THAT JUST HAPPENED!",
+            "Dialogue: 0,0:00:08.92,0:00:09.70,Default,,0,0,0,,CHAT DID YOU",
+            "Dialogue: 0,0:00:09.75,0:00:09.98,Default,,0,0,0,,SEE"
+          ]
+        }
+      }
+    ],
+    "files": [
+      "clip.ass",
+      "clip.mp4",
+      "source.mp4"
+    ]
+  },
+  "nvenc": {
+    "commands": [
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-hwaccel",
+          "auto",
+          "-ss",
+          "10.00",
+          "-i",
+          "<SRC>",
+          "-t",
+          "10.40",
+          "-vsync",
+          "cfr",
+          "-af",
+          "aresample=async=1,loudnorm=I=-14:TP=-1.5:LRA=11",
+          "-c:v",
+          "h264_nvenc",
+          "-preset",
+          "p5",
+          "-rc",
+          "vbr",
+          "-cq",
+          "23",
+          "-b:v",
+          "0",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "-vf",
+          "eq=saturation=1.35:contrast=1.08,subtitles=clip.ass",
+          "<OUT>"
+        ],
+        "via": "run",
+        "cwd": "<TMP>",
+        "ass": {
+          "clip.ass": [
+            "[Script Info]",
+            "ScriptType: v4.00+",
+            "PlayResX: 1920",
+            "PlayResY: 1080",
+            "WrapStyle: 0",
+            "",
+            "[V4+ Styles]",
+            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+            "Style: Default,Arial,47,&H00FFFFFF,&H00FFFFFF,&H00000000,&H7F000000,-1,0,0,0,100,100,0,0,1,7,2,2,60,60,248,1",
+            "",
+            "[Events]",
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+            "Dialogue: 0,0:00:00.02,0:00:00.55,Default,,0,0,0,,SO THIS IS",
+            "Dialogue: 0,0:00:00.58,0:00:01.30,Default,,0,0,0,,THE PART WHERE",
+            "Dialogue: 0,0:00:01.33,0:00:02.05,Default,,0,0,0,,IT ALL GOES",
+            "Dialogue: 0,0:00:02.10,0:00:03.58,Default,,0,0,0,,WRONG WATCH THE",
+            "Dialogue: 0,0:00:03.62,0:00:05.05,Default,,0,0,0,,LEFT SIDE, RIGHT",
+            "Dialogue: 0,0:00:05.10,0:00:07.02,Default,,0,0,0,,THERE. NO WAY",
+            "Dialogue: 0,0:00:07.10,0:00:08.35,Default,,0,0,0,,THAT JUST HAPPENED!",
+            "Dialogue: 0,0:00:08.92,0:00:09.70,Default,,0,0,0,,CHAT DID YOU",
+            "Dialogue: 0,0:00:09.75,0:00:09.98,Default,,0,0,0,,SEE"
+          ]
+        }
+      }
+    ],
+    "files": [
+      "clip.ass",
+      "clip.mp4",
+      "source.mp4"
+    ]
+  }
+}

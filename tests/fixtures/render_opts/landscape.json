@@ -1,0 +1,6 @@
+{
+  "about": "A Longform clip (render_opts.profile, which only longform/ sets): 16:9 at 1920x1080 in one encode with the fit and pad, captions on and scaled to the landscape canvas, the 1920x1080 end card.",
+  "canvas": [1920, 1080],
+  "config": {"clips": {"captions": true}},
+  "render_opts": {"profile": "short_clips"}
+}

@@ -1,0 +1,5 @@
+{
+  "about": "A colour look: the job's filter preset (clips.filter) and the clip's own manual adjustments (render_opts.adjust), every kind of adjustment at once, as one chain in the vertical render.",
+  "config": {"clips": {"filter": "vibrant"}},
+  "render_opts": {"adjust": {"brightness": 0.06, "contrast": 1.1, "saturation": 1.2, "temperature": 0.3, "tint": -0.2, "sharpen": 0.4, "vignette": 0.25}}
+}

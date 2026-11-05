@@ -1,0 +1,5 @@
+{
+  "about": "Letterbox picked in the editor (render_opts.crop): the tracker is asked for a fit, and the whole frame is shown on a blurred backdrop rather than the region it found.",
+  "render_opts": {"crop": "letterbox"},
+  "tracking": {"mode": "fit_blur", "region": [0.18, 0.06, 0.82, 0.94]}
+}

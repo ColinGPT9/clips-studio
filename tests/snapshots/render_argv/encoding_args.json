@@ -1,0 +1,227 @@
+{
+  "about": "video/encoding.py: the argument blocks every render is built from.",
+  "cpu": {
+    "commands": [
+      {
+        "step": "auto: each hardware encoder's start-up probe, until one works",
+        "argv": [
+          "ffmpeg",
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          "color=black:s=256x256:d=0.1",
+          "-c:v",
+          "h264_nvenc",
+          "-preset",
+          "p5",
+          "-rc",
+          "vbr",
+          "-cq",
+          "23",
+          "-b:v",
+          "0",
+          "-f",
+          "null",
+          "-"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "auto: each hardware encoder's start-up probe, until one works",
+        "argv": [
+          "ffmpeg",
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          "color=black:s=256x256:d=0.1",
+          "-c:v",
+          "h264_amf",
+          "-quality",
+          "quality",
+          "-b:v",
+          "8M",
+          "-maxrate",
+          "12M",
+          "-f",
+          "null",
+          "-"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "auto: each hardware encoder's start-up probe, until one works",
+        "argv": [
+          "ffmpeg",
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          "color=black:s=256x256:d=0.1",
+          "-c:v",
+          "h264_qsv",
+          "-global_quality",
+          "23",
+          "-preset",
+          "medium",
+          "-f",
+          "null",
+          "-"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "auto: each hardware encoder's start-up probe, until one works",
+        "argv": [
+          "ffmpeg",
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          "color=black:s=256x256:d=0.1",
+          "-c:v",
+          "h264_videotoolbox",
+          "-b:v",
+          "8M",
+          "-maxrate",
+          "12M",
+          "-f",
+          "null",
+          "-"
+        ],
+        "via": "run"
+      }
+    ],
+    "values": {
+      "video_encoder_args()": [
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20"
+      ],
+      "using_hardware_encoder()": false,
+      "audio_filter_args(True)": [
+        "-af",
+        "aresample=async=1,loudnorm=I=-14:TP=-1.5:LRA=11"
+      ],
+      "audio_filter_args(False)": [
+        "-af",
+        "aresample=async=1"
+      ],
+      "hwaccel_input_args()": [
+        "-hwaccel",
+        "auto"
+      ],
+      "final_movflags()": [
+        "-movflags",
+        "+faststart+negative_cts_offsets"
+      ],
+      "auto": [
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20"
+      ],
+      "forced cpu": [
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20"
+      ]
+    },
+    "files": []
+  },
+  "nvenc": {
+    "commands": [
+      {
+        "step": "auto: each hardware encoder's start-up probe, until one works",
+        "argv": [
+          "ffmpeg",
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          "color=black:s=256x256:d=0.1",
+          "-c:v",
+          "h264_nvenc",
+          "-preset",
+          "p5",
+          "-rc",
+          "vbr",
+          "-cq",
+          "23",
+          "-b:v",
+          "0",
+          "-f",
+          "null",
+          "-"
+        ],
+        "via": "run"
+      }
+    ],
+    "values": {
+      "video_encoder_args()": [
+        "-c:v",
+        "h264_nvenc",
+        "-preset",
+        "p5",
+        "-rc",
+        "vbr",
+        "-cq",
+        "23",
+        "-b:v",
+        "0"
+      ],
+      "using_hardware_encoder()": true,
+      "audio_filter_args(True)": [
+        "-af",
+        "aresample=async=1,loudnorm=I=-14:TP=-1.5:LRA=11"
+      ],
+      "audio_filter_args(False)": [
+        "-af",
+        "aresample=async=1"
+      ],
+      "hwaccel_input_args()": [
+        "-hwaccel",
+        "auto"
+      ],
+      "final_movflags()": [
+        "-movflags",
+        "+faststart+negative_cts_offsets"
+      ],
+      "auto": [
+        "-c:v",
+        "h264_nvenc",
+        "-preset",
+        "p5",
+        "-rc",
+        "vbr",
+        "-cq",
+        "23",
+        "-b:v",
+        "0"
+      ],
+      "forced cpu": [
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20"
+      ]
+    },
+    "files": []
+  }
+}
