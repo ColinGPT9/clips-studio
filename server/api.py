@@ -651,6 +651,16 @@ def _process_options(body, into: dict | None = None, data_dir: Path | None = Non
     return payload
 
 
+def _standard_retry(payload: dict) -> tuple[tuple[str, ...], dict | None]:
+    """What "Use standard processing" takes off a job Vertical Live refused,
+    and what it sets. A job that asked for Vertical Live's gaming content
+    becomes Gaming / Reaction, its 16:9 form: left as gaming scoring alone,
+    it scored the clips as a game and framed them with the plain crop (#213)."""
+    if payload.get("gaming_scoring") and not payload.get("gaming"):
+        return ("vertical_live", "gaming_scoring"), {"gaming": True}
+    return ("vertical_live",), None
+
+
 def _clean_render_gaming(render_opts: dict) -> dict:
     """render_opts from the editor, with its "gaming" settings made valid.
     None stays None: it turns the split off for the clip."""
@@ -1231,10 +1241,15 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     @app.post("/jobs/{job_id}/retry")
     def retry_job(job_id: int, standard: bool = False):
         """Run a failed or cancelled job again. `standard` runs it without
-        Vertical Live: the answer to a video Vertical Live refused as not 9:16."""
+        Vertical Live: the answer to a video Vertical Live refused as not 9:16
+        (_standard_retry)."""
         d = db()
         try:
-            new_id = queue.retry(d, job_id, drop=("vertical_live",) if standard else ())
+            drop, updates = (), None
+            if standard:
+                job = d.get_job(job_id)
+                drop, updates = _standard_retry(json.loads(job["payload"] or "{}") if job else {})
+            new_id = queue.retry(d, job_id, drop=drop, updates=updates)
         finally:
             d.close()
         if new_id is None:

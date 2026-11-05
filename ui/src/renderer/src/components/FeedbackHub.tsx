@@ -155,6 +155,7 @@ export default function FeedbackHub(): JSX.Element {
         areas,
         severity: answers.severity ?? '',
         include_diagnostics: includeDiag,
+        video_id: realVideoId(),
         images: images.map((p) => ({ path: p }))
       })
       if (res.ok) {

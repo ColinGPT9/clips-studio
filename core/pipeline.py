@@ -208,6 +208,31 @@ def _whole_duration(path: Path) -> float:
     return duration
 
 
+def _short_render(made: float, actual: float) -> bool:
+    """A file that plays for under 90% of the clip it was made as. Its end
+    card is counted in `actual`, so a little missing at the end passes."""
+    return made > 0 and actual < made * 0.9
+
+
+def _check_length(db: StateDB, final_path: Path, made: float) -> None:
+    """Refuse a clip whose file is much shorter than the clip it claims to be.
+
+    Its card says the window's length, so a render that lost its frames
+    showed "64s" and played for 2 (#213), and nothing else compares the two.
+    Raising reports the render as failed, so the clip isn't saved; the short
+    file goes too, unless a clip already points at it. A file the probe
+    can't measure says nothing either way, and must not cost a clip."""
+    try:
+        actual = _whole_duration(final_path)
+    except Exception:
+        return
+    if not _short_render(made, actual):
+        return
+    if db.conn.execute("SELECT 1 FROM clips WHERE path = ?", (str(final_path),)).fetchone() is None:
+        Path(final_path).unlink(missing_ok=True)
+    raise RuntimeError(f"the clip came out {actual:.1f}s long instead of {made:.0f}s")
+
+
 def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> list[RenderedClip]:
     import time
 
@@ -718,6 +743,8 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         )
         try:
             final_path, render_opts_json = get_result()
+            seconds = _made_seconds(candidate, render_opts_json)
+            _check_length(db, final_path, seconds)
         except Exception as e:
             where = f"{candidate.start:.0f}s-{candidate.end:.0f}s"
             reason = _render_failure_reason(e)
@@ -728,7 +755,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
                 repeated_failures = 0
                 print(f"      Render failed for {where}: {reason}")
             return
-        made_seconds[str(final_path)] = _made_seconds(candidate, render_opts_json)
+        made_seconds[str(final_path)] = seconds
         clip = _register_clip(db, video.video_id, candidate, final_path, meta,
                               render_opts_json, config)
         if clip:

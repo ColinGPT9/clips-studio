@@ -82,6 +82,15 @@ Kitty after you change it.
 
 ### Fixed
 
+- **A clip no longer plays for a few seconds while its card says a minute** (#213). When
+  the graphics card stopped decoding a clip partway, the rest was dropped and the clip
+  was saved anyway. It now finishes on the processor, and a clip that still comes out
+  much shorter than planned is reported as failed instead of saved.
+- **"Use standard processing" on a gaming video that Vertical Live turned away now makes
+  it with Gaming / Reaction,** the split-screen layout. It used to score the clips as a
+  game but frame them with the plain crop, facecam and all.
+- **A bug report sent from the app now describes the video you picked in it,** not
+  whichever video was processed last.
 - **Basketball clips that cut to a close-up no longer start the close-up off-centre and
   jump onto the player.** A close-up that moved fast from its first frame was taken for a
   fade, and the crop kept the wide shot's framing over it until the "fade" ended.
