@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
+import { t } from '../lib/i18n'
 import type {
   CaptionLine,
   CaptionStyle,
@@ -1335,7 +1336,7 @@ export default function TimelineEditor({
           onClick={() => setShowKeys(false)}
           role="dialog"
           aria-modal="true"
-          aria-label="Keyboard shortcuts"
+          aria-label={t("Keyboard shortcuts")}
         >
           <div
             className="bg-surface border border-raised/60 rounded-2xl p-5 w-full max-w-md"
@@ -1348,7 +1349,7 @@ export default function TimelineEditor({
               <button
                 className="text-muted hover:text-ink text-lg leading-none px-1"
                 onClick={() => setShowKeys(false)}
-                aria-label="Close"
+                aria-label={t("Close")}
               >
                 ✕
               </button>
@@ -1394,8 +1395,8 @@ export default function TimelineEditor({
           <button
             className="text-muted hover:text-ink inline-flex items-center gap-1.5"
             onClick={() => setShowKeys(true)}
-            title="Keyboard shortcuts (?)"
-            aria-label="Show keyboard shortcuts"
+            title={t("Keyboard shortcuts (?)")}
+            aria-label={t("Show keyboard shortcuts")}
           >
             <Keyboard /> Shortcuts
           </button>
@@ -1403,7 +1404,7 @@ export default function TimelineEditor({
             className="text-muted hover:text-ink disabled:opacity-40 inline-flex items-center gap-1.5"
             disabled={history.length === 0}
             onClick={undo}
-            title="Undo (Ctrl+Z)"
+            title={t("Undo (Ctrl+Z)")}
           >
             <UndoIcon /> Undo
           </button>
@@ -1457,8 +1458,8 @@ export default function TimelineEditor({
             className="bg-raised w-6 h-6 rounded hover:bg-raised/70 disabled:opacity-40 leading-none"
             onClick={() => zoomTo(zoom / 1.5)}
             disabled={zoom <= 1}
-            title="Zoom out (−)"
-            aria-label="Zoom timeline out"
+            title={t("Zoom out (−)")}
+            aria-label={t("Zoom timeline out")}
           >
             −
           </button>
@@ -1467,8 +1468,8 @@ export default function TimelineEditor({
             className="bg-raised w-6 h-6 rounded hover:bg-raised/70 disabled:opacity-40 leading-none"
             onClick={() => zoomTo(zoom * 1.5)}
             disabled={zoom >= MAX_ZOOM}
-            title="Zoom in (+)"
-            aria-label="Zoom timeline in"
+            title={t("Zoom in (+)")}
+            aria-label={t("Zoom timeline in")}
           >
             +
           </button>
@@ -1476,7 +1477,7 @@ export default function TimelineEditor({
             className="bg-raised px-2 h-6 rounded hover:bg-raised/70 disabled:opacity-40"
             onClick={() => zoomTo(1)}
             disabled={zoom <= 1}
-            title="Fit the whole clip in view"
+            title={t("Fit the whole clip in view")}
           >
             Fit
           </button>
@@ -1491,7 +1492,7 @@ export default function TimelineEditor({
             onPointerUp={endScrub}
             onPointerCancel={endScrub}
             role="slider"
-            aria-label="Clip timeline — drag to scrub, arrow keys to step"
+            aria-label={t("Clip timeline — drag to scrub, arrow keys to step")}
             aria-valuemin={0}
             aria-valuemax={duration}
             aria-valuenow={playhead}
@@ -1544,7 +1545,7 @@ export default function TimelineEditor({
                 dragging.current = 'start'
                 dragStartEdit.current = editRef.current
               }}
-              title="Drag to trim the start"
+              title={t("Drag to trim the start")}
             />
             <div
               className="absolute top-4 bottom-0 w-2 bg-accent rounded-r-md cursor-ew-resize"
@@ -1554,7 +1555,7 @@ export default function TimelineEditor({
                 dragging.current = 'end'
                 dragStartEdit.current = editRef.current
               }}
-              title="Drag to trim the end"
+              title={t("Drag to trim the end")}
             />
             {/* playhead: line + grab knob + live time readout */}
             <div
@@ -1579,21 +1580,21 @@ export default function TimelineEditor({
         <button
           className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 inline-flex items-center gap-1.5"
           onClick={() => trimToPlayhead('start')}
-          title="Set the clip's START to the playhead (I)"
+          title={t("Set the clip's START to the playhead (I)")}
         >
           <TrimStart /> Trim start here
         </button>
         <button
           className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 inline-flex items-center gap-1.5"
           onClick={() => trimToPlayhead('end')}
-          title="Set the clip's END to the playhead (O)"
+          title={t("Set the clip's END to the playhead (O)")}
         >
           <TrimEnd /> Trim end here
         </button>
         <button
           className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 inline-flex items-center gap-1.5"
           onClick={splitAtPlayhead}
-          title="Split the section at the playhead (S)"
+          title={t("Split the section at the playhead (S)")}
         >
           <Scissors /> Split at playhead
         </button>
@@ -1601,7 +1602,7 @@ export default function TimelineEditor({
           className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 disabled:opacity-40 inline-flex items-center gap-1.5"
           disabled={playheadSeg < 0 || keep.length <= 1}
           onClick={deleteSelected}
-          title="Delete the section the playhead is in (Delete)"
+          title={t("Delete the section the playhead is in (Delete)")}
         >
           <Trash /> Delete section
         </button>
@@ -1609,7 +1610,7 @@ export default function TimelineEditor({
           className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 disabled:opacity-40 inline-flex items-center gap-1.5"
           disabled={words.length < 2}
           onClick={tightenPauses}
-          title="Automatically remove silences longer than 0.6s"
+          title={t("Automatically remove silences longer than 0.6s")}
         >
           <Zap /> Tighten pauses
         </button>
@@ -1617,7 +1618,7 @@ export default function TimelineEditor({
           className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 disabled:opacity-40 inline-flex items-center gap-1.5"
           disabled={words.length === 0}
           onClick={censorProfanity}
-          title="Mute every swear word — audio silenced and captions censored (f**k), so platforms can't flag either"
+          title={t("Mute every swear word — audio silenced and captions censored (f**k), so platforms can't flag either")}
         >
           <Ban /> Censor swearing
         </button>
@@ -1665,7 +1666,7 @@ export default function TimelineEditor({
               className={`text-xs px-2.5 py-1 rounded-md ${
                 mode === 'text' ? 'bg-accent/20 text-accent font-medium' : 'bg-raised text-muted hover:text-ink'
               }`}
-              title="Fix words the transcription got wrong — the burned caption text updates on Apply"
+              title={t("Fix words the transcription got wrong — the burned caption text updates on Apply")}
             >
               <Pencil className="mr-1.5" />
               Edit caption text{mode === 'text' ? ' — ON' : ''}
@@ -1699,7 +1700,7 @@ export default function TimelineEditor({
                 <button
                   onClick={swapSpeakers}
                   className="text-xs px-2.5 py-1 rounded-md bg-raised text-muted hover:text-ink"
-                  title="Switch every caption of this clip: for when the wrong person was taken as the main speaker, or the whole clip is the other one"
+                  title={t("Switch every caption of this clip: for when the wrong person was taken as the main speaker, or the whole clip is the other one")}
                 >
                   Swap speakers
                 </button>
@@ -1707,7 +1708,7 @@ export default function TimelineEditor({
                   <button
                     onClick={speakersAsHeard}
                     className="text-xs px-2.5 py-1 rounded-md bg-raised text-muted hover:text-ink"
-                    title="Drop every fix made by hand on this clip and go by what was heard"
+                    title={t("Drop every fix made by hand on this clip and go by what was heard")}
                   >
                     Back to automatic
                   </button>
@@ -1818,7 +1819,7 @@ export default function TimelineEditor({
         <div className="border border-raised/60 rounded-lg p-3">
           <label
             className="flex items-center gap-1.5 cursor-pointer text-xs mb-2"
-            title="Burn captions into this clip. Off keeps the clip without captions when you edit it; Apply or Update preview to see it."
+            title={t("Burn captions into this clip. Off keeps the clip without captions when you edit it; Apply or Update preview to see it.")}
           >
             <input
               type="checkbox"
@@ -1865,7 +1866,7 @@ export default function TimelineEditor({
                 <button
                   className="text-xs text-muted hover:text-red-400"
                   onClick={() => setWatermark(null)}
-                  title="Remove the watermark from this clip"
+                  title={t("Remove the watermark from this clip")}
                 >
                   Remove watermark
                 </button>
@@ -1889,7 +1890,7 @@ export default function TimelineEditor({
         <button
           className="btn-ghost !py-1 text-xs"
           disabled={tightening}
-          title="Find pauses and filler words (um, uh) and cut them. The cuts appear on the timeline for you to check — nothing renders until you Apply."
+          title={t("Find pauses and filler words (um, uh) and cut them. The cuts appear on the timeline for you to check — nothing renders until you Apply.")}
           onClick={async () => {
             setTightening(true)
             setTightenNote('')
@@ -1915,7 +1916,7 @@ export default function TimelineEditor({
         {tightenNote && <span className="text-muted">{tightenNote}</span>}
         <label
           className="flex items-center gap-1.5 cursor-pointer"
-          title="Remove ALL of the clip's audio — e.g. to post it with background music only"
+          title={t("Remove ALL of the clip's audio — e.g. to post it with background music only")}
         >
           <input
             type="checkbox"
@@ -2046,7 +2047,7 @@ export default function TimelineEditor({
             Hook title
             <input
               value={edit.hook?.text ?? ''}
-              placeholder="big top text for the first seconds, e.g. WAIT FOR IT…"
+              placeholder={t("big top text for the first seconds, e.g. WAIT FOR IT…")}
               className="flex-1 bg-base border border-raised rounded px-2 py-1"
               onChange={(e) =>
                 setEdit({
@@ -2064,7 +2065,7 @@ export default function TimelineEditor({
               value={edit.hook.seconds}
               onChange={(e) => push({ ...edit, hook: { ...edit.hook!, seconds: Number(e.target.value) } })}
               className="bg-base border border-raised rounded px-1 py-0.5"
-              aria-label="How long the hook title stays on screen"
+              aria-label={t("How long the hook title stays on screen")}
             >
               {[2, 3, 5, 8].map((s) => (
                 <option key={s} value={s}>
@@ -2079,7 +2080,7 @@ export default function TimelineEditor({
             Music
             <input
               value={edit.music?.path ?? ''}
-              placeholder="background music — loops under the clip"
+              placeholder={t("background music — loops under the clip")}
               className="flex-1 bg-base border border-raised rounded px-2 py-1"
               onChange={(e) =>
                 setEdit({
@@ -2111,7 +2112,7 @@ export default function TimelineEditor({
                 })
               }
             }}
-            title="Choose a music file from your computer"
+            title={t("Choose a music file from your computer")}
           >
             <Folder className="mr-1.5" />
             Browse…
@@ -2131,7 +2132,7 @@ export default function TimelineEditor({
                   }
                 />
               </label>
-              <label className="flex items-center gap-1.5 cursor-pointer" title="Music automatically dips whenever the creator talks">
+              <label className="flex items-center gap-1.5 cursor-pointer" title={t("Music automatically dips whenever the creator talks")}>
                 <input
                   type="checkbox"
                   checked={edit.music.duck}
@@ -2203,7 +2204,7 @@ export default function TimelineEditor({
           className="bg-raised px-3 py-1.5 rounded-md text-xs font-medium hover:bg-raised/70 disabled:opacity-40"
           disabled={busy}
           onClick={updatePreview}
-          title="Renders the clip for real with ALL pending changes — same framing/zoom, tracking, captions, hook, music and speed as the final export. Can take up to a minute."
+          title={t("Renders the clip for real with ALL pending changes — same framing/zoom, tracking, captions, hook, music and speed as the final export. Can take up to a minute.")}
         >
           {busy ? (
             'Rendering…'
