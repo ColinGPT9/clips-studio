@@ -251,6 +251,14 @@ def _render_tracked(
                 # Column slices are non-contiguous views; the pipe needs bytes.
                 write(np.ascontiguousarray(frame[y0:y1, x0 : x0 + crop_w]).tobytes())
 
+            def emit_rest_on_cpu(frame_idx: int) -> None:
+                while True:
+                    ok, frame = cap.read()
+                    if not ok:
+                        break
+                    emit(frame, frame_idx)
+                    frame_idx += 1
+
             try:
                 for frame_idx, frame in sampled_frames(clip_path, 1, src_w, src_h):
                     emit(frame, frame_idx)
@@ -260,13 +268,17 @@ def _render_tracked(
 
             if written == 0:
                 # Nothing came through — fall back rather than emit an empty clip.
-                frame_idx = 0
-                while True:
-                    ok, frame = cap.read()
-                    if not ok:
-                        break
-                    emit(frame, frame_idx)
-                    frame_idx += 1
+                emit_rest_on_cpu(0)
+                return
+            # The decoder can also stop partway: sampled_frames takes FFmpeg
+            # exiting early for the end of the clip. Left there, -shortest cut
+            # the audio to match and a 64s clip played for 2 (#213). Finish on
+            # the CPU from the frame it stopped at.
+            expected = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            if expected - written > fps / 2:
+                print(f"      (GPU decode stopped at frame {written} of {expected}; finishing on the CPU)")
+                cap.set(cv2.CAP_PROP_POS_FRAMES, written)
+                emit_rest_on_cpu(written)
 
         # Input 0 is the raw cropped video on stdin; input 1 stays the original
         # clip, which is still where the audio comes from.

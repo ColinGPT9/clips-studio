@@ -109,6 +109,23 @@ def test_use_standard_processing_retries_without_it(db):
     assert row["status"] == "queued" and json.loads(row["payload"]) == {"url": "local:abc", "captions": False}
 
 
+def test_standard_processing_keeps_a_gaming_choice_as_gaming_reaction(db, api):
+    """Vertical Live's gaming content on a 16:9 file comes back as Gaming /
+    Reaction. Kept as gaming scoring alone, it scored the clips as a game and
+    framed them with the plain crop, facecam and all (#213)."""
+    from core import queue
+
+    asked = {"url": "local:abc", "vertical_live": True, "gaming_scoring": True}
+    job_id = db.add_job("process", json.dumps(asked))
+    db.conn.execute("UPDATE jobs SET status = 'failed', error = ? WHERE id = ?", (modes.MISMATCH, job_id))
+    db.conn.commit()
+    drop, updates = api._standard_retry(asked)
+    assert queue.retry(db, job_id, drop=drop, updates=updates) == job_id
+    assert json.loads(db.get_job(job_id)["payload"]) == {"url": "local:abc", "gaming": True}
+    # Without the gaming choice it only drops Vertical Live, as before.
+    assert api._standard_retry({"url": "local:abc", "vertical_live": True}) == (("vertical_live",), None)
+
+
 # ---- rendering --------------------------------------------------------------------------
 
 

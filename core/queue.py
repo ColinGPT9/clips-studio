@@ -202,7 +202,7 @@ def remove(db, job_id: int) -> bool:
     return True
 
 
-def retry(db, job_id: int, drop: tuple[str, ...] = ()) -> int | None:
+def retry(db, job_id: int, drop: tuple[str, ...] = (), updates: dict | None = None) -> int | None:
     """Send a failed or cancelled job back to the end of the queue.
 
     The row is reused rather than copied. The queue is a work list, not a
@@ -215,15 +215,17 @@ def retry(db, job_id: int, drop: tuple[str, ...] = ()) -> int | None:
 
     `drop` takes options off the retry in the same update, so the worker can
     never pick it up with the old ones: "Use standard processing" on a video
-    Vertical Live refused drops vertical_live."""
+    Vertical Live refused drops vertical_live. `updates` sets options the
+    same way, after the drop."""
     row = db.get_job(job_id)
     if row is None or row["status"] not in RETRYABLE:
         return None
     payload = row["payload"]
-    if drop:
+    if drop or updates:
         settings = json.loads(payload or "{}")
         for key in drop:
             settings.pop(key, None)
+        settings.update(updates or {})
         payload = json.dumps(settings)
     end = db.conn.execute("SELECT COALESCE(MAX(position), 0) + 1 FROM jobs").fetchone()[0]
     db.conn.execute(

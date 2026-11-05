@@ -93,6 +93,7 @@ export const api = {
     areas: string[]
     severity: string
     include_diagnostics: boolean
+    video_id?: string
     images: { path: string }[]
   }) =>
     request<{ ok: boolean; url?: string; markdown: string; error?: string }>('/feedback/submit', {
