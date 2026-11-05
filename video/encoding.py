@@ -416,6 +416,17 @@ def final_movflags() -> list[str]:
 LATE_TOLERANCE = 0.002
 
 
+def concat_entry(path: str) -> str:
+    """One `file` line of a listing for concat(), its path quoted.
+
+    A quote inside the path is closed, escaped and reopened ('\\''), which is
+    how FFmpeg's quoting spells one. Clip folders are named after the video's
+    title, so a title like "I'll be fine" put one there, and FFmpeg read the
+    path only up to it: Longform failed and every clip lost its end card
+    (#197). A path without a quote is written exactly as before."""
+    return "file '" + path.replace("'", "'\\''") + "'"
+
+
 def concat(listing, dst) -> subprocess.CompletedProcess:
     """Join the files in a concat `listing` into `dst`, without re-encoding.
 

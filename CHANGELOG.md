@@ -82,6 +82,9 @@ Kitty after you change it.
 
 ### Fixed
 
+- **Longform no longer fails with "concat join failed" when a video's title has an
+  apostrophe** (#197), as in "I'll" or "Let's". Clips of such a video also keep their
+  end card, which they had quietly been made without, and its story reels join again.
 - **A clip no longer plays for a few seconds while its card says a minute** (#213). When
   the graphics card stopped decoding a clip partway, the rest was dropped and the clip
   was saved anyway. It now finishes on the processor, and a clip that still comes out

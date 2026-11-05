@@ -48,7 +48,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 from core.paths import discard, resolve_data_dir
 from video import mascot_art as art
-from video.encoding import concat, final_movflags
+from video.encoding import concat, concat_entry, final_movflags
 
 # --------------------------------------------------------------------------
 # The design, in reference coordinates. Everything scales uniformly from here,
@@ -1222,7 +1222,7 @@ def append(clip: Path, config: dict) -> bool:
         listing = clip.parent / f".{clip.stem}.outro.txt"
         joined = clip.parent / f".{clip.stem}.outro.mp4"
         listing.write_text(
-            f"file '{clip.as_posix()}'\nfile '{outro.as_posix()}'\n",
+            f"{concat_entry(clip.as_posix())}\n{concat_entry(outro.as_posix())}\n",
             encoding="utf-8")
         try:
             r = concat(listing, joined)
@@ -1431,7 +1431,7 @@ def finish(src: Path, dst: Path, config: dict) -> bool:
             # the list file, so a relative one points nowhere. That cost 365
             # clips their card once already.
             listing.write_text(
-                f"file '{src.as_posix()}'\nfile '{card.as_posix()}'\n",
+                f"{concat_entry(src.as_posix())}\n{concat_entry(card.as_posix())}\n",
                 encoding="utf-8")
             try:
                 r = concat(listing, dst)
