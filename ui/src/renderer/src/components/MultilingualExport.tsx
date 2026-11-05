@@ -1,4 +1,3 @@
-import { t } from '../lib/i18n'
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'

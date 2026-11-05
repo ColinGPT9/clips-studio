@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
-import { t } from '../../lib/i18n'
 import type { CaptionStyle, JobOptions, PipelineChoice } from '../../lib/types'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from '../CaptionStyleControls'
 import BrandingEditor, { setWatermarkEnabled, watermarkSelection } from '../WatermarkCard'
