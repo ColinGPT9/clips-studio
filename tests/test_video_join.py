@@ -15,6 +15,8 @@ with numpy and Pillow), so Longform and the reels need neither to join, and
 these tests run on CI. The real joins need FFmpeg and skip without it.
 """
 
+import os
+import re
 import shutil
 import subprocess
 import sys
@@ -372,3 +374,58 @@ def test_a_real_join_starts_at_0_both_ways(tmp_path):
     assert encoding.concat(listing, joined).returncode == 0
     assert encoding._first_video_frame(joined) == 0.0
     assert encoding._first_video_frame(joined, edit_list=False) == 0.0
+
+
+# ---- a quote in a path (#197) ---------------------------------------------------------------
+#
+# Clip folders are named after the video's title. A title like "I'll be fine"
+# put a quote inside the quoted path, and FFmpeg read it only up to there:
+# Longform failed every time and every clip lost its end card.
+
+TITLE = "First Time. Surely I'll be fine. Let's skip the tutorial [tw_2862605937]"
+
+
+def test_a_quote_in_a_path_is_closed_escaped_and_reopened():
+    assert encoding.concat_entry(f"B:/clips/{TITLE}/a.mp4") == (
+        "file 'B:/clips/First Time. Surely I'\\''ll be fine. Let'\\''s skip the tutorial [tw_2862605937]/a.mp4'")
+    assert encoding.concat_entry("C:/clips/a [tw_1]/b.mp4") == "file 'C:/clips/a [tw_1]/b.mp4'"  # as before
+
+
+def test_every_listing_line_comes_from_concat_entry():
+    """Longform, the end card's two joins and the story reels all write their
+    lines with concat_entry, so a fifth join can't bring the bug back."""
+    skip = {"tests", "ui", "node_modules", "data", "release", "dist", "build", "venv", "__pycache__"}
+    writers = []
+    for top, dirs, files in os.walk(ROOT):
+        dirs[:] = [d for d in dirs if d not in skip and not d.startswith(".")]
+        for name in files:
+            if name.endswith(".py"):
+                path = Path(top) / name
+                if re.search(r"(?<![A-Za-z])file '\{", path.read_text(encoding="utf-8", errors="replace")):
+                    writers.append(path.relative_to(ROOT).as_posix())
+    assert writers == []
+
+
+def _seconds(path: Path) -> float:
+    from core.binaries import ffprobe
+
+    r = subprocess.run([ffprobe(), "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                        str(path)], capture_output=True, text=True, check=True)
+    return float(r.stdout.strip())
+
+
+def test_a_real_join_in_a_folder_named_with_apostrophes(tmp_path):
+    ffmpeg = _ffmpeg_or_skip()
+    folder = tmp_path / TITLE
+    folder.mkdir()
+    parts = [_encode(ffmpeg, folder / "part1.mp4"), _encode(ffmpeg, folder / "part2.mp4", b_frames=False)]
+
+    as_before = folder / "before.txt"
+    as_before.write_text("".join(f"file '{p.as_posix()}'\n" for p in parts), encoding="utf-8")
+    assert encoding.concat(as_before, folder / "before.mp4").returncode != 0, "#197, as it was"
+
+    listing = folder / "concat.txt"
+    listing.write_text("".join(f"{encoding.concat_entry(p.as_posix())}\n" for p in parts), encoding="utf-8")
+    joined = folder / "joined.mp4"
+    assert encoding.concat(listing, joined).returncode == 0
+    assert abs(_seconds(joined) - 6.0) < 0.1

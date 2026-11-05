@@ -14,7 +14,7 @@ from pathlib import Path
 from core import cancel
 from core.binaries import ffmpeg
 from core.paths import discard
-from video.encoding import concat, video_encoder_args
+from video.encoding import concat, concat_entry, video_encoder_args
 
 _FIT = (
     "scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,"
@@ -87,7 +87,7 @@ def assemble(
         # The end card's join, so the video starts at 0 here too.
         listfile = segdir / "concat.txt"
         listfile.write_text(
-            "".join(f"file '{p.resolve().as_posix()}'\n" for p in parts), encoding="utf-8"
+            "".join(f"{concat_entry(p.resolve().as_posix())}\n" for p in parts), encoding="utf-8"
         )
         r = concat(listfile.resolve(), output_path.resolve())
         if r.returncode != 0:

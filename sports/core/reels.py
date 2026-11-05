@@ -257,7 +257,7 @@ def join(paths: list, out: Path, trims: list[float] | None = None) -> list[float
     `trims[i]` seconds (its end card) left off, cut on a whole frame
     (_cut). Returns each part's length as it went in."""
     from core.paths import discard
-    from video.encoding import concat
+    from video.encoding import concat, concat_entry
 
     out.parent.mkdir(parents=True, exist_ok=True)
     listing = out.with_suffix(".txt")
@@ -267,7 +267,7 @@ def join(paths: list, out: Path, trims: list[float] | None = None) -> list[float
     for p, trim in zip(paths, trims):
         keep, outpoint = _cut(p, trim)
         kept.append(keep)
-        rows.append(f"file '{Path(p).resolve().as_posix()}'")
+        rows.append(concat_entry(Path(p).resolve().as_posix()))
         if outpoint is not None:
             rows.append(f"outpoint {outpoint}")
     listing.write_text("\n".join(rows) + "\n", encoding="utf-8")
