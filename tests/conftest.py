@@ -17,6 +17,21 @@ if str(ROOT) not in sys.path:
 from core.state import StateDB, _now  # noqa: E402
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--update-snapshots", action="store_true", default=False,
+        help="Rewrite tests/snapshots/render_argv/ from the code as it is now, instead of "
+             "comparing with it. Review the diff before committing it.",
+    )
+
+
+@pytest.fixture
+def update_snapshots(request) -> bool:
+    """Whether this run rewrites the render argv snapshots
+    (tests/test_render_argv_snapshots.py) instead of checking them."""
+    return bool(request.config.getoption("--update-snapshots"))
+
+
 @pytest.fixture
 def db(tmp_path):
     """A real, empty state database in a temp directory.

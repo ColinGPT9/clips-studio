@@ -1,0 +1,83 @@
+{
+  "about": "video_editor/export.py: 2.5x, which takes two atempo filters.",
+  "cpu": {
+    "commands": [
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.source.mp4",
+          "-filter_complex",
+          "[0:a]atempo=2.0,atempo=1.2500,aresample=async=1[aout];[0:v]setpts=PTS/2.5000[vout]",
+          "-map",
+          "[vout]",
+          "-map",
+          "[aout]",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "20",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-fps_mode",
+          "cfr",
+          "-movflags",
+          "+faststart",
+          "<TMP>/clip.edited.mp4"
+        ],
+        "via": "run"
+      }
+    ],
+    "files": [
+      "clip.edited.mp4",
+      "clip.source.mp4"
+    ]
+  },
+  "nvenc": {
+    "commands": [
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.source.mp4",
+          "-filter_complex",
+          "[0:a]atempo=2.0,atempo=1.2500,aresample=async=1[aout];[0:v]setpts=PTS/2.5000[vout]",
+          "-map",
+          "[vout]",
+          "-map",
+          "[aout]",
+          "-c:v",
+          "h264_nvenc",
+          "-preset",
+          "p5",
+          "-rc",
+          "vbr",
+          "-cq",
+          "23",
+          "-b:v",
+          "0",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-fps_mode",
+          "cfr",
+          "-movflags",
+          "+faststart",
+          "<TMP>/clip.edited.mp4"
+        ],
+        "via": "run"
+      }
+    ],
+    "files": [
+      "clip.edited.mp4",
+      "clip.source.mp4"
+    ]
+  }
+}

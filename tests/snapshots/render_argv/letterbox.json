@@ -1,0 +1,347 @@
+{
+  "about": "Letterbox picked in the editor (render_opts.crop): the tracker is asked for a fit, and the whole frame is shown on a blurred backdrop rather than the region it found.",
+  "cpu": {
+    "commands": [
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-hwaccel",
+          "auto",
+          "-ss",
+          "10.00",
+          "-i",
+          "<SRC>",
+          "-t",
+          "10.40",
+          "-vsync",
+          "cfr",
+          "-af",
+          "aresample=async=1",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "20",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-movflags",
+          "+faststart",
+          "<TMP>/clips/clip_00010-00020.source.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clips/clip_00010-00020.source.mp4",
+          "-filter_complex",
+          "[0:v]split=2[a][b];[a]crop=iw*1.0000:ih*1.0000:iw*0.0000:ih*0.0000,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,scale=135:240,gblur=sigma=12,scale=1080:1920:flags=bilinear[bg];[b]crop=iw*1.0000:ih*1.0000:iw*0.0000:ih*0.0000,scale=1080:-2:flags=lanczos,crop=w=1080:h=min(ih\\,1920)[fg];[bg][fg]overlay=0:(H-h)/2,setsar=1[v]",
+          "-map",
+          "[v]",
+          "-map",
+          "0:a:0?",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "20",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-af",
+          "aresample=async=1,loudnorm=I=-14:TP=-1.5:LRA=11",
+          "-fps_mode",
+          "cfr",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "-shortest",
+          "<TMP>/clips/clip_00010-00020.pre-card.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-show_streams",
+          "-of",
+          "json",
+          "<TMP>/clips/clip_00010-00020.pre-card.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-v",
+          "error",
+          "-f",
+          "concat",
+          "-safe",
+          "0",
+          "-i",
+          "<TMP>/clips/clip_00010-00020.pre-card.cardlist.txt",
+          "-copyts",
+          "-c",
+          "copy",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/clips/clip_00010-00020.mp4"
+        ],
+        "via": "run",
+        "listing": {
+          "<TMP>/clips/clip_00010-00020.pre-card.cardlist.txt": [
+            "file '<TMP>/clips/clip_00010-00020.pre-card.mp4'",
+            "file '<TMP>/data/outro/outro2_1080x1920_30_yuv420p_48000_2.mp4'"
+          ]
+        }
+      },
+      {
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-select_streams",
+          "v:0",
+          "-read_intervals",
+          "%+#5",
+          "-show_entries",
+          "frame=pts_time",
+          "-of",
+          "csv=p=0",
+          "<TMP>/clips/clip_00010-00020.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-ignore_editlist",
+          "1",
+          "-select_streams",
+          "v:0",
+          "-read_intervals",
+          "%+#5",
+          "-show_entries",
+          "frame=pts_time",
+          "-of",
+          "csv=p=0",
+          "<TMP>/clips/clip_00010-00020.mp4"
+        ],
+        "via": "run"
+      }
+    ],
+    "calls": [
+      {
+        "tracker.compute_tracking": {
+          "args": [
+            "<TMP>/clips/clip_00010-00020.source.mp4"
+          ],
+          "model_name": "yolov8n-pose.pt",
+          "sample_fps": 8,
+          "force_fit_blur": true,
+          "shot_aware": true,
+          "no_subject": "center"
+        }
+      }
+    ],
+    "returned": "<TMP>/clips/clip_00010-00020.mp4",
+    "render_opts": {
+      "crop": "letterbox",
+      "job_captions": false
+    },
+    "files": [
+      "clips/clip_00010-00020.mp4",
+      "data/outro/outro2_1080x1920_30_yuv420p_48000_2.mp4",
+      "source.mp4"
+    ]
+  },
+  "nvenc": {
+    "commands": [
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-hwaccel",
+          "auto",
+          "-ss",
+          "10.00",
+          "-i",
+          "<SRC>",
+          "-t",
+          "10.40",
+          "-vsync",
+          "cfr",
+          "-af",
+          "aresample=async=1",
+          "-c:v",
+          "h264_nvenc",
+          "-preset",
+          "p5",
+          "-rc",
+          "vbr",
+          "-cq",
+          "23",
+          "-b:v",
+          "0",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-movflags",
+          "+faststart",
+          "<TMP>/clips/clip_00010-00020.source.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clips/clip_00010-00020.source.mp4",
+          "-filter_complex",
+          "[0:v]split=2[a][b];[a]crop=iw*1.0000:ih*1.0000:iw*0.0000:ih*0.0000,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,scale=135:240,gblur=sigma=12,scale=1080:1920:flags=bilinear[bg];[b]crop=iw*1.0000:ih*1.0000:iw*0.0000:ih*0.0000,scale=1080:-2:flags=lanczos,crop=w=1080:h=min(ih\\,1920)[fg];[bg][fg]overlay=0:(H-h)/2,setsar=1[v]",
+          "-map",
+          "[v]",
+          "-map",
+          "0:a:0?",
+          "-c:v",
+          "h264_nvenc",
+          "-preset",
+          "p5",
+          "-rc",
+          "vbr",
+          "-cq",
+          "23",
+          "-b:v",
+          "0",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-af",
+          "aresample=async=1,loudnorm=I=-14:TP=-1.5:LRA=11",
+          "-fps_mode",
+          "cfr",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "-shortest",
+          "<TMP>/clips/clip_00010-00020.pre-card.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-show_streams",
+          "-of",
+          "json",
+          "<TMP>/clips/clip_00010-00020.pre-card.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-v",
+          "error",
+          "-f",
+          "concat",
+          "-safe",
+          "0",
+          "-i",
+          "<TMP>/clips/clip_00010-00020.pre-card.cardlist.txt",
+          "-copyts",
+          "-c",
+          "copy",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/clips/clip_00010-00020.mp4"
+        ],
+        "via": "run",
+        "listing": {
+          "<TMP>/clips/clip_00010-00020.pre-card.cardlist.txt": [
+            "file '<TMP>/clips/clip_00010-00020.pre-card.mp4'",
+            "file '<TMP>/data/outro/outro2_1080x1920_30_yuv420p_48000_2.mp4'"
+          ]
+        }
+      },
+      {
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-select_streams",
+          "v:0",
+          "-read_intervals",
+          "%+#5",
+          "-show_entries",
+          "frame=pts_time",
+          "-of",
+          "csv=p=0",
+          "<TMP>/clips/clip_00010-00020.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-ignore_editlist",
+          "1",
+          "-select_streams",
+          "v:0",
+          "-read_intervals",
+          "%+#5",
+          "-show_entries",
+          "frame=pts_time",
+          "-of",
+          "csv=p=0",
+          "<TMP>/clips/clip_00010-00020.mp4"
+        ],
+        "via": "run"
+      }
+    ],
+    "calls": [
+      {
+        "tracker.compute_tracking": {
+          "args": [
+            "<TMP>/clips/clip_00010-00020.source.mp4"
+          ],
+          "model_name": "yolov8n-pose.pt",
+          "sample_fps": 8,
+          "force_fit_blur": true,
+          "shot_aware": true,
+          "no_subject": "center"
+        }
+      }
+    ],
+    "returned": "<TMP>/clips/clip_00010-00020.mp4",
+    "render_opts": {
+      "crop": "letterbox",
+      "job_captions": false
+    },
+    "files": [
+      "clips/clip_00010-00020.mp4",
+      "data/outro/outro2_1080x1920_30_yuv420p_48000_2.mp4",
+      "source.mp4"
+    ]
+  }
+}

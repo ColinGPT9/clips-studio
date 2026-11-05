@@ -1,0 +1,14 @@
+{
+  "about": "Gaming / Reaction on (clips.gaming), with the webcam the run found across the video (gaming/run.py prepare, by: video) and the streamer at it in this clip: the default stacked layout, rendered by gaming/compose.py. Person detection is faked: one person inside the webcam for the whole clip, their head inside it.",
+  "config": {"clips": {"gaming": true}},
+  "render_opts": {"gaming": {"panels": [], "cam": [0.0, 0.62, 0.26, 0.38], "by": "video"}},
+  "gaming": {
+    "frame": [1920, 1080],
+    "video_fps": 30.0,
+    "duration": 10.4,
+    "sample_fps": 8,
+    "samples": 80,
+    "people": [{"box": [40, 700, 460, 1080], "head": [170, 712, 300, 880], "head_cx": 0.12}],
+    "head_in_box": [235.0, 712.0, 880.0]
+  }
+}

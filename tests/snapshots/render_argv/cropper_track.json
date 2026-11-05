@@ -1,0 +1,169 @@
+{
+  "about": "Following the subject: the 9:16 crop piped frame by frame into the encode, scaled to 1080x1920 there.",
+  "cpu": {
+    "commands": [
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-f",
+          "rawvideo",
+          "-pix_fmt",
+          "bgr24",
+          "-s",
+          "606x1080",
+          "-r",
+          "30.0",
+          "-i",
+          "pipe:0",
+          "-i",
+          "<TMP>/clip.source.mp4",
+          "-map",
+          "0:v:0",
+          "-map",
+          "1:a:0?",
+          "-vf",
+          "scale=1080:1920:flags=lanczos,setsar=1",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "20",
+          "-pix_fmt",
+          "yuv420p",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-af",
+          "aresample=async=1,loudnorm=I=-14:TP=-1.5:LRA=11",
+          "-fps_mode",
+          "cfr",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "-shortest",
+          "<OUT>"
+        ],
+        "via": "Popen",
+        "pipes": [
+          "stdin"
+        ],
+        "stdin_bytes": 5890320
+      },
+      {
+        "argv": [
+          "ffmpeg",
+          "-v",
+          "error",
+          "-hwaccel",
+          "auto",
+          "-i",
+          "<TMP>/clip.source.mp4",
+          "-vf",
+          "select='not(mod(n\\,1))'",
+          "-vsync",
+          "0",
+          "-pix_fmt",
+          "bgr24",
+          "-f",
+          "rawvideo",
+          "-"
+        ],
+        "via": "Popen",
+        "pipes": [
+          "stdout"
+        ]
+      }
+    ],
+    "files": [
+      "clip.mp4",
+      "clip.source.mp4"
+    ]
+  },
+  "nvenc": {
+    "commands": [
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-f",
+          "rawvideo",
+          "-pix_fmt",
+          "bgr24",
+          "-s",
+          "606x1080",
+          "-r",
+          "30.0",
+          "-i",
+          "pipe:0",
+          "-i",
+          "<TMP>/clip.source.mp4",
+          "-map",
+          "0:v:0",
+          "-map",
+          "1:a:0?",
+          "-vf",
+          "scale=1080:1920:flags=lanczos,setsar=1",
+          "-c:v",
+          "h264_nvenc",
+          "-preset",
+          "p5",
+          "-rc",
+          "vbr",
+          "-cq",
+          "23",
+          "-b:v",
+          "0",
+          "-pix_fmt",
+          "yuv420p",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-af",
+          "aresample=async=1,loudnorm=I=-14:TP=-1.5:LRA=11",
+          "-fps_mode",
+          "cfr",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "-shortest",
+          "<OUT>"
+        ],
+        "via": "Popen",
+        "pipes": [
+          "stdin"
+        ],
+        "stdin_bytes": 5890320
+      },
+      {
+        "argv": [
+          "ffmpeg",
+          "-v",
+          "error",
+          "-hwaccel",
+          "auto",
+          "-i",
+          "<TMP>/clip.source.mp4",
+          "-vf",
+          "select='not(mod(n\\,1))'",
+          "-vsync",
+          "0",
+          "-pix_fmt",
+          "bgr24",
+          "-f",
+          "rawvideo",
+          "-"
+        ],
+        "via": "Popen",
+        "pipes": [
+          "stdout"
+        ]
+      }
+    ],
+    "files": [
+      "clip.mp4",
+      "clip.source.mp4"
+    ]
+  }
+}
