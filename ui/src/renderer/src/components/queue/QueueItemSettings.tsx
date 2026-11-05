@@ -452,7 +452,7 @@ export default function QueueItemSettings({
             className="input !w-64"
             value={longformMode}
             onChange={(e) => setLongformMode(e.target.value)}
-            aria-label="Longform output type"
+            aria-label={t("Longform output type")}
           >
             <option value="short_clips">Short Clips (up to 60s, horizontal)</option>
             <option value="clips_140">Clips (up to 140s — X/Twitter)</option>

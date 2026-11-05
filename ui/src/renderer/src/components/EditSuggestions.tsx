@@ -58,7 +58,7 @@ export default function EditSuggestions({
                 className={`${button} text-accent font-medium`}
                 disabled={busy || Boolean(card.useOff)}
                 onClick={() => onUse(card.id)}
-                title="Draw this suggestion on the timeline. Nothing renders until you apply your edits."
+                title={t("Draw this suggestion on the timeline. Nothing renders until you apply your edits.")}
               >
                 Use
               </button>
@@ -68,7 +68,7 @@ export default function EditSuggestions({
                 className={button}
                 disabled={busy}
                 onClick={() => onTakeBack(card.id)}
-                title="Take out only what this suggestion put in. Your own changes stay."
+                title={t("Take out only what this suggestion put in. Your own changes stay.")}
               >
                 Take it back
               </button>
@@ -88,7 +88,7 @@ export default function EditSuggestions({
                 className="text-muted hover:text-ink px-1 disabled:opacity-40"
                 disabled={busy}
                 onClick={() => onHide(card.id)}
-                title="Put this suggestion away. A later run that suggests the same keeps it hidden."
+                title={t("Put this suggestion away. A later run that suggests the same keeps it hidden.")}
               >
                 Hide
               </button>

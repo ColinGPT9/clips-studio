@@ -981,7 +981,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
 
               <label
                 className="flex items-center gap-2 cursor-pointer text-sm shrink-0 whitespace-nowrap"
-                title="Burn captions into this video’s clips"
+                title={t("Burn captions into this video’s clips")}
               >
                 <input
                   type="checkbox"
@@ -1327,7 +1327,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
           <input
             className="input !w-44 shrink-0"
             placeholder={t('Creator profile')}
-            aria-label="Creator profile for uploaded files"
+            aria-label={t("Creator profile for uploaded files")}
             disabled={!hasFiles}
             title={
               hasFiles

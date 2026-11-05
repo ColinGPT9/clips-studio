@@ -243,7 +243,7 @@ export default function EditorView({
           <button
             onClick={() => setTabRequest({ tab: 'youtube', n: (tabRequest?.n ?? 0) + 1 })}
             className="ml-auto shrink-0 px-3 py-1.5 rounded-lg bg-raised text-sm hover:bg-raised/70 inline-flex items-center gap-1.5"
-            title="Publish this clip to YouTube"
+            title={t("Publish this clip to YouTube")}
           >
             <YouTube size={15} /> YouTube
           </button>

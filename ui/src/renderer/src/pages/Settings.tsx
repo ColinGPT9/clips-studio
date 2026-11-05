@@ -51,7 +51,7 @@ function LanguageCard(): JSX.Element {
   }, [])
 
   return (
-    <div className="card space-y-4" aria-label="Language">
+    <div className="card space-y-4" aria-label={t("Language")}>
       <h3 className="font-semibold">{t('Language')}</h3>
       <div>
         <label htmlFor="app-lang" className="label">
@@ -112,7 +112,7 @@ function ExportFolderCard(): JSX.Element {
   }, [])
 
   return (
-    <div className="card space-y-3" aria-label="Export location">
+    <div className="card space-y-3" aria-label={t("Export location")}>
       <h3 className="font-semibold">{t('Export location')}</h3>
       <p className="text-xs text-muted">
         {t('Where exported clips are saved. Defaults to your Downloads folder.')}
@@ -171,7 +171,7 @@ function StorageCard(): JSX.Element {
   }
 
   return (
-    <div className="card space-y-3" aria-label="Storage">
+    <div className="card space-y-3" aria-label={t("Storage")}>
       <h3 className="font-semibold">{t('Storage')}</h3>
       {!info ? (
         <p className="text-xs text-muted">{t('Checking…')}</p>
@@ -265,7 +265,7 @@ function VideoStorageCard(): JSX.Element {
   if (!info || info.videos.length === 0) return <></>
 
   return (
-    <div className="card space-y-3" aria-label="Video storage">
+    <div className="card space-y-3" aria-label={t("Video storage")}>
       <h3 className="font-semibold">{t('Delete a finished video')}</h3>
       <p className="text-xs text-muted">
         {t(
@@ -334,7 +334,7 @@ function AppearanceCard(): JSX.Element {
   }
 
   return (
-    <div className="card space-y-4" aria-label="Appearance and accessibility">
+    <div className="card space-y-4" aria-label={t("Appearance and accessibility")}>
       <h3 className="font-semibold">{t('Appearance & accessibility')}</h3>
       <div>
         <label htmlFor="app-font" className="label">
@@ -449,7 +449,7 @@ function UpdateCard(): JSX.Element {
   })()
 
   return (
-    <div className="card space-y-3" aria-label="Updates">
+    <div className="card space-y-3" aria-label={t("Updates")}>
       <h3 className="font-semibold">{t('Updates')}</h3>
       <p className="text-sm text-muted">{line}</p>
       <div className="flex items-center gap-3 flex-wrap">
@@ -507,7 +507,7 @@ function SetupCard(): JSX.Element {
   const missing = (pre?.checks ?? []).filter((c) => !c.ok && c.blocking)
 
   return (
-    <div className="card space-y-3" aria-label="Setup">
+    <div className="card space-y-3" aria-label={t("Setup")}>
       <h3 className="font-semibold">{t('Setup')}</h3>
       {pre === null ? (
         <p className="text-sm text-muted">Checking what this install has…</p>
@@ -747,7 +747,7 @@ function BrandingCard(): JSX.Element {
   }, [])
 
   return (
-    <div className="card space-y-3" aria-label="Branding">
+    <div className="card space-y-3" aria-label={t("Branding")}>
       <h3 className="font-semibold">{t('Branding')}</h3>
       <label className="flex items-center gap-3">
         <input

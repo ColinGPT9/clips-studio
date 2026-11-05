@@ -112,7 +112,7 @@ export default function ClipEditor({
       <button
         onClick={onOpenEditor}
         className="btn-accent w-full !py-3 text-base font-semibold"
-        title="Open the editor: trim, cut, mute words, censor, color, captions, AI edit"
+        title={t("Open the editor: trim, cut, mute words, censor, color, captions, AI edit")}
       >
         <span className="inline-flex items-center gap-2 justify-center">
           <Scissors size={16} /> Edit this clip
@@ -137,7 +137,7 @@ export default function ClipEditor({
           </span>
         )}
         {clip.scores.sport_label && (
-          <span className="bg-raised px-2 py-1 rounded-md text-ink" title="The match moment this clip is">
+          <span className="bg-raised px-2 py-1 rounded-md text-ink" title={t("The match moment this clip is")}>
             {sportMoment(clip.scores)}
             {clip.scores.sport_bonus ? <span className="text-accent"> +{clip.scores.sport_bonus}</span> : null}
           </span>
@@ -145,12 +145,12 @@ export default function ClipEditor({
       </div>
       {clip.scores.game_why && <p className="text-xs text-muted -mt-2">{clip.scores.game_why}</p>}
       {clip.scores.sport_why && (
-        <p className="text-xs text-muted -mt-2" title="What marked this moment">
+        <p className="text-xs text-muted -mt-2" title={t("What marked this moment")}>
           {clip.scores.sport_why}
         </p>
       )}
       {clip.scores.plugin && (
-        <p className="text-xs text-muted -mt-2" title="The Marketplace pipeline that found this moment, in its own words">
+        <p className="text-xs text-muted -mt-2" title={t("The Marketplace pipeline that found this moment, in its own words")}>
           Found by {clip.scores.plugin} {clip.scores.plugin_version}
           {clip.scores.plugin_label ? `: ${clip.scores.plugin_label}` : ''}
           {clip.scores.plugin_why ? ` · ${clip.scores.plugin_why}` : ''}
@@ -162,7 +162,7 @@ export default function ClipEditor({
         <p
           key={`rating-${i}`}
           className="text-xs text-muted -mt-2"
-          title="A Marketplace plugin’s score for this moment, in its own words"
+          title={t("A Marketplace plugin’s score for this moment, in its own words")}
         >
           Rated {r.score} by {r.name || r.plugin}
           {r.version ? ` ${r.version}` : ''}
@@ -170,7 +170,7 @@ export default function ClipEditor({
         </p>
       ))}
       {clip.scores.found_score != null && (
-        <p className="text-xs text-muted -mt-2" title="The score this moment had before any plugin rated it">
+        <p className="text-xs text-muted -mt-2" title={t("The score this moment had before any plugin rated it")}>
           Score when found: {clip.scores.found_score}
         </p>
       )}
@@ -178,7 +178,7 @@ export default function ClipEditor({
         <p
           key={n.key}
           className="text-xs text-muted -mt-2"
-          title="What a Marketplace plugin said happens in this moment. Clips Kitty gives notes like this to the AI when it writes a new clip’s title, description and hashtags."
+          title={t("What a Marketplace plugin said happens in this moment. Clips Kitty gives notes like this to the AI when it writes a new clip’s title, description and hashtags.")}
         >
           Notes from {n.who}: {n.texts.join(' · ')}
         </p>
@@ -191,13 +191,13 @@ export default function ClipEditor({
           <p
             key={`edit-${e.id}`}
             className="text-xs text-muted -mt-2"
-            title="An edit a Marketplace plugin suggested for this clip. Open the editor to use it or hide it."
+            title={t("An edit a Marketplace plugin suggested for this clip. Open the editor to use it or hide it.")}
           >
             {suggestionLine(e, { start: clip.start_s, end: clip.end_s })}
           </p>
         ))}
       {clip.scores.intent_why && (
-        <p className="text-xs text-muted -mt-2" title="Points from the clip direction given with this video">
+        <p className="text-xs text-muted -mt-2" title={t("Points from the clip direction given with this video")}>
           Direction +{clip.scores.intent}: {clip.scores.intent_why}
           {clip.scores.required ? ` · kept as asked (${clip.scores.required})` : ''}
         </p>

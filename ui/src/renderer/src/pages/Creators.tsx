@@ -1,3 +1,4 @@
+import { t } from '../lib/i18n'
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import type {
@@ -218,7 +219,7 @@ export default function Creators({
                   {c.watched && (
                     <span
                       className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase bg-success/15 text-success"
-                      title="A watched channel learns into this profile"
+                      title={t("A watched channel learns into this profile")}
                     >
                       Watched
                     </span>
@@ -342,7 +343,7 @@ export default function Creators({
                     <input
                       className="input !py-1.5 text-sm !w-64"
                       value={wmName}
-                      placeholder="Profile name"
+                      placeholder={t("Profile name")}
                       onChange={(e) => setWmName(e.target.value)}
                     />
                     <WatermarkControls
@@ -384,7 +385,7 @@ export default function Creators({
                           disabled={busy}
                           onClick={() => act(() => api.splitCreatorAccount(a.account_id))}
                           className="ml-auto text-xs text-muted hover:text-red-400"
-                          title="Detach this channel into its own profile"
+                          title={t("Detach this channel into its own profile")}
                         >
                           Detach
                         </button>
@@ -406,7 +407,7 @@ export default function Creators({
                     value={addPlatform}
                     onChange={(e) => setAddPlatform(e.target.value)}
                     className="bg-base border border-raised rounded-lg px-2 py-1.5 text-xs"
-                    aria-label="Platform of the channel to add"
+                    aria-label={t("Platform of the channel to add")}
                   >
                     <option value="youtube">YouTube</option>
                     <option value="twitch">Twitch</option>
@@ -415,9 +416,9 @@ export default function Creators({
                   <input
                     value={addChannel}
                     onChange={(e) => setAddChannel(e.target.value)}
-                    placeholder="Add another channel (exact name)"
+                    placeholder={t("Add another channel (exact name)")}
                     className="flex-1 bg-base border border-raised rounded-lg px-3 py-1.5 text-xs"
-                    aria-label="Channel name to add"
+                    aria-label={t("Channel name to add")}
                   />
                   <button
                     type="submit"
@@ -521,7 +522,7 @@ export default function Creators({
                                     )
                                   }
                                   className="text-xs text-muted hover:text-red-400"
-                                  title="Delete — this fact is wrong"
+                                  title={t("Delete — this fact is wrong")}
                                   aria-label={`Delete learned fact: ${k.information}`}
                                 >
                                   <Trash />

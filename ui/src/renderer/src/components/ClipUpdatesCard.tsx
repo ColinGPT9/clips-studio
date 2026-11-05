@@ -1,3 +1,4 @@
+import { t } from '../lib/i18n'
 import { useCallback, useEffect, useState } from 'react'
 import { api, errorText } from '../lib/api'
 import { textUpdates } from '../lib/textUpdates'
@@ -22,7 +23,7 @@ export default function ClipUpdatesCard(): JSX.Element {
     try { await fn(); await refresh() } catch (e) { setError(errorText(e)) } finally { setBusy(false) }
   }
   const patch = (value: Partial<ClipUpdatesStatus>): void => { void act(() => textUpdates.settings(value)) }
-  return <section className="card space-y-4" aria-label="Clip updates">
+  return <section className="card space-y-4" aria-label={t("Clip updates")}>
     <h2 className="font-semibold">Clip updates</h2>
     <p className="text-sm text-muted">Approve clips in the app, or use your private Discord channel when you are away. Off by default.</p>
     <label className="flex gap-2"><input type="checkbox" checked={status?.enabled ?? false} disabled={busy || !status}
@@ -35,7 +36,7 @@ export default function ClipUpdatesCard(): JSX.Element {
       <label className="flex gap-2"><input type="checkbox" checked={status.show_dmca} disabled={busy}
         onChange={event => patch({show_dmca:event.target.checked})} />Show the Damage Control joke button</label>
       <label className="block text-sm">Written by: Gemma (local)
-        <select className="input w-full mt-1" aria-label="Clip updates local model" value={status.model} disabled={busy}
+        <select className="input w-full mt-1" aria-label={t("Clip updates local model")} value={status.model} disabled={busy}
           onChange={event => patch({model:event.target.value})}>
           <option value="">Use the app’s local model, or an installed Gemma</option>
           {models.map(model => <option key={model} value={model}>{model}</option>)}
@@ -55,7 +56,7 @@ export default function ClipUpdatesCard(): JSX.Element {
       <p className="text-xs text-muted">In the Developer Portal, enable Message Content Intent for typed replies. Buttons also work without it. Leave Interactions Endpoint URL empty.</p>
       <label className="flex gap-2"><input type="checkbox" checked={status.dm} disabled={busy} onChange={event => patch({dm:event.target.checked})} />Send to my DMs</label>
       {!status.dm && <div className="flex gap-2">
-        <select className="input min-w-0 flex-1" aria-label="Clip updates channel" value={status.channel_id} disabled={busy}
+        <select className="input min-w-0 flex-1" aria-label={t("Clip updates channel")} value={status.channel_id} disabled={busy}
           onChange={event => patch({channel_id:event.target.value})}>
           <option value="">Choose a private channel</option>
           {channels.map(channel => <option key={channel.id} value={channel.id}>{channel.guild} · {channel.name}</option>)}

@@ -1,3 +1,4 @@
+import { t } from '../lib/i18n'
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import type { BrandingProfile, WatermarkConfig } from '../lib/types'
@@ -118,7 +119,7 @@ export default function BrandingEditor(): JSX.Element {
         <input
           className="input !py-1 text-sm !w-52"
           value={name}
-          placeholder="Profile name (e.g. YouTube Channel)"
+          placeholder={t("Profile name (e.g. YouTube Channel)")}
           onChange={(e) => setName(e.target.value)}
         />
       </div>

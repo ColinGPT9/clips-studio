@@ -188,7 +188,7 @@ export default function FeedbackHub(): JSX.Element {
           reset()
           setOpen(true)
         }}
-        title="Report a bug, request a feature, or suggest an improvement — no account needed"
+        title={t("Report a bug, request a feature, or suggest an improvement — no account needed")}
       >
         <span aria-hidden>
           <Chat />

@@ -366,7 +366,7 @@ export default function MultilingualExport({
             setFolder(e.target.value)
             setExportFolder(e.target.value)
           }}
-          placeholder="export folder"
+          placeholder={t("export folder")}
           title={folder}
         />
         <button

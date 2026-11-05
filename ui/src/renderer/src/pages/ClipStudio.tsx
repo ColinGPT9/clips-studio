@@ -1,3 +1,4 @@
+import { t } from '../lib/i18n'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import NoClipsExplanation from '../components/NoClipsExplanation'
 import ClipDirectionNote from '../components/ClipDirectionNote'
@@ -296,8 +297,8 @@ export default function ClipStudio({
         <input
           type="search"
           className="input !w-72"
-          placeholder="Search your videos or channels…"
-          aria-label="Search processed videos by title or channel"
+          placeholder={t("Search your videos or channels…")}
+          aria-label={t("Search processed videos by title or channel")}
           value={videoSearch}
           onChange={(e) => setVideoSearch(e.target.value)}
         />
@@ -358,7 +359,7 @@ export default function ClipStudio({
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-5 items-start">
           <div className="xl:col-span-3 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex gap-1.5" role="group" aria-label="Filter clips by format">
+              <div className="flex gap-1.5" role="group" aria-label={t("Filter clips by format")}>
                 {(
                   [
                     ['all', 'All'],
@@ -408,7 +409,7 @@ export default function ClipStudio({
                 <button
                   className="btn-ghost !py-1 !px-3 text-xs"
                   onClick={() => setShowSchedule(true)}
-                  title="When each scheduled post is due, and what actually posted"
+                  title={t("When each scheduled post is due, and what actually posted")}
                 >
                   Schedule
                 </button>

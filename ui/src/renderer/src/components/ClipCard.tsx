@@ -1,3 +1,4 @@
+import { t } from '../lib/i18n'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import type { Clip } from '../lib/types'
@@ -106,7 +107,7 @@ export default function ClipCard({
           {suggested && (
             <span
               className="absolute top-9 left-2 bg-accent/90 text-black px-1.5 py-0.5 rounded text-[10px] font-bold"
-              title="A Marketplace plugin suggested an edit for this clip. Open it in the editor to see it."
+              title={t("A Marketplace plugin suggested an edit for this clip. Open it in the editor to see it.")}
             >
               Suggested edit
             </span>
@@ -158,7 +159,7 @@ export default function ClipCard({
       {onDelete && (
         <button
           aria-label={`Delete ${name}`}
-          title="Delete this clip and its file. The video and other clips stay."
+          title={t("Delete this clip and its file. The video and other clips stay.")}
           onClick={(e) => {
             e.stopPropagation()
             if (window.confirm(`Delete this clip and its file?\n\n"${name}"\n\nOnly this clip is removed — the video and your other clips stay. Can't be undone.`)) {
@@ -177,7 +178,7 @@ export default function ClipCard({
       {onPublish && (
         <button
           aria-label={`Publish ${name}`}
-          title="Publish just this clip"
+          title={t("Publish just this clip")}
           onClick={(e) => {
             e.stopPropagation()
             onPublish()

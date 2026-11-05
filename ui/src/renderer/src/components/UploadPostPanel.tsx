@@ -572,7 +572,7 @@ export default function UploadPostPanel({
               className="input !py-1 text-sm !w-60"
               value={at}
               onChange={(e) => setAt(e.target.value)}
-              aria-label="Scheduled time"
+              aria-label={t("Scheduled time")}
             />
             <p className="text-[11px] text-muted mt-1">
               {/* Their API defaults to UTC, so the zone travels with it. */}
