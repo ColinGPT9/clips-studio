@@ -28,7 +28,7 @@ import time
 from contextlib import suppress
 from pathlib import Path
 
-from core.scrub import scrub_secrets
+from core.scrub import redact_secrets
 from llm.base import LLMBackend
 from llm.providers.base import LLMError, ModelInfo
 from llm.signin.base import SignInProvider
@@ -210,7 +210,7 @@ class ChatGPTPlan(SignInProvider):
             raise
         except Exception as e:
             raise LLMError("provider_down", "Codex, which runs the ChatGPT plan, didn't start: "
-                                            f"{scrub_secrets(type(e).__name__)}.") from e
+                                            f"{redact_secrets(type(e).__name__)}.") from e
 
     def _get_client(self):
         """The shared client. Call with self._lock held."""

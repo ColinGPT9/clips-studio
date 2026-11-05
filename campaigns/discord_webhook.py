@@ -17,7 +17,7 @@ from urllib.parse import quote
 
 from campaigns import discord_http
 from campaigns.discord_http import DiscordError
-from core.scrub import scrub_secrets
+from core.scrub import redact_secrets
 
 #: What Test posts (Settings → Discord → Destinations), after a confirm.
 TEST_MESSAGE = "Clips Kitty test message. You can delete it."
@@ -62,7 +62,7 @@ def _clean(text: str, token: str) -> str:
     text = str(text or "")
     if token:
         text = text.replace(token, "[redacted]")
-    return scrub_secrets(text)[:300]
+    return redact_secrets(text)[:300]
 
 
 def _code(got) -> int:

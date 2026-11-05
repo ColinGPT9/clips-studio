@@ -12,7 +12,7 @@ import { seedOptions, withoutPipelineInSteps } from '../components/queue/AddVide
 import PipelineFields from '../components/PipelineFields'
 import { usePipelines } from '../lib/plugins'
 import type { JobOptions } from '../lib/types'
-import { platformLabel, WOOPSOCIAL_PLATFORMS } from '../lib/uploadpost'
+import { WOOPSOCIAL_PLATFORMS } from '../lib/uploadpost'
 import { t } from '../lib/i18n'
 import { useAIStatus } from '../lib/useAIStatus'
 import { woopTargetLabel } from '../lib/woopTargets'

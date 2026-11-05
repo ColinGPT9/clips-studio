@@ -14,7 +14,7 @@ import time
 
 import requests
 
-from core.scrub import scrub_secrets
+from core.scrub import redact_secrets
 from llm.providers.base import LLMError, ProviderSpec
 
 TIMEOUT = 120
@@ -92,7 +92,7 @@ def error_from(spec: ProviderSpec, status: int, body) -> LLMError:
     """A provider's error, in the app's words, with their detail scrubbed."""
     err = _error_in(body) or (body if isinstance(body, dict) else {})
     code = str(err.get("code") or err.get("type") or err.get("status") or "").lower()
-    detail = scrub_secrets(str(err.get("message") or "")).strip()[:240]
+    detail = redact_secrets(str(err.get("message") or "")).strip()[:240]
     label = spec.label
     if code in _NO_CREDIT_CODES or status == 402:
         return LLMError("no_credits", f"Your {label} account is out of credit or over its spending limit. "

@@ -320,12 +320,12 @@ class Worker(threading.Thread):
                 # Stored and shown, so anything key-shaped is taken out first.
                 # A cloud provider's error is already written without the key;
                 # this is the net for anything else that might echo one.
-                from core.scrub import scrub_secrets
+                from core.scrub import redact_secrets
                 from llm.providers.base import LLMError
 
                 # An AI failure is already in words a creator can act on, so
                 # its message is stored as it is, as /agent/chat shows it.
-                message = scrub_secrets(e.message if isinstance(e, LLMError) else str(e))
+                message = redact_secrets(e.message if isinstance(e, LLMError) else str(e))
                 db.finish_job(job["id"], "failed", message[:2000])
                 self._announce(db, job, "failed", message[:500])
             finally:

@@ -92,10 +92,10 @@ def test_factual_writer_accepts_sentence_punctuation_and_count_abbreviation(db, 
 
 
 def test_bot_tokens_are_scrubbed():
-    from core.scrub import scrub_secrets
+    from core.scrub import redact_secrets
 
     token = '.'.join((secrets.token_urlsafe(20), secrets.token_urlsafe(5), secrets.token_urlsafe(28)))
-    assert token not in scrub_secrets('Bot ' + token)
+    assert token not in redact_secrets('Bot ' + token)
 
 
 def test_owner_and_expiry_guard_remote_decisions(db):
@@ -253,6 +253,7 @@ def test_gateway_missing_ack_disconnects(db, tmp_path, monkeypatch):
                 self.first = False
                 return json.dumps({'op': 10, 'd': {'heartbeat_interval': 10}})
             await asyncio.sleep(1)
+            return None
 
         async def send(self, value):
             pass

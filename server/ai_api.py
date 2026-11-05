@@ -21,7 +21,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from core.scrub import scrub_secrets
+from core.scrub import redact_secrets
 from llm.providers import keys, oauth
 from llm.providers.adapters import adapter_for
 from llm.providers.base import LLMError
@@ -131,7 +131,7 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
         return spec
 
     def _fail(e: LLMError) -> HTTPException:
-        return HTTPException(400, scrub_secrets(e.message)[:500])
+        return HTTPException(400, redact_secrets(e.message)[:500])
 
     def _keyed(spec):
         """(spec at the address of the saved key's region, key)."""
@@ -282,7 +282,7 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
             key = oauth.exchange(spec, code, entry[1])
             _message, region = _check_key(spec, key)
         except LLMError as e:
-            return _sign_in_page(scrub_secrets(e.message), ok=False)
+            return _sign_in_page(redact_secrets(e.message), ok=False)
         keys.save_key(data_path, spec.id, key, region)
         _forget_models(spec.id)
         return _sign_in_page(f"Connected to {spec.label}. You can close this tab and go back to Clips Kitty.",
@@ -324,7 +324,7 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
                     return {"ok": False, "kind": "model_unavailable",
                             "message": f"{spec.label} doesn't list {model} for your key."}
         except LLMError as e:
-            return {"ok": False, "kind": e.kind, "message": scrub_secrets(e.message)}
+            return {"ok": False, "kind": e.kind, "message": redact_secrets(e.message)}
         return {"ok": True, "message": f"Connected to {spec.label}."
                 + (f" {model} is available." if model else "")}
 
@@ -433,7 +433,7 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
             plan.check_job({})
             answer = plan.backend(body.model.strip(), {}).generate("Reply with the single word OK.")
         except LLMError as e:
-            return {"ok": False, "kind": e.kind, "message": scrub_secrets(e.message)}
+            return {"ok": False, "kind": e.kind, "message": redact_secrets(e.message)}
         return {"ok": True, "message": f"Connected to your {plan.label}."
                 + (" It answered." if answer.strip() else "")}
 
@@ -479,4 +479,4 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
             ok, message = check_model(spec, key, model)
         if ok:
             _save_transcription(spec.id, model)
-        return {**status(), "ok": ok, "message": scrub_secrets(message)}
+        return {**status(), "ok": ok, "message": redact_secrets(message)}

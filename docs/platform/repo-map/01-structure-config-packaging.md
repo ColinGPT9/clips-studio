@@ -316,7 +316,7 @@ the feature instead of crashing (`ARCHITECTURE.md:1049-1053`).
 * **Rule for the MCP subcommand**: nothing may print; stdout carries the protocol
   (`main.py` `mcp` branch; `server/mcp.py`).
 * **Redaction**: bug reports and provider errors pass through `core/scrub.py`
-  `SECRET_PATTERNS` / `scrub_secrets()` and `server/feedback.redact()`; diagnostics are
+  `SECRET_PATTERNS` / `redact_secrets()` and `server/feedback.redact()`; diagnostics are
   built from an allowlist (`server/feedback.py:293-312` `_SETTINGS_ALLOWLIST = ("clips",
   "scoring", "video", "tracking", "analysis")`). `core/secrets.py` never logs a value.
 * Electron main uses `console.error/warn` only; `autoUpdater.logger = null`

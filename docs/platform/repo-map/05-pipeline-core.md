@@ -67,7 +67,7 @@ From `server/jobs.py:7-11` and the dispatch at `server/jobs.py:270-294`:
 6. For `process`: `identify(payload["url"])` -> `vid`; `db.set_job(id, video_id=vid)`; `cancel.set_active(vid)`; `cancel.clear(vid)`; `self.prefetch.wait_for(vid)` (`:167-186`). Then `self.prefetch.maybe_start(db)` for the next queued video (`:187`).
 7. `cfg = copy.deepcopy(self.config)`, `_check_plan(db, cfg, payload)` (signed-in AI plan gate, `:730-744`), then the payload-to-config merge (section 8) (`:197-269`).
 8. Dispatch per table above.
-9. Terminal: `db.finish_job(id, "done")`, `_run_follow_up(db, job, payload)` (the `then: {"action": "publish"}` intent, `:683-728`), `_announce(db, job, "done")` (`:295-298`). `CancelledError` -> `finish_job(id, "cancelled", "Cancelled by user")` (`:299-302`). Any `Exception` -> `traceback.print_exc()`, `scrub_secrets(str(e))`, `finish_job(id, "failed", message[:2000])`, `_announce(..., "failed", message[:500])` (`:303-313`).
+9. Terminal: `db.finish_job(id, "done")`, `_run_follow_up(db, job, payload)` (the `then: {"action": "publish"}` intent, `:683-728`), `_announce(db, job, "done")` (`:295-298`). `CancelledError` -> `finish_job(id, "cancelled", "Cancelled by user")` (`:299-302`). Any `Exception` -> `traceback.print_exc()`, `redact_secrets(str(e))`, `finish_job(id, "failed", message[:2000])`, `_announce(..., "failed", message[:500])` (`:303-313`).
 10. `finally`: clears current job id and progress entry, `cancel.set_active(None)`, `feedback.close_job_log()`, `_prune_logs()` (keeps newest `_KEEP_LOGS = 50`) (`:314-321`, `:28`, `:78-87`).
 
 `finish_job` writes `status, error, interrupted = 0, finished_at, updated_at` (`core/state.py:1536-1547`).
@@ -153,7 +153,7 @@ Tests: `tests/test_job_progress.py` (weights, monotonic, ETA, render label).
 
 ## 6. Errors
 
-- A stage failure is an exception that escapes `process_video`; the worker converts it into job `failed` with the scrubbed message (`server/jobs.py:303-313`; `core/scrub.py:scrub_secrets`).
+- A stage failure is an exception that escapes `process_video`; the worker converts it into job `failed` with the scrubbed message (`server/jobs.py:303-313`; `core/scrub.py:redact_secrets`).
 - Per-clip render failure is caught in `_finish` (`core/pipeline.py:609-627`): `_render_failure_reason(e)` (`:34-63`) gives one line (the last meaningful FFmpeg line, or an out-of-memory hint); identical repeats are counted and printed once (`:659-660`); the job continues and the clip is simply absent.
 - Mode precondition: `modes.NotVerticalError(width, height)` before any work for a Vertical Live job on a non-9:16 source (`core/pipeline.py:217-220`, `core/modes.py:36-44`); the API's retry can `drop` the option (`core/queue.py:225-231`).
 - `_cached_or_download` raises `ValueError` for an unreadable half-imported local copy (`core/pipeline.py:1030-1041`).
