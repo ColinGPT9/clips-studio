@@ -1,3 +1,4 @@
+import { t } from '../lib/i18n'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -91,7 +92,7 @@ export function ApprovalActions({itemId, showDMCA, onChanged, disabled = false}:
 function AttorneyPopup({message, onClose}: {message: string; onClose: () => void}): JSX.Element {
   const dialog = useRef<HTMLDialogElement>(null)
   useEffect(() => { dialog.current?.showModal() }, [])
-  return <dialog ref={dialog} aria-label="Contact your attorney" onCancel={onClose}
+  return <dialog ref={dialog} aria-label={t("Contact your attorney")} onCancel={onClose}
     className="card m-auto max-w-md p-6 text-ink bg-surface backdrop:bg-black/60 space-y-4">
     <h2 className="font-semibold text-lg">⚖️ Contact your attorney</h2>
     <p role="status">{message}</p>
@@ -128,7 +129,7 @@ export function ApprovalCards({onOpen}: {onOpen: (videoId: string) => void}): JS
     card?.focus()
   }), [])
   if (!status?.enabled || !pending.length) return null
-  return <section aria-label="Clip approvals" className="fixed right-5 bottom-5 z-50 w-96 max-w-[90vw] max-h-[80vh] overflow-y-auto space-y-3">
+  return <section aria-label={t("Clip approvals")} className="fixed right-5 bottom-5 z-50 w-96 max-w-[90vw] max-h-[80vh] overflow-y-auto space-y-3">
     {pending.map(item => <ApprovalCard key={item.item_id} item={item} onOpen={onOpen} />)}
   </section>
 }

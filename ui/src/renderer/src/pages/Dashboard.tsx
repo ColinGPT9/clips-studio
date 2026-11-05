@@ -436,7 +436,7 @@ export default function Dashboard({
         <section
           ref={videosCardRef}
           className="card flex flex-col overflow-hidden"
-          aria-label="Processed videos"
+          aria-label={t("Processed videos")}
         >
           <div
             ref={videosHeaderRef}
@@ -448,7 +448,7 @@ export default function Dashboard({
                 type="search"
                 className="input !w-44 !py-1 text-sm"
                 placeholder={t('Search title or channel…')}
-                aria-label="Search processed videos by title or channel"
+                aria-label={t("Search processed videos by title or channel")}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -545,7 +545,7 @@ export default function Dashboard({
                           className="text-muted hover:text-error px-1"
                           onClick={() => remove(v.video_id, v.title || v.video_id)}
                           aria-label={`Delete ${v.title || v.video_id}`}
-                          title="Delete this video and its clips"
+                          title={t("Delete this video and its clips")}
                         >
                           <Trash />
                         </button>
@@ -565,7 +565,7 @@ export default function Dashboard({
                                   <button
                                     className="text-left text-accent hover:underline"
                                     onClick={() => onOpenInStudio(v.video_id, c.id)}
-                                    title="Open this clip in Clip Editor"
+                                    title={t("Open this clip in Clip Editor")}
                                   >
                                     {c.title || c.hook || 'Untitled'}
                                   </button>{' '}
@@ -590,7 +590,7 @@ export default function Dashboard({
         <section
           ref={activityCardRef}
           className="card flex flex-col overflow-hidden"
-          aria-label="Activity log"
+          aria-label={t("Activity log")}
         >
           <h3 className="font-semibold mb-3 shrink-0">{t('Activity')}</h3>
           <div

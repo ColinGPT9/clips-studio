@@ -249,7 +249,7 @@ export default function UploadPostCard(): JSX.Element {
   const affiliate = status.affiliate_url.trim()
 
   return (
-    <section className="card space-y-3" aria-label="Upload-Post publishing">
+    <section className="card space-y-3" aria-label={t("Upload-Post publishing")}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="font-semibold">{t('Upload-Post')}</h3>
@@ -408,7 +408,7 @@ export default function UploadPostCard(): JSX.Element {
                   placeholder="https://…"
                   onChange={(e) => setAffiliateDraft(e.target.value)}
                   onBlur={() => void saveAffiliate()}
-                  aria-label="Affiliate referral URL"
+                  aria-label={t("Affiliate referral URL")}
                 />
                 <p className="mt-1">
                   {affiliate
@@ -432,7 +432,7 @@ export default function UploadPostCard(): JSX.Element {
                   value={profile}
                   onChange={(e) => setProfile(e.target.value)}
                   onBlur={() => void api.patchUploadPostSettings({ profile: profile.trim() })}
-                  aria-label="Upload-Post profile name"
+                  aria-label={t("Upload-Post profile name")}
                 />
                 <p className="mt-1">
                   {t('Only matters if you keep separate sets of social accounts.')}

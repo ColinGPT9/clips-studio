@@ -1,3 +1,4 @@
+import { t } from '../lib/i18n'
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
@@ -366,7 +367,7 @@ export default function MultilingualExport({
             setFolder(e.target.value)
             setExportFolder(e.target.value)
           }}
-          placeholder="export folder"
+          placeholder={t("export folder")}
           title={folder}
         />
         <button

@@ -392,7 +392,7 @@ function SetupWizard(props: WizardProps): JSX.Element {
             className="input"
             value={props.clientId}
             onChange={(e) => props.onClientId(e.target.value)}
-            placeholder="123456789-abc.apps.googleusercontent.com"
+            placeholder={t("123456789-abc.apps.googleusercontent.com")}
             spellCheck={false}
           />
         </div>

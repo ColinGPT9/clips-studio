@@ -76,14 +76,14 @@ export default function AICard({ onOpenModels }: { onOpenModels?: () => void }):
 
   if (!status) {
     return (
-      <div className="card text-sm text-muted" aria-label="AI">
+      <div className="card text-sm text-muted" aria-label={t("AI")}>
         {t('Loading…')}
       </div>
     )
   }
 
   return (
-    <div ref={cardRef} className="card space-y-5" aria-label="AI">
+    <div ref={cardRef} className="card space-y-5" aria-label={t("AI")}>
       <div>
         <h3 className="font-semibold">{t('AI')}</h3>
         <p className="text-xs text-muted mt-0.5">

@@ -195,7 +195,7 @@ export default function TranslationReview({
                   <button
                     className="text-xs text-muted hover:text-ink px-2 py-1 shrink-0"
                     onClick={() => discard(item)}
-                    title="Throw this translation away so the next Translate run redoes it from scratch"
+                    title={t("Throw this translation away so the next Translate run redoes it from scratch")}
                   >
                     {t('Start over')}
                   </button>

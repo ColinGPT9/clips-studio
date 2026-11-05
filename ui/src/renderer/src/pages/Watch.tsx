@@ -371,22 +371,22 @@ export default function Watch({
           {clipWatch && <div className="space-y-2 text-sm">
             <label className="flex items-center gap-2">Post a clip once it has
               <input type="number" className="input !w-32" min={0} max={10000000} value={minViews}
-                aria-label="Post a clip once it has views"
+                aria-label={t("Post a clip once it has views")}
                 onChange={(e) => setMinViews(Math.max(0, Math.min(10000000, Number(e.target.value) || 0)))} /> views
             </label>
             <label className="flex items-center gap-2">Look back
               <input type="number" className="input !w-24" min={1} max={90} value={lookbackDays}
-                aria-label="Look back days"
+                aria-label={t("Look back days")}
                 onChange={(e) => setLookbackDays(Math.max(1, Math.min(90, Number(e.target.value) || 1)))} /> days
             </label>
             <label className="flex items-center gap-2">Keep at most
               <input type="number" className="input !w-24" min={1} max={100} value={maxPending}
-                aria-label="Maximum upcoming clips"
+                aria-label={t("Maximum upcoming clips")}
                 onChange={(e) => setMaxPending(Math.max(1, Math.min(100, Number(e.target.value) || 1)))} /> upcoming clips
             </label>
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={backfill} onChange={(e) => setBackfill(e.target.checked)}
-                aria-label="Also post clips already over the target from the lookback window" />
+                aria-label={t("Also post clips already over the target from the lookback window")} />
               Also post clips already over the target from the lookback window
             </label>
             <p className="text-muted">Viewer clips are posted whole, with no trimming.</p>

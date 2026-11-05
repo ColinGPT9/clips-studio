@@ -1,3 +1,4 @@
+import { t } from '../lib/i18n'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, errorText } from '../lib/api'
 import { foldPullEvent, mergePulls, pullText } from '../lib/modelPull'
@@ -161,7 +162,7 @@ export default function Models(): JSX.Element {
         // there is no reading of one: the model guide's own threshold.
         <OpenRouterPrompt
           prominent={vram !== null && vram < 5.5 * 1024 ** 3}
-          title="Don't want to run models locally?"
+          title={t("Don't want to run models locally?")}
           body="Try OpenRouter with your own key: one key for many cloud models, billed by OpenRouter to your account."
         />
       )}
