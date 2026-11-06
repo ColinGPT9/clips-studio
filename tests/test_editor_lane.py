@@ -215,6 +215,31 @@ def test_progress_goes_out_as_export_events(tmp_path, clip):
     assert events[-1]["export"]["result"]["path"].endswith("clip.mp4")
 
 
+def test_a_job_made_again_smaller_says_so(tmp_path, clip):
+    """export_presets.encode marks the steps of a file made again because it
+    came out over the size limit: the job shows "smaller", and how far along
+    that attempt is, while `fraction` keeps going up."""
+    events, during = [], []
+    lane = EditorLane(tmp_path / "data", publish=events.append)
+
+    def encode(src, dst, preset, *, workdir, run, on_progress=None):
+        on_progress(0.9, {"pass": 1, "passes": 1, "encoder": "libx264", "smaller": False, "attempt_fraction": 0.9})
+        during.append(lane.jobs()[0])
+        on_progress(0.999, {"pass": 1, "passes": 2, "encoder": "libx264", "smaller": True, "attempt_fraction": 0.25})
+        during.append(lane.jobs()[0])
+        Path(dst).write_bytes(b"made")
+        return {"bytes": 4, "retried": True}
+
+    lane._encode = encode
+    queued = lane.submit_export(source=clip, folder=tmp_path / "out", name="clip", preset=PRESET)
+    assert (queued["smaller"], queued["attempt_fraction"]) == (False, None)
+    lane.run_pending()
+    assert [(j["smaller"], j["attempt_fraction"], j["pass"], j["passes"]) for j in during] == \
+        [(False, 0.9, 1, 1), (True, 0.25, 1, 2)]
+    assert during[1]["fraction"] >= during[0]["fraction"]
+    assert events[-1]["export"]["status"] == "done"
+
+
 def test_original_never_goes_to_the_lane(tmp_path, clip):
     lane = EditorLane(tmp_path / "data", publish=lambda e: None)
     with pytest.raises(export_presets.PresetError):

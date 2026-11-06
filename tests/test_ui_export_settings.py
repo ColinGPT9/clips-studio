@@ -70,6 +70,7 @@ def _job(export_id=1, status="queued", fraction=0.0, clip_id=12, created_at="202
     """An export job as the engine's events and answers carry it."""
     return {"export_id": export_id, "kind": "export", "clip_id": clip_id, "status": status,
             "cancelling": False, "fraction": fraction, "pass": None, "passes": None, "encoder": None,
+            "smaller": False, "attempt_fraction": None,
             "folder": "C:\\Exports", "name": "my-clip", "preset": {"kind": "custom"}, "result": None,
             "error": None, "created_at": created_at, "started_at": None, "finished_at": None, **extra}
 
@@ -77,7 +78,8 @@ def _job(export_id=1, status="queued", fraction=0.0, clip_id=12, created_at="202
 def _result(bytes_=23_400_000, over=False):
     return {"bytes": bytes_, "width": 720, "height": 1280, "fps": 30.0, "codec": "h264", "encoder": "libx264",
             "hardware": False, "duration": 20.0, "mode": "quality", "video_kbps": None, "crf": 23,
-            "audio_kbps": 128, "upscale": False, "target_bytes": None, "over_target": over, "retried": False,
+            "audio_kbps": 128, "upscale": False, "target_bytes": None, "over_target": over,
+            "over_reason": "missed" if over else None, "floor_kbps": None, "retried": False,
             "fell_back_to_cpu": False, "path": "C:\\Exports\\my-clip.mp4", "file": "my-clip.mp4"}
 
 
@@ -146,7 +148,9 @@ def test_an_engine_restart_neither_hides_new_exports_nor_leaves_old_ones_running
                    "unchanged": True}
 
 
-def test_a_clip_shows_its_running_export_or_the_last_one_this_window_started(tmp_path):
+def test_a_clip_shows_its_running_exports_and_the_last_one_this_window_started(tmp_path):
+    """Export 5 is someone else's, running: it shows under this window's last
+    result rather than in its place (the fix round's two-tab finding)."""
     jobs = [
         _job(export_id=1, status="done", result=_result(), created_at="2026-11-05T10:00:00"),
         _job(export_id=2, status="failed", error="disk full", created_at="2026-11-05T10:05:00"),
@@ -163,7 +167,159 @@ def test_a_clip_shows_its_running_export_or_the_last_one_this_window_started(tmp
           none: m.clipExports(data, 12, new Set()).map((j) => j.export_id),
         }
     """, jobs)
-    assert got == {"finished": [2], "running": [5], "other": [3], "none": []}
+    assert got == {"finished": [2], "running": [2, 5], "other": [3], "none": []}
+
+
+def test_each_export_shows_its_result_the_moment_it_is_done(tmp_path):
+    """Two windows exported the same clip at once (the black-box check): the
+    first window's export was done at 27.6 s, but its window showed the result
+    only at 55 s, when the second window's export was done too. A window now
+    shows its own last result the moment it is done, with every export of the
+    clip still waiting or running under it, whoever started them. Only an
+    export the window itself starts afterwards takes the result's place."""
+    first = _job(export_id=1, status="running", fraction=0.6, created_at="2026-11-05T10:00:00")
+    second = _job(export_id=2, status="queued", created_at="2026-11-05T10:00:02")
+    first_done = {**first, "status": "done", "fraction": 1.0, "result": _result(),
+                  "finished_at": "2026-11-05T10:00:28"}
+    second_running = {**second, "status": "running", "fraction": 0.1}
+    again = _job(export_id=3, status="queued", created_at="2026-11-05T10:00:40")
+    got = _run(tmp_path, "exportJobs", """
+        const shows = (jobs, mine) => m.clipExports(jobs, 12, new Set(mine.map(m.jobKey)))
+            .map((j) => `${j.export_id}:${j.status}`)
+        const {first, second, first_done, second_running, again} = data
+        return {
+          // one window each
+          one_while_both_run: shows([first, second], [first]),
+          two_while_both_run: shows([first, second], [second]),
+          one_when_its_own_is_done: shows([first_done, second_running], [first]),
+          two_when_the_other_is_done: shows([first_done, second_running], [second]),
+          // one window started both (Export, then Export all): both lines, then the result beside the other
+          both_running: shows([first, second], [first, second]),
+          both_first_done: shows([first_done, second_running], [first, second]),
+          // exported again after the result: the new export takes its place
+          again: shows([first_done, again], [first, again]),
+          // someone else exports it again, after this window's result
+          others_again: shows([first_done, again], [first]),
+        }
+    """, {"first": first, "second": second, "first_done": first_done, "second_running": second_running,
+          "again": again})
+    assert got == {
+        "one_while_both_run": ["1:running", "2:queued"],
+        "two_while_both_run": ["1:running", "2:queued"],
+        "one_when_its_own_is_done": ["1:done", "2:running"],
+        "two_when_the_other_is_done": ["2:running"],
+        "both_running": ["1:running", "2:queued"],
+        "both_first_done": ["1:done", "2:running"],
+        "again": ["3:queued"],
+        "others_again": ["1:done", "3:queued"],
+    }
+    editor = _source("components/ClipEditor.tsx")
+    # One line each, keyed, so each keeps its place from waiting to its result.
+    assert "<ExportProgress key={jobKey(job)} jobs={[job]} onCancel={exports.cancel} />" in editor
+    assert re.search(r'<div ref=\{progressRow\} className="[^"]*\bscroll-mb-4\b', editor)
+
+
+def test_a_file_made_again_smaller_shows_that_try(tmp_path):
+    """A file that came out over its size limit is made again, smaller: the
+    lane says so (`smaller`) and how far along that try is
+    (`attempt_fraction`), while `fraction` stays near the end. One export
+    shows that try from 0, saying "Making it smaller…"; Export all's bar never
+    goes back."""
+    remake = _job(status="running", fraction=0.9991, smaller=True, attempt_fraction=0.25)
+    first_try = _job(status="running", fraction=0.4, attempt_fraction=0.4)
+    done = _job(export_id=2, status="done", fraction=1.0, result=_result())
+    got = _run(tmp_path, "exportJobs", """
+        const {remake, first_try, done} = data
+        return {
+          remake: m.exportProgress([remake]),
+          first_try: m.exportProgress([first_try]),
+          starting: m.exportProgress([{...remake, attempt_fraction: null}]),
+          batch: m.exportProgress([done, remake]),
+          queued: m.exportProgress([{...first_try, status: 'queued', fraction: 0}]),
+        }
+    """, {"remake": remake, "first_try": first_try, "done": done})
+    assert got["remake"] == {"fraction": 0.25, "smaller": True}
+    assert got["first_try"] == {"fraction": 0.4, "smaller": False}
+    assert got["starting"] == {"fraction": 0, "smaller": True}
+    assert got["batch"]["smaller"] is True and got["batch"]["fraction"] == pytest.approx((1 + 0.9991) / 2)
+    assert got["queued"] == {"fraction": 0, "smaller": False}
+    progress = _source("components/ExportProgress.tsx")
+    assert "t('Making it smaller…')" in progress and "exportProgress(jobs)" in progress
+
+
+def test_a_limit_too_small_for_long_clips_is_said_before_and_after(tmp_path):
+    """A size limit that can't keep a long clip looking good: Settings →
+    Export says so beside the size line, with how long a clip can be in its
+    tooltip, and an export made at the floor says why it is over the limit."""
+    got = _run(tmp_path, "exportJobs", """
+        const w = (s) => m.watchableUnder({longest_watchable_s: s})
+        return {
+          longest: m.LONGEST_CLIP_S,
+          watchable: [w(45.9), w(179.9), w(180), w(872.4), w(null), m.watchableUnder(null)],
+          lengths: [0.4, 1, 45.9, 60, 61, 91.7, 120, 179.9].map((s) => m.clipLength(s)),
+          words: m.clipLength(61, (s) => `«${s}»`),
+        }
+    """)
+    assert got["longest"] == 180
+    assert got["watchable"] == [45.9, 179.9, None, None, None, None]
+    assert got["lengths"] == ["1 second", "1 second", "45 seconds", "1 minute", "1 minute 1 second",
+                              "1 minute 31 seconds", "2 minutes", "2 minutes 59 seconds"]
+    assert got["words"] == "1 «minute» 1 «second»"
+
+    card = _source("components/ExportSettingsCard.tsx")
+    assert "const watchable = custom && preset.max_mb !== null ? watchableUnder(estimate) : null" in card
+    assert "{t('Limit too small for long clips')}" in card and "clipLength(watchable, t)" in card
+    progress = _source("components/ExportProgress.tsx")
+    assert "r.over_reason === 'too_small'" in progress
+    assert "{t('over the size limit')}" in progress
+
+
+def test_the_export_warnings_take_keyboard_focus_and_are_announced():
+    """Each ⚠ warning carries its detail in a tooltip, so it takes keyboard
+    focus, where the tooltip is read as its description. The card's warnings
+    sit in a polite live region that is always there, so one that appears is
+    announced; the result's warning keeps its phrase on one line."""
+    card = _source("components/ExportSettingsCard.tsx")
+    region = card.index('<span aria-live="polite"')
+    end = card.index("</p>", region)
+    warnings = card[region:end]
+    for label in ("{t('Enlarged')}", "{t('Limit too small for long clips')}", "{t('Not on this PC')}"):
+        assert label in warnings, label
+    assert warnings.count("tabIndex={0}") == 3
+    progress = _source("components/ExportProgress.tsx")
+    at = progress.index('className="text-warn whitespace-nowrap"')
+    assert "tabIndex={0}" in progress[at:at + 80]
+
+
+def test_the_progress_says_what_is_happening_once_and_in_one_place():
+    """One live region per export, in place from start to finish, with only
+    what is happening in it; the percentage is the bar's."""
+    progress = _source("components/ExportProgress.tsx")
+    assert progress.count("aria-live=") == 1
+    assert re.search(r'<span className="text-xs text-muted tabular-nums" aria-hidden="true">\s*\{pct\}%', progress)
+    assert "aria-valuenow={pct}" in progress
+
+
+def test_the_settings_card_answers_at_once_and_stays_put():
+    """The UX check's points on Settings → Export."""
+    card = _source("components/ExportSettingsCard.tsx")
+    # A second answer to the first load (React's development build loads twice)
+    # never undoes a choice made meanwhile.
+    load = card[card.index(".exportPresets()"):]
+    load = load[: load.index("}, [])")]
+    assert "if (wanted.current) return" in load
+    # Enter saves a number and leaves the cursor in its box.
+    assert ".blur()" not in card and "if (e.key === 'Enter') commit(key)" in card
+    # Format can be used while the formats are checked: H.264 always works.
+    assert "disabled={codecs === null}" not in card
+    assert "const codecList: ExportCodec[] = codecs === null ? ['h264'] : known.map((c) => c.codec)" in card
+    # Each tooltip is on its control too, not only on the name above it.
+    assert "cloneElement(children, { title: tip })" in card
+    # The size line keeps its height before its figure comes.
+    assert '<p className="text-xs text-muted flex flex-wrap items-center gap-x-3 gap-y-1 min-h-4">' in card
+    # A custom bitrate says its unit.
+    bitrate = card[card.index("number('bitrate_kbps'"):]
+    assert bitrate.index("{t('kbps')}") < bitrate.index("</Group>")
 
 
 def test_sizes_and_totals_read_the_way_the_size_limit_counts(tmp_path):
@@ -346,7 +502,7 @@ def test_a_background_export_shows_progress_a_result_and_can_be_cancelled():
     editor = _source("components/ClipEditor.tsx")
     assert "const clipJobs = exports ? clipExports(exports.jobs.values(), clip.id, exports.started) : []" in editor
     assert "disabled={busy !== null || exporting}" in editor
-    assert "<ExportProgress jobs={clipJobs} onCancel={exports.cancel} />" in editor
+    assert "<ExportProgress key={jobKey(job)} jobs={[job]} onCancel={exports.cancel} />" in editor
     studio = _source("pages/ClipStudio.tsx")
     assert "exports={exports}" in studio
     assert "disabled={exportingAll || batchRunning || toExport.length === 0}" in studio
@@ -400,6 +556,39 @@ def test_settings_has_the_export_card_and_woopsocial_the_smaller_copy():
     assert "api.patchWoopSocialSettings({ smaller_copy: on })" in woop
     assert "{t('Make a smaller copy when a clip is over 100 MB')}" in woop
     assert "checked={Boolean(status.smaller_copy)}" in woop
+
+
+def test_sizes_start_at_720p():
+    """The owner's call (2026-11-06): 240p-540p are gone from the card and the
+    types; a custom size starts at 720 (the engine refuses less, and loads an
+    old saved size at 720p: tests/test_export_presets.py)."""
+    card = _source("components/ExportSettingsCard.tsx")
+    sizes = card[card.index("const SIZES"):card.index("const SHAPES")]
+    assert re.findall(r"\['([^']+)',", sizes) == ["same", "720p", "1080p", "1440p", "2160p", "custom"]
+    types = _source("lib/types.ts")
+    assert "export type ExportResolution = 'same' | '720p' | '1080p' | '1440p' | '2160p' | 'custom'" in types
+    for removed in ("240p", "360p", "480p", "540p"):
+        assert removed not in sizes and f"'{removed}'" not in types
+    assert "t('Your own size in pixels, from 720 to 4096. It sets the shape too. Odd numbers are made even.')" in card
+
+
+def test_what_a_size_limit_does_is_said_as_it_is():
+    """A limit is said to keep a clip from growing only where it does: a clip
+    that may fit, or one the app can't size up beforehand, is made as
+    without the limit, and the smallest file made is the one kept. A file
+    made again is "made again, smaller" (once or twice; at the floor too), and
+    a miss says what happened instead of blaming the clip's length."""
+    card = _source("components/ExportSettingsCard.tsx")
+    assert "a clip that may fit, or one Clips Kitty can’t size up beforehand, is made just as it would be without " \
+           "one, so short clips aren’t made bigger to fill it." in card
+    assert "you get the smallest file made." in card
+    progress = _source("components/ExportProgress.tsx")
+    assert "t('It came out over the size limit, so it was made again, smaller.')" in progress
+    assert "t('It came out over your size limit even after it was made again to fit. Try a slightly lower limit.')" \
+        in progress
+    assert "so Clips Kitty didn’t squeeze it down to your limit." in progress
+    for gone in ("once more, a little smaller", "too small for a clip this long", "made as small as still looks good"):
+        assert gone not in progress and gone not in card, gone
 
 
 def test_the_new_screens_show_no_untranslated_english():

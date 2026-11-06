@@ -7,7 +7,7 @@ import type { Clip, PluginNote } from '../lib/types'
 import { t } from '../lib/i18n'
 import { sportMoment } from '../lib/sports'
 import { suggestionLine } from '../lib/editSuggestions'
-import { clipExports, isActive } from '../lib/exportJobs'
+import { clipExports, isActive, jobKey } from '../lib/exportJobs'
 import type { ExportTracker } from '../lib/useExportJobs'
 
 const CHANNELS = ['text', 'audio', 'visual', 'reaction', 'engagement'] as const
@@ -99,12 +99,14 @@ export default function ClipEditor({
       flash('Re-render queued — watch the Dashboard activity feed')
     })
 
-  // This clip's exports in the background: the waiting and running ones, or
-  // the last one this window started once it is finished.
+  // This clip's exports in the background: the last one this window started,
+  // as soon as it is finished (whatever else is still exporting the clip),
+  // and every one waiting or running; see clipExports.
   const clipJobs = exports ? clipExports(exports.jobs.values(), clip.id, exports.started) : []
   const exporting = clipJobs.some(isActive)
   // The bar goes under the buttons, which can sit at the bottom of the
-  // panel: brought into view when an export starts, not when a clip is picked.
+  // panel: brought into view when an export starts, not when a clip is picked,
+  // with room below it (scroll-mb-4) rather than flush against the edge.
   const progressRow = useRef<HTMLDivElement>(null)
   const [showProgress, setShowProgress] = useState(0)
   useEffect(() => {
@@ -315,8 +317,12 @@ export default function ClipEditor({
         )}
       </div>
       {exports && clipJobs.length > 0 && (
-        <div ref={progressRow}>
-          <ExportProgress jobs={clipJobs} onCancel={exports.cancel} />
+        <div ref={progressRow} className="space-y-2 scroll-mb-4">
+          {/* One line per export, each keeping its place (and what a screen
+              reader is told) from waiting to its result. */}
+          {clipJobs.map((job) => (
+            <ExportProgress key={jobKey(job)} jobs={[job]} onCancel={exports.cancel} />
+          ))}
         </div>
       )}
       {notice && <p className="text-sm text-accent">{notice}</p>}

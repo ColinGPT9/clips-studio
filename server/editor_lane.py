@@ -105,6 +105,10 @@ class LaneJob:
             "pass": self.step.get("pass"),
             "passes": self.step.get("passes"),
             "encoder": self.step.get("encoder"),
+            # Made again, smaller, because it came out over the size limit
+            # (`fraction` is then near its end); how far along that attempt is.
+            "smaller": bool(self.step.get("smaller")),
+            "attempt_fraction": self.step.get("attempt_fraction"),
             "folder": str(self.folder),
             "name": self.name,
             "preset": dict(self.preset),

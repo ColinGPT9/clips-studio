@@ -1,13 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { errorText } from '../lib/api'
 import { t } from '../lib/i18n'
-import { formatBytes, isActive, overallFraction, tally, type ExportBatch } from '../lib/exportJobs'
+import { exportProgress, formatBytes, isActive, tally, type ExportBatch } from '../lib/exportJobs'
 import type { ExportJob } from '../lib/types'
 
 /** An export made in the background (Settings → Export set to anything but
  *  Original): how far along it is, with Cancel, while it runs; then what came
  *  of it. One export for the Export button, several for Export all, which
- *  passes `batch` for its summary. */
+ *  passes `batch` for its summary.
+ *
+ *  What is happening is said in one live region that stays in place from
+ *  start to finish: "Exporting…", then the result or why it failed. The
+ *  percentage is left to the bar (aria-valuenow), so a screen reader isn't
+ *  read every step of it. */
 export default function ExportProgress({
   jobs,
   onCancel,
@@ -28,32 +33,101 @@ export default function ExportProgress({
 
   if (jobs.length === 0) return null
 
+  let status: ReactNode
+  let tone = ''
+  let note: string | undefined
+  const progress = exportProgress(jobs)
+  const pct = Math.round(progress.fraction * 100)
+  const stopping = cancelling || active.some((j) => j.cancelling)
+
   if (running) {
-    const pct = Math.round(overallFraction(jobs) * 100)
-    const stopping = cancelling || active.some((j) => j.cancelling)
     const waiting = active.every((j) => j.status === 'queued')
-    const label =
+    status =
       jobs.length > 1
-        ? `${t('Exporting')} ${Math.min(jobs.length, jobs.length - active.length + 1)} ${t('of')} ${jobs.length}…`
+        ? `${t('Exporting')} ${Math.min(jobs.length, jobs.length - active.length + 1)} ${t('of')} ${jobs.length}` +
+          (progress.smaller ? ` · ${t('Making it smaller…')}` : '…')
         : waiting
           ? t('Waiting to export…')
-          : t('Exporting…')
-    const cancel = async (): Promise<void> => {
-      setCancelling(true)
-      setError('')
-      try {
-        await onCancel(active)
-      } catch (e) {
-        setError(errorText(e))
-        setCancelling(false)
-      }
+          : progress.smaller
+            ? t('Making it smaller…')
+            : t('Exporting…')
+  } else if (batch) {
+    const s = tally(jobs)
+    const parts: string[] = []
+    if (s.done > 0)
+      parts.push(
+        `${t('Exported')} ${s.done} ${s.done === 1 ? t('clip') : t('clips')} (${formatBytes(s.bytes)}) ${t('to')} ${batch.folder}.`
+      )
+    if (batch.starred > 0) parts.push(`${t('Skipped')} ${batch.starred} ${t('already starred as exported.')}`)
+    if (batch.missing > 0) parts.push(`${batch.missing} ${t('had no video file to export.')}`)
+    if (s.over > 0) parts.push(`${s.over} ${t('came out over the size limit.')}`)
+    if (s.cancelled > 0)
+      parts.push(s.done + s.failed === 0 ? t('Export cancelled.') : `${s.cancelled} ${t('cancelled.')}`)
+    if (s.failed > 0) parts.push(`${s.failed} ${t('failed:')} ${s.firstError}`)
+    tone = s.failed > 0 ? 'text-error' : s.done > 0 ? 'text-accent' : 'text-muted'
+    status = parts.join(' ')
+  } else {
+    const job = jobs[0]
+    if (job.status === 'done' && job.result) {
+      const r = job.result
+      note = [
+        r.path,
+        r.retried ? t('It came out over the size limit, so it was made again, smaller.') : '',
+        r.fell_back_to_cpu ? t('Made on the processor, because the graphics card could not make it.') : ''
+      ]
+        .filter(Boolean)
+        .join('\n')
+      tone = 'text-accent'
+      status = (
+        <>
+          {t('Exported')} {r.file} · {formatBytes(r.bytes)} · {r.width}×{r.height}
+          {r.over_target && (
+            <span
+              className="text-warn whitespace-nowrap"
+              tabIndex={0}
+              title={
+                r.over_reason === 'too_small'
+                  ? t('Your size limit is too small for this clip to look good at this size and frame rate, so Clips Kitty didn’t squeeze it down to your limit. A smaller Size or frame rate gets closer to your limit.')
+                  : t('It came out over your size limit even after it was made again to fit. Try a slightly lower limit.')
+              }
+            >
+              {' · ⚠ '}
+              {t('over the size limit')}
+            </span>
+          )}
+        </>
+      )
+    } else if (job.status === 'failed') {
+      tone = 'text-error'
+      status = `${t('Export failed:')} ${job.error || t('the engine gave no reason.')}`
+    } else {
+      tone = 'text-muted'
+      status = t('Export cancelled.')
     }
-    return (
-      <div className="space-y-1.5" aria-live="polite">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm truncate">{label}</p>
+  }
+
+  const cancel = async (): Promise<void> => {
+    setCancelling(true)
+    setError('')
+    try {
+      await onCancel(active)
+    } catch (e) {
+      setError(errorText(e))
+      setCancelling(false)
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-3">
+        <p className={`text-sm min-w-0 ${running ? 'truncate' : tone}`} aria-live="polite" aria-atomic="true" title={note}>
+          {status}
+        </p>
+        {running && (
           <div className="flex items-center gap-3 shrink-0">
-            <span className="text-xs text-muted tabular-nums">{pct}%</span>
+            <span className="text-xs text-muted tabular-nums" aria-hidden="true">
+              {pct}%
+            </span>
             <button
               className="btn-ghost !px-2.5 !py-1 text-xs"
               onClick={() => void cancel()}
@@ -67,7 +141,9 @@ export default function ExportProgress({
               {stopping ? t('Cancelling…') : t('Cancel')}
             </button>
           </div>
-        </div>
+        )}
+      </div>
+      {running && (
         <div
           className="h-2 rounded-full bg-raised overflow-hidden"
           role="progressbar"
@@ -81,65 +157,8 @@ export default function ExportProgress({
             style={{ width: `${Math.max(2, pct)}%` }}
           />
         </div>
-        {error && <p className="text-xs text-error">{error}</p>}
-      </div>
-    )
-  }
-
-  if (batch) {
-    const s = tally(jobs)
-    const parts: string[] = []
-    if (s.done > 0)
-      parts.push(
-        `${t('Exported')} ${s.done} ${s.done === 1 ? t('clip') : t('clips')} (${formatBytes(s.bytes)}) ${t('to')} ${batch.folder}.`
-      )
-    if (batch.starred > 0) parts.push(`${t('Skipped')} ${batch.starred} ${t('already starred as exported.')}`)
-    if (batch.missing > 0) parts.push(`${batch.missing} ${t('had no video file to export.')}`)
-    if (s.over > 0) parts.push(`${s.over} ${t('came out over the size limit.')}`)
-    if (s.cancelled > 0)
-      parts.push(s.done + s.failed === 0 ? t('Export cancelled.') : `${s.cancelled} ${t('cancelled.')}`)
-    if (s.failed > 0) parts.push(`${s.failed} ${t('failed:')} ${s.firstError}`)
-    const tone = s.failed > 0 ? 'text-error' : s.done > 0 ? 'text-accent' : 'text-muted'
-    return (
-      <p className={`text-sm ${tone}`} aria-live="polite">
-        {parts.join(' ')}
-      </p>
-    )
-  }
-
-  const job = jobs[0]
-  if (job.status === 'done' && job.result) {
-    const r = job.result
-    const notes = [
-      r.path,
-      r.retried ? t('It came out over the size limit, so it was made once more, a little smaller.') : '',
-      r.fell_back_to_cpu ? t('Made on the processor, because the graphics card could not make it.') : ''
-    ]
-    return (
-      <p className="text-sm text-accent" aria-live="polite" title={notes.filter(Boolean).join('\n')}>
-        {t('Exported')} {r.file} · {formatBytes(r.bytes)} · {r.width}×{r.height}
-        {r.over_target && (
-          <span
-            className="text-warn"
-            title={t('It is over your size limit even after a second, smaller try: the limit is too small for a clip this long.')}
-          >
-            {' · ⚠ '}
-            {t('over the size limit')}
-          </span>
-        )}
-      </p>
-    )
-  }
-  if (job.status === 'failed') {
-    return (
-      <p className="text-sm text-error" aria-live="polite">
-        {t('Export failed:')} {job.error || t('the engine gave no reason.')}
-      </p>
-    )
-  }
-  return (
-    <p className="text-sm text-muted" aria-live="polite">
-      {t('Export cancelled.')}
-    </p>
+      )}
+      {running && error && <p className="text-xs text-error">{error}</p>}
+    </div>
   )
 }

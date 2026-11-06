@@ -485,7 +485,9 @@ class WoopSocialPublisher:
     `smaller_copy` (Settings → WoopSocial, off by default): a clip over the
     100 MB WoopSocial takes in one piece is sent as a copy under about 95 MB,
     made with video/export_presets.py at the clip's own size if that still
-    looks right and at 720p if not, then deleted. Off, a clip is uploaded
+    looks right and at 720p if not, then deleted. The copy's video stops at
+    100 kbps, so a clip over about 55 minutes comes out over 95 MB, and from
+    about 61 minutes over 100 MiB, refused like any clip over it. Off, a clip is uploaded
     exactly as it always was, and one over 100 MB is refused as before.
     """
 

@@ -1,4 +1,4 @@
-import type { ExportJob } from './types'
+import type { ExportEstimate, ExportJob } from './types'
 
 /** Exports on the editor lane (server/editor_lane.py), as this window knows
  *  them. Any preset but Original (Settings → Export) makes one per clip, and
@@ -82,22 +82,45 @@ export function overallFraction(jobs: ExportJob[]): number {
   return sum / jobs.length
 }
 
+/** What the bar shows for a set of exports: how far along, 0-1, and whether
+ *  the one running came out over its size limit and is being made again,
+ *  smaller (`smaller`). One export being made smaller shows that try from 0
+ *  (`attempt_fraction`): its first try has used up `fraction` by then. Several
+ *  keep the bar that never goes back, which waits there meanwhile. */
+export function exportProgress(jobs: ExportJob[]): { fraction: number; smaller: boolean } {
+  const running = jobs.find((j) => j.status === 'running')
+  const smaller = Boolean(running?.smaller)
+  if (smaller && jobs.length === 1 && running)
+    return { fraction: Math.min(1, Math.max(0, running.attempt_fraction ?? 0)), smaller }
+  return { fraction: overallFraction(jobs), smaller }
+}
+
 /** Newest first: by when the engine made them, then by number. */
 export function newestFirst(a: ExportJob, b: ExportJob): number {
   if (a.created_at !== b.created_at) return a.created_at < b.created_at ? 1 : -1
   return b.export_id - a.export_id
 }
 
-/** What to show for one clip: its waiting and running exports, or else the
- *  newest one this window started (`started`: keys), now finished. */
+/** What to show for one clip, oldest first, each export on its own line:
+ *
+ *  - the newest export this window started (`started`: keys) that has
+ *    finished, from the moment it finishes, whatever else is exporting the
+ *    clip meanwhile: another window's export, one through the local API,
+ *    Export all's;
+ *  - every export of the clip that is waiting or running, whoever started
+ *    it, so it can be seen and cancelled (and Export waits for it).
+ *
+ *  The result gives way only to an export this window starts after it
+ *  finished: exporting the clip again shows the new export, not the old
+ *  file. */
 export function clipExports(jobs: Iterable<ExportJob>, clipId: number, started: Set<string>): ExportJob[] {
-  const mine = [...jobs].filter((j) => j.clip_id === clipId)
-  const active = mine.filter(isActive).sort(newestFirst).reverse()
-  if (active.length > 0) return active
-  return mine
-    .filter((j) => started.has(jobKey(j)))
-    .sort(newestFirst)
-    .slice(0, 1)
+  const mine = [...jobs].filter((j) => j.clip_id === clipId).sort(newestFirst)
+  const own = (j: ExportJob): boolean => started.has(jobKey(j))
+  const last = mine.find((j) => own(j) && !isActive(j))
+  const active = mine.filter(isActive).reverse()
+  // Times are the engine's, to the second; a tie counts as started after.
+  const again = last && active.some((j) => own(j) && j.created_at >= (last.finished_at ?? last.created_at))
+  return last && !again ? [last, ...active] : active
 }
 
 export interface ExportTally {
@@ -139,6 +162,34 @@ export function formatBytes(bytes: number): string {
   if (mb >= 9.95) return `${Math.round(mb)} MB`
   if (mb >= 1) return `${mb.toFixed(1)} MB`
   return `${Math.max(1, Math.round(bytes / 1000))} KB`
+}
+
+/** The longest clips Clips Kitty makes for Shorts: 3 minutes (the 60s+
+ *  option's 61-180 s clips; YouTube Shorts stop there too). Settings →
+ *  Export warns when a size limit can't keep a clip this long looking good.
+ *  Longform's highlights run longer, but a warning set for them would show
+ *  for nearly every limit; each such export says so when it is done. */
+export const LONGEST_CLIP_S = 180
+
+/** How long a clip can be and still look good under the size limit
+ *  (POST /export/estimate's longest_watchable_s), when that is shorter than
+ *  the clips Clips Kitty makes (LONGEST_CLIP_S); otherwise null, as it is
+ *  with no limit. */
+export function watchableUnder(estimate: Pick<ExportEstimate, 'longest_watchable_s'> | null): number | null {
+  const seconds = estimate?.longest_watchable_s
+  return typeof seconds === 'number' && Number.isFinite(seconds) && seconds < LONGEST_CLIP_S ? seconds : null
+}
+
+/** "45 seconds", "1 minute 31 seconds", "2 minutes": a clip's length in
+ *  words, rounded down to the second. */
+export function clipLength(seconds: number, tr: Words = english): string {
+  const whole = Math.max(1, Math.floor(Number.isFinite(seconds) ? seconds : 1))
+  const minutes = Math.floor(whole / 60)
+  const rest = whole % 60
+  const parts: string[] = []
+  if (minutes > 0) parts.push(`${minutes} ${minutes === 1 ? tr('minute') : tr('minutes')}`)
+  if (rest > 0) parts.push(`${rest} ${rest === 1 ? tr('second') : tr('seconds')}`)
+  return parts.join(' ')
 }
 
 /** How many exports the Activity feed remembers what it said about. */

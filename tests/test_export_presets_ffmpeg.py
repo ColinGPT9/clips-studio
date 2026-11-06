@@ -8,6 +8,11 @@ nothing is downloaded.
 - each preset comes out at its size, codec and frame rate, with 48 kHz AAC
   and the index at the front (+faststart);
 - a size target is kept: the file is no bigger than the target;
+- a size limit the clip fits under anyway gives the same file, byte for
+  byte, as no limit, also when its estimate is over the limit but the low
+  end of the estimate isn't; one it was expected to fit under but came out
+  over is made again under it; one too small to look good is made at the
+  floor and said so;
 - WoopSocial's smaller copy of a clip over the limit is a real H.264 file
   under its target, and is gone afterwards;
 - the editor lane makes an export end to end, and a cancel kills FFmpeg and
@@ -81,10 +86,10 @@ def index_first(path: Path) -> bool:
 CASES = {
     "720p": ({"resolution": "720p"}, ("h264", 720, 1280, 60.0)),
     "square_blur_30fps": ({"aspect": "1:1", "fill": "blur", "fps": 30}, ("h264", 1080, 1080, 30.0)),
-    "landscape_bars_540p": ({"aspect": "16:9", "fill": "bars", "resolution": "540p", "bar_color": "white"},
-                            ("h264", 960, 540, 60.0)),
+    "landscape_bars_720p": ({"aspect": "16:9", "fill": "bars", "resolution": "720p", "bar_color": "white"},
+                            ("h264", 1280, 720, 60.0)),
     "4_5_crop_720p_24fps": ({"aspect": "4:5", "resolution": "720p", "fps": 24}, ("h264", 720, 900, 24.0)),
-    "smallest_360p": ({"quality": "smallest", "resolution": "360p"}, ("h264", 360, 640, 60.0)),
+    "smallest_1080p": ({"quality": "smallest", "resolution": "1080p"}, ("h264", 1080, 1920, 60.0)),
     "hevc": ({"codec": "hevc", "resolution": "720p"}, ("hevc", 720, 1280, 60.0)),
 }
 
@@ -133,6 +138,128 @@ def test_a_size_target_is_kept(busy_clip, tmp_path):
     assert size >= 3 * ep.MB, "the target was used, not something far smaller"
     assert got["over_target"] is False
     assert probe(out)["codec"] == "h264"
+
+
+def test_a_limit_the_clip_fits_under_gives_the_same_file(clip, tmp_path):
+    """Same arguments, so the same bytes: a limit never changes a clip that fits."""
+    import hashlib
+
+    preset = ep.normalize({"kind": "custom", "encoder": "cpu", "resolution": "720p", "quality": "high"})
+    free = ep.encode(clip, tmp_path / "free.mp4", preset, workdir=tmp_path / "w1")
+    limited = ep.encode(clip, tmp_path / "limited.mp4", {**preset, "max_mb": 4000}, workdir=tmp_path / "w2")
+    digest = [hashlib.sha256((tmp_path / name).read_bytes()).hexdigest() for name in ("free.mp4", "limited.mp4")]
+    assert digest[0] == digest[1]
+    assert (limited["mode"], limited["crf"], limited["retried"], limited["over_target"]) == ("target", 18, False, False)
+    assert free["bytes"] == limited["bytes"]
+
+
+def test_a_limit_between_the_real_size_and_the_estimate_gives_the_same_file(busy_clip, tmp_path, monkeypatch):
+    """The QC check's case, made for real: a limit over the file the clip
+    makes without one, but under its estimate's central figure. It used to be
+    held to the limit's bitrate, which came out bigger than with no limit.
+    Even the low end of the estimate is under it, so it is the same file."""
+    import hashlib
+
+    cpu = encoding.Encoder("h264", "cpu", "libx264")
+    source = ep.probe(busy_clip)
+    high = ep.normalize({"kind": "custom", "encoder": "cpu", "quality": "high"})
+    free = ep.encode(busy_clip, tmp_path / "free.mp4", high, workdir=tmp_path / "w1", source=source)
+    max_mb = round(free["bytes"] * 1.1 / ep.MB + 0.05, 1)
+    # An estimate that is too high: its central figure 1.12x the limit.
+    wanted = 1.12 * max_mb * ep.MB / (125 * source.duration) - 128
+    gain = ep.CPU_CODEC_GAIN["h264"] * wanted / ep._crf_kbps(ep.make_plan(source, high, cpu))
+    monkeypatch.setitem(ep.CPU_CODEC_GAIN, "h264", gain)
+    low, typical = ep._expected(ep.make_plan(source, high, cpu))[:2]
+    assert low < max_mb * ep.MB < typical, "over the estimate's low end, under its central figure"
+    limited_preset = {**high, "max_mb": max_mb}
+    assert ep.make_plan(source, limited_preset, cpu).fits_anyway is True
+    limited = ep.encode(busy_clip, tmp_path / "limited.mp4", limited_preset, workdir=tmp_path / "w2", source=source)
+    digest = [hashlib.sha256((tmp_path / name).read_bytes()).hexdigest() for name in ("free.mp4", "limited.mp4")]
+    assert digest[0] == digest[1] and limited["bytes"] == free["bytes"]
+    assert (limited["mode"], limited["crf"], limited["retried"], limited["over_target"]) == ("target", 18, False, False)
+
+
+def _same_file_under_a_limit_its_estimate_is_over(path: Path, raw: dict, tmp_path: Path) -> dict:
+    """Make `path` with `raw` at High, without a limit and under one between
+    that file's size and the low end of its estimate (which the old rule held
+    to the limit's bitrate, coming out bigger): it must be the same file."""
+    import hashlib
+
+    cpu = encoding.Encoder("h264", "cpu", "libx264")
+    source = ep.probe(path)
+    high = ep.normalize({"kind": "custom", "encoder": "cpu", "quality": "high", **raw})
+    free = ep.encode(path, tmp_path / "free.mp4", high, workdir=tmp_path / "w1", source=source)
+    max_mb = max(5.0, round(free["bytes"] * 1.15 / ep.MB + 0.05, 1))
+    low = ep._expected(ep.make_plan(source, high, cpu))[0]
+    assert free["bytes"] < max_mb * ep.MB < low, "a limit the clip fits under, under its estimate's low end"
+    limited_preset = {**high, "max_mb": max_mb}
+    assert ep.make_plan(source, limited_preset, cpu).sure is False
+    limited = ep.encode(path, tmp_path / "limited.mp4", limited_preset, workdir=tmp_path / "w2", source=source)
+    digest = [hashlib.sha256((tmp_path / name).read_bytes()).hexdigest() for name in ("free.mp4", "limited.mp4")]
+    assert digest[0] == digest[1] and limited["bytes"] == free["bytes"]
+    assert (limited["mode"], limited["crf"], limited["retried"], limited["over_target"]) == ("target", 18, False, False)
+    return {"source": source, "free": free, "max_mb": max_mb, "low": low}
+
+
+def test_a_calm_clip_under_a_limit_its_estimate_is_over_gives_the_same_file(tmp_path, ffmpeg_ok):
+    """QC's case, made for real: a still picture with a small moving square.
+    Its own bitrate is under busyness's floor, so its estimate is far too high
+    and the old rule held it to the limit's bitrate: a file several times the
+    size it has without the limit. It is made as without the limit now."""
+    clip = tmp_path / "calm.mp4"
+    graph = ("color=c=0x3a5f7d:s=1080x1920:r=60:d=24[bg];testsrc=s=120x120:r=60:d=24[fg];"
+             "[bg][fg]overlay=x='100+60*sin(t)':y=1600,format=yuv420p[v]")
+    subprocess.run([binaries.ffmpeg(), "-y", "-v", "error", "-f", "lavfi", "-i", "sine=f=440:d=24:sample_rate=96000",
+                    "-filter_complex", graph, "-map", "[v]", "-map", "0:a",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "128k",
+                    "-shortest", str(clip)], check=True, capture_output=True)
+    got = _same_file_under_a_limit_its_estimate_is_over(clip, {}, tmp_path)
+    assert ep.busyness(got["source"]) == ep.BUSY_RANGE[0]
+
+
+def test_colour_bars_under_a_limit_their_estimate_is_over_give_the_same_file(busy_clip, tmp_path):
+    """Bars cost next to nothing, so the estimate, which counts the whole
+    frame, is far too high: the old rule held such a clip to the limit's
+    bitrate, bigger than without it. It is made as without the limit now."""
+    _same_file_under_a_limit_its_estimate_is_over(busy_clip, {"aspect": "16:9", "fill": "bars"}, tmp_path)
+
+
+def test_a_clip_expected_to_fit_that_came_out_over_is_made_again_under_the_limit(busy_clip, tmp_path,
+                                                                                 monkeypatch):
+    """The estimate is made to think this busy clip fits in 5 MB at High; it
+    doesn't. The file is made once more, 2-pass at the limit's bitrate."""
+    monkeypatch.setitem(ep.CPU_CODEC_GAIN, "h264", 0.01)
+    source = ep.probe(busy_clip)
+    preset = ep.normalize({"kind": "custom", "encoder": "cpu", "quality": "high", "max_mb": 5})
+    assert ep.make_plan(source, preset, encoding.Encoder("h264", "cpu", "libx264")).fits_anyway is True
+    steps = []
+    out = tmp_path / "under5.mp4"
+    got = ep.encode(busy_clip, out, preset, workdir=tmp_path / "work", source=source,
+                    on_progress=lambda f, step: steps.append(step))
+    assert got["retried"] is True and got["over_target"] is False and out.stat().st_size <= 5 * ep.MB
+    assert got["video_kbps"] == ep.target_video_kbps(5 * ep.MB, source.duration, 128) and got["crf"] is None
+    assert any(s.get("smaller") for s in steps) and not steps[0].get("smaller")
+
+
+def test_a_limit_too_small_to_look_good_is_made_at_the_floor_and_said_so(tmp_path, ffmpeg_ok, monkeypatch):
+    """The floor is raised for the test, so a 6-second clip is "too small"
+    for 5 MB: the file is made at the floor, not below it, and comes out
+    over the limit with the reason."""
+    clip = _make(tmp_path / "noisy.mp4", size="720x1280", rate=30, seconds=6, noise=True)
+    monkeypatch.setitem(ep.FLOOR_KBPS, "h264", 24000)
+    source = ep.probe(clip)
+    floor = ep.floor_kbps(720, 1280, 30.0, "h264")
+    assert floor > ep.target_video_kbps(5 * ep.MB, source.duration, 128)
+    preset = ep.normalize({"kind": "custom", "encoder": "cpu", "quality": "custom", "rate": "bitrate",
+                           "bitrate_kbps": 30000, "max_mb": 5})
+    out = tmp_path / "floor.mp4"
+    got = ep.encode(clip, out, preset, workdir=tmp_path / "work", source=source)
+    assert got["video_kbps"] == got["floor_kbps"] == floor and got["retried"] is False
+    assert got["over_target"] is True and got["over_reason"] == "too_small"
+    video_kbps = float(subprocess.run([binaries.ffprobe(), "-v", "error", "-select_streams", "v:0", "-show_entries",
+                                       "stream=bit_rate", "-of", "default=nw=1:nk=1", str(out)],
+                                      capture_output=True, text=True, check=True).stdout) / 1000
+    assert video_kbps >= 0.8 * floor, "made at the floor, not below it"
 
 
 def test_a_smaller_copy_for_woopsocial_is_real_and_then_gone(busy_clip, tmp_path, monkeypatch):

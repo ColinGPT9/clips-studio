@@ -799,17 +799,7 @@ export interface Settings {
 
 // ---- Export presets (video/export_presets.py, docs/editor-suite/api/step1-export.md) ----
 
-export type ExportResolution =
-  | 'same'
-  | '240p'
-  | '360p'
-  | '480p'
-  | '540p'
-  | '720p'
-  | '1080p'
-  | '1440p'
-  | '2160p'
-  | 'custom'
+export type ExportResolution = 'same' | '720p' | '1080p' | '1440p' | '2160p' | 'custom'
 export type ExportAspect = 'same' | '9:16' | '16:9' | '1:1' | '4:5' | 'custom'
 export type ExportCodec = 'h264' | 'hevc' | 'av1'
 
@@ -819,7 +809,8 @@ export interface ExportPreset {
   kind: 'original' | 'custom'
   /** Counts the SHORT side: 720p is 720x1280 at 9:16, 1280x720 at 16:9. */
   resolution: ExportResolution
-  /** resolution 'custom' only (128-4096, even); the shape then comes from them. */
+  /** resolution 'custom' only (720-4096, even; under 720 is refused); the
+   *  shape then comes from them. */
   width: number
   height: number
   aspect: ExportAspect
@@ -896,8 +887,26 @@ export interface ExportEstimate {
   crf: number | null
   passes: number
   target_bytes: number | null
-  /** false: the size limit is too small for this length, and may be missed. */
+  /** false: the size limit is too small for this clip to look good. It goes
+   *  no lower than the floor (floor_kbps), and the figures are about that
+   *  size, over the limit. */
   target_reachable: boolean | null
+  /** With a size limit: true when the clip may fit under it anyway (even
+   *  the low end of its estimate is under it). null without a limit, as are
+   *  the next three. */
+  fits_anyway: boolean | null
+  /** true when its size without the limit is known well enough beforehand
+   *  to hold a clip that won't fit to the limit from the start. A clip that
+   *  may fit, or one this is false for (a graphics card, colour bars or a
+   *  blurred background, a very calm clip), is first made just as without
+   *  the limit, and made again only if it came out over. */
+  sure: boolean | null
+  /** The lowest video bitrate (kbps) a size limit is met with at this size,
+   *  frame rate and codec: below it the picture breaks up. */
+  floor_kbps: number | null
+  /** The longest clip, in seconds, that still looks good under the size
+   *  limit at this size, shape, frame rate, codec and sound. */
+  longest_watchable_s: number | null
   /** false: this PC can't encode the preset's codec. */
   available: boolean
   clip_id: number | null
@@ -919,8 +928,17 @@ export interface ExportResult {
   audio_kbps: number
   upscale: boolean
   target_bytes: number | null
-  /** Over the size limit even after the one smaller retry. */
+  /** Over the size limit, after it was made again where it could be. */
   over_target: boolean
+  /** Why it is over (null when it isn't): 'too_small', the limit is too
+   *  small for this clip to look good, so it went no lower than the floor;
+   *  'missed', over all the same after it was made again. */
+  over_reason: 'too_small' | 'missed' | null
+  /** The floor the size limit was held to (kbps), or null without a limit. */
+  floor_kbps: number | null
+  /** It came out over the size limit, and this file is one made again, smaller.
+   *  false when the file made just as without the limit was kept, because
+   *  making it again gave nothing smaller. */
   retried: boolean
   /** The graphics card refused, so it was made on the processor. */
   fell_back_to_cpu: boolean
@@ -943,6 +961,13 @@ export interface ExportJob {
   pass: number | null
   passes: number | null
   encoder: string | null
+  /** It came out over the size limit and is being made again, smaller (and
+   *  stays true once done). `fraction` has used up the bar by then, so show
+   *  `attempt_fraction`. */
+  smaller: boolean
+  /** 0-1: how far along the current try is, from 0 again when it is made
+   *  again smaller. null until the export starts. */
+  attempt_fraction: number | null
   folder: string
   name: string
   preset: ExportPreset

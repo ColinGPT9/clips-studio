@@ -440,7 +440,7 @@ export default function WoopSocialCard(): JSX.Element {
 
           <label
             className="flex items-center gap-2 cursor-pointer text-sm"
-            title={t('WoopSocial takes clips up to 100 MB. With this on, a bigger clip is sent as a copy under about 95 MB: the same size picture if it still looks good, or 720p if not. Making the copy takes a few minutes. It is deleted once it is sent, and your clip stays as it is.')}
+            title={t('WoopSocial takes clips up to 100 MB. With this on, a bigger clip is sent as a copy under about 95 MB: the same size picture if it still looks good, or 720p if not. A clip over about 55 minutes can’t get that small, and from about an hour it can’t be sent. Making the copy can take a while. It is deleted once it is sent, and your clip stays as it is.')}
           >
             <input
               type="checkbox"

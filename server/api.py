@@ -2533,14 +2533,16 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     def _saved_export() -> dict:
         """The default export preset from Settings → Export: Original until
-        one is saved, and Original again if what is stored can't be read."""
+        one is saved, and Original again if what is stored can't be read. One
+        saved with a size the app no longer offers (under 720p) loads at 720p
+        (export_presets.from_saved)."""
         d = db()
         try:
             raw = d.get_flag(EXPORT_SETTING, "")
         finally:
             d.close()
         try:
-            return export_presets.normalize(json.loads(raw) if raw else None)
+            return export_presets.from_saved(json.loads(raw) if raw else None)
         except (ValueError, TypeError):
             return export_presets.normalize(None)
 
@@ -2573,8 +2575,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         if codec == "av1" and encoding.encoder_for("av1", pref) is None:
             raise HTTPException(400, "This PC can't make AV1 videos: that needs a graphics card that encodes AV1.")
         if pref == "gpu" and encoding.encoder_for(codec, "gpu") is None:
-            raise HTTPException(400, f"This PC has no graphics card that can encode "
-                                     f"{export_presets.CODEC_NAMES[codec]} videos. Choose the CPU or Automatic.")
+            raise HTTPException(400, f"This PC has no working graphics card that can make "
+                                     f"{export_presets.CODEC_NAMES[codec]} videos. Set Made on to Automatic "
+                                     "or Processor.")
 
     def _exported(job: dict) -> None:
         """A lane export finished: mark the clip exported, as the copy does."""

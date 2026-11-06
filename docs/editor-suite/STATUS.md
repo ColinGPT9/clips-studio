@@ -1,8 +1,8 @@
 # Editor suite status
 
-Now: step 0 (guardrails) done, waiting to merge. Step 1 (export presets) in progress: the engine and the UI are built; Colin's click-through is next.
+Now: step 0 (guardrails) done, waiting to merge. Step 1 (export presets) built and checked, waiting for Colin's click-through and his word to merge.
 
-A readable view of [`state.json`](state.json), updated 2026-11-05. When the two disagree, `state.json` wins. Step statuses are todo, in progress, blocked and done.
+A readable view of [`state.json`](state.json), updated 2026-11-06. When the two disagree, `state.json` wins. Step statuses are todo, in progress, blocked and done.
 
 ## Phases
 
@@ -66,3 +66,27 @@ Full records are in `state.json`.
 **Found in existing code while building (not changed by step 0):**
 - **Ducked music ends early:** up to 0.26 s early, by a different amount each run, because `sidechaincompress` stops when either input ends. Padding both inputs and trimming the output was byte-identical in 8 of 8 trial runs.
 - **Clips carry 96 kHz audio:** `loudnorm` resamples to 192 kHz. As a result, the shipped 48 kHz end cards are never reused, and each format's card is rebuilt on first use (about 20 s).
+
+**Step 1 (export presets, encoder fix, editor lane), 2026-11-05 to 2026-11-06: checks done; Colin's click-through is next.**
+- **First run:** QC passed after 4 fixes (1-D1 to 1-D4). Black-box scenarios S1-S10 passed: Original stays byte-identical, and a 150 s 1080p60 clip exported under 100 MB (95,707,128 bytes). Performance passed: the plain pipeline is within +0.9% / -1.2% of the base, with byte-identical outputs. UX passed with 8 minor issues.
+- **Two real faults outside the scenarios** sent step 1 through a fix round:
+  - Keep under 5 MB gave a colourless, partly grey file that was reported as a success (1-D5).
+  - A generous limit made files bigger (1-D6). The HEVC estimate was also 30-50% high (1-D7).
+- **Fix round:**
+  - **Floor:** a measured watchable floor: 700 kbps of H.264 at 1080x1920 60 fps, scaled for size, frame rate and codec. A limit below it gives a file marked "over the size limit" with its reason, and the card warns beforehand.
+  - **Never bigger:** a clip that may fit, or whose size can't be told beforehand, is made as without the limit. It's checked, and made again only if over, and the smallest file made is kept.
+  - **The rest:** the HEVC estimate is measured for x265. A graphics card that fails at a remake hands it to the CPU. The 8 UX and 2 black-box minors are fixed.
+- **Colin's call (2026-11-06):** export sizes start at 720p.
+- **Checks after the fix round:**
+  - QC: 1,857,492 no-limit argv unchanged; 646,464 limited plans swept, none estimated bigger than without the limit.
+  - Black-box: R1-R7 passed; with and without Keep under 100, High gives the same sha256.
+  - UX passed (4 minors, fixed).
+  - A docs audit: about 30 sentences reworded (1-D20).
+  - 21 defects in all, every one fixed.
+- **Performance, one named exception:** a limited export whose first try comes out over is made again, 2-pass. Keep under 100 MB at Balanced on the 150 s clip took 232 s, against 122 s at step 1's first version, for the same file. That trade-off is Colin's to keep or change.
+- **Open:**
+  - Estimates: a changed frame rate is under-estimated (1.31x at 30 fps); bars, blur and calm clips are over-estimated; H.264 Balanced came out 9-17% over on 4 real clips.
+  - Hardware encoders and AV1 were checked as arguments only.
+  - The WoopSocial copy of a clip over about 55 minutes is over 95 MB.
+
+**Found in existing code while building step 1 (not changed):** FastAPI answers 500 instead of 422 for a request holding a number that parses to inf or nan (app-wide, also in the released app). The Original export copy answers 500 for a clip id SQLite can't hold. A NUL character in an export folder name is cut at the NUL on Windows.

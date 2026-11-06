@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { cloneElement, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { api, errorText } from '../lib/api'
 import { t } from '../lib/i18n'
-import { formatBytes } from '../lib/exportJobs'
+import { clipLength, formatBytes, watchableUnder } from '../lib/exportJobs'
 import type {
   ExportAspect,
   ExportCodec,
@@ -19,14 +19,13 @@ import type {
  *  chosen here, with an optional size limit, in the background on the editor
  *  lane (video/export_presets.py, server/editor_lane.py). Each choice is saved
  *  as it is made and comes back as the engine keeps it: checked, clamped, and
- *  sizes made even. What each choice does is in its tooltip. */
+ *  sizes made even. What each choice does is in its tooltip, on its name and
+ *  on the control itself. The main choices keep their places; what a choice
+ *  opens (Custom size, Custom shape, a new shape's Fill, Custom quality) takes
+ *  a row of its own under it. */
 
 const SIZES: [ExportResolution, string][] = [
   ['same', 'Same as clip'],
-  ['240p', '240p'],
-  ['360p', '360p'],
-  ['480p', '480p'],
-  ['540p', '540p'],
   ['720p', '720p'],
   ['1080p', '1080p'],
   ['1440p', '1440p'],
@@ -58,25 +57,52 @@ const RATES = ['same', 24, 25, 30, 50, 60] as const
 type NumberKey = 'width' | 'height' | 'aspect_w' | 'aspect_h' | 'crf' | 'bitrate_kbps' | 'max_mb'
 
 const SELECT = 'input !py-1 text-sm'
+// Where a choice sits in the card's two columns. The main choices keep their
+// column whatever else is open; what a choice opens takes a whole row.
+const LEFT = 'col-start-1'
+const RIGHT = 'col-start-2'
+const ROW = 'col-span-2'
 
 function same(a: ExportPreset, b: ExportPreset): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
-/** One choice: its name above its control, and what it does in the tooltip. */
-function Field({ label, tip, children }: { label: string; tip: string; children: ReactNode }): JSX.Element {
+/** One choice: its name above its control, and what it does in the tooltip,
+ *  on the control too, so keyboard and screen-reader users get it as well. */
+function Field({
+  label,
+  tip,
+  place = '',
+  children
+}: {
+  label: string
+  tip: string
+  place?: string
+  children: ReactElement<{ title?: string }>
+}): JSX.Element {
   return (
-    <label className="block min-w-0" title={tip}>
+    <label className={`block min-w-0 ${place}`} title={tip}>
       <span className="label">{label}</span>
-      <span className="block mt-1">{children}</span>
+      <span className="block mt-1">{cloneElement(children, { title: tip })}</span>
     </label>
   )
 }
 
-/** A choice made of more than one control (a width and a height). */
-function Group({ label, tip, children }: { label: string; tip: string; children: ReactNode }): JSX.Element {
+/** A choice made of more than one control (a width and a height). Each of
+ *  its controls carries the tooltip as well. */
+function Group({
+  label,
+  tip,
+  place = '',
+  children
+}: {
+  label: string
+  tip: string
+  place?: string
+  children: ReactNode
+}): JSX.Element {
   return (
-    <div className="min-w-0" title={tip} role="group" aria-label={label}>
+    <div className={`min-w-0 ${place}`} title={tip} role="group" aria-label={label}>
       <span className="label">{label}</span>
       <div className="mt-1 flex items-center gap-1.5">{children}</div>
     </div>
@@ -101,12 +127,18 @@ export default function ExportSettingsCard(): JSX.Element {
     api
       .exportPresets()
       .then((p) => {
+        // The first answer fills the card. React's development build loads it
+        // twice, and the second answer can come seconds later: it must not
+        // undo a choice made meanwhile.
+        if (wanted.current) return
         saved.current = p.default
         wanted.current = p.default
         setInfo(p)
         setPreset(p.default)
       })
-      .catch(() => setInfo(null))
+      .catch(() => {
+        /* the engine isn't answering: the card keeps saying Checking… */
+      })
   }, [])
 
   const custom = preset?.kind === 'custom'
@@ -205,11 +237,12 @@ export default function ExportSettingsCard(): JSX.Element {
   const allowed = (key: keyof ExportPresetsInfo['choices'], value: string | number): boolean =>
     (info.choices[key] as (string | number)[] | undefined)?.includes(value) ?? true
 
-  const number = (key: NumberKey, label: string, className: string, placeholder?: string): JSX.Element => (
+  const number = (key: NumberKey, label: string, tip: string, className: string, placeholder?: string): JSX.Element => (
     <input
       type="number"
       className={`input !py-1 text-sm ${className}`}
       aria-label={label}
+      title={tip}
       min={limit(key)?.[0]}
       max={limit(key)?.[1]}
       placeholder={placeholder}
@@ -219,18 +252,29 @@ export default function ExportSettingsCard(): JSX.Element {
         setTyping((d) => ({ ...d, [key]: value }))
       }}
       onBlur={() => commit(key)}
-      onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+      // Enter saves it, and the cursor stays in the box.
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commit(key)
+      }}
     />
   )
 
-  // Formats: only those this PC can make. The saved one stays listed if this
-  // PC can't make it any more, so the select shows what is saved.
+  // Formats: only those this PC can make. Until the engine has checked, H.264
+  // (the processor always makes it) and the saved one, so Format can be used
+  // at once; the rest join the list when the check is done. The saved one
+  // stays listed if this PC can't make it any more, so the select shows what
+  // is saved.
   const known = codecs ?? []
   const codec = known.find((c) => c.codec === preset.codec)
-  const codecList: ExportCodec[] = [...known.map((c) => c.codec)]
-  if (!codec) codecList.push(preset.codec)
+  const codecList: ExportCodec[] = codecs === null ? ['h264'] : known.map((c) => c.codec)
+  if (!codecList.includes(preset.codec)) codecList.push(preset.codec)
   const madeOn = Boolean(codec?.cpu && codec?.gpu) || preset.encoder !== 'auto'
   const pickCodec = (next: ExportCodec): void => {
+    if (codecs === null) {
+      // Not checked yet: the engine refuses a choice this PC can't make.
+      change({ codec: next })
+      return
+    }
     const can = known.find((c) => c.codec === next)
     const encoder =
       (preset.encoder === 'gpu' && !can?.gpu) || (preset.encoder === 'cpu' && !can?.cpu) ? 'auto' : preset.encoder
@@ -246,24 +290,31 @@ export default function ExportSettingsCard(): JSX.Element {
         : `${t('About')} ${formatBytes(perMinute.bytes)} ${t('a minute')}`
       : ''
   const sizeTip = [
-    t('About how big one minute of a clip comes out with these choices, for a tall 1080x1920 clip at 60 fps. For the quality choices it is a range, because busy footage, like gaming or fast motion, needs more space than someone talking.'),
-    custom && preset.max_mb !== null ? t('With a size limit, longer clips are made smaller to stay under it.') : ''
+    t('About how big one minute of a clip comes out with these choices, for a tall 1080x1920 clip at 60 fps. Where the size depends on the footage it is a range: busy footage, like gaming or fast motion, needs more space than someone talking. On an AMD graphics card, or for AV1 on an Intel one, it is one figure instead, for a typical clip.'),
+    custom && preset.max_mb !== null ? t('With a size limit, longer clips are made smaller to fit it, as far as the picture allows.') : ''
   ]
     .filter(Boolean)
     .join(' ')
+  // How long a clip can be and still look good under the size limit, when
+  // that is shorter than the clips Clips Kitty makes (lib/exportJobs.ts).
+  const watchable = custom && preset.max_mb !== null ? watchableUnder(estimate) : null
+
+  const exportAsTip = t('Original saves each clip exactly as Clips Kitty made it, straight away. Custom makes a new file with the choices below. It is made in the background, so you can keep working.')
+  const ownSizeTip = t('Your own size in pixels, from 720 to 4096. It sets the shape too. Odd numbers are made even.')
+  const ownShapeTip = t('Your own shape, as width to height, each a whole number from 1 to 32.')
+  const ownQualityTip = t('Quality number: lower is better and bigger (1 to 51). For H.264 made on the processor, 18 looks like the original, 23 is balanced and 28 is small; other formats and graphics cards may need other numbers. Bitrate: how much each second of picture gets, in kbps. 6000 suits a 1080p clip, and the file comes out close to it.')
+  const limitTip = t('Leave it empty for no limit. With a limit (5 to 4000 MB), a clip that may fit, or one Clips Kitty can’t size up beforehand, is made just as it would be without one, so short clips aren’t made bigger to fill it. A clip it’s sure won’t fit is made smaller to fit its length, but never so small that the picture breaks up. Every finished file is checked: one over the limit is made again to fit, as far as the picture allows, and you get the smallest file made.')
 
   return (
     <div className="card space-y-3" aria-label={t('Export settings')}>
       <h3 className="font-semibold">{t('Export')}</h3>
 
-      <label
-        className="flex items-center gap-3 text-sm"
-        title={t('Original saves each clip exactly as Clips Kitty made it, straight away. Custom makes a new file with the choices below. It is made in the background, so you can keep working.')}
-      >
+      <label className="flex items-center gap-3 text-sm" title={exportAsTip}>
         <span>{t('Export as')}</span>
         <select
           className="input !w-40 !py-1"
           aria-label={t('Export as')}
+          title={exportAsTip}
           value={preset.kind}
           onChange={(e) => change({ kind: e.target.value === 'custom' ? 'custom' : 'original' })}
         >
@@ -275,8 +326,9 @@ export default function ExportSettingsCard(): JSX.Element {
       {custom && (
         <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
           <Field
+            place={LEFT}
             label={t('Size')}
-            tip={t('The short side of the picture: 720p makes a tall clip 720x1280 and a wide one 1280x720. Clips Kitty makes clips at 1080p, so 1440p and 2160p (4K) are enlarged from that and look no sharper.')}
+            tip={t('The short side of the picture: 720p makes a tall clip 720x1280 and a wide one 1280x720. No side goes past 4096, so a long custom shape can come out smaller. Clips Kitty makes clips at 1080p, so 1440p and 2160p (4K) look no sharper than that.')}
           >
             <select
               className={SELECT}
@@ -291,19 +343,12 @@ export default function ExportSettingsCard(): JSX.Element {
               ))}
             </select>
           </Field>
-          {preset.resolution === 'custom' ? (
-            <Group
-              label={t('Width × height')}
-              tip={t('Your own size in pixels, from 128 to 4096. It sets the shape too. Odd numbers are made even.')}
-            >
-              {number('width', t('Width'), 'min-w-0')}
-              <span className="text-muted">×</span>
-              {number('height', t('Height'), 'min-w-0')}
-            </Group>
-          ) : (
+          {/* A custom size sets the shape too, so Shape gives way to it. */}
+          {preset.resolution !== 'custom' && (
             <Field
+              place={RIGHT}
               label={t('Shape')}
-              tip={t('The shape of the picture: your clip’s own, tall (9:16), wide (16:9), square (1:1) or 4:5.')}
+              tip={t('The shape of the picture: your clip’s own, tall (9:16), wide (16:9), square (1:1), 4:5 or your own.')}
             >
               <select
                 className={SELECT}
@@ -320,16 +365,22 @@ export default function ExportSettingsCard(): JSX.Element {
             </Field>
           )}
 
-          {preset.resolution !== 'custom' && preset.aspect === 'custom' && (
-            <Group label={t('Custom shape')} tip={t('Your own shape, as width to height, each from 1 to 32.')}>
-              {number('aspect_w', t('Shape width'), 'min-w-0')}
-              <span className="text-muted">:</span>
-              {number('aspect_h', t('Shape height'), 'min-w-0')}
+          {preset.resolution === 'custom' && (
+            <Group place={ROW} label={t('Width × height')} tip={ownSizeTip}>
+              {number('width', t('Width'), ownSizeTip, '!w-24 shrink-0')}
+              <span className="text-muted">×</span>
+              {number('height', t('Height'), ownSizeTip, '!w-24 shrink-0')}
             </Group>
           )}
-
+          {preset.resolution !== 'custom' && preset.aspect === 'custom' && (
+            <Group place={ROW} label={t('Custom shape')} tip={ownShapeTip}>
+              {number('aspect_w', t('Shape width'), ownShapeTip, '!w-16 shrink-0')}
+              <span className="text-muted">:</span>
+              {number('aspect_h', t('Shape height'), ownShapeTip, '!w-16 shrink-0')}
+            </Group>
+          )}
           {reshaped && (
-            <>
+            <div className={`${ROW} grid grid-cols-2 gap-x-3`}>
               <Field
                 label={t('Fill')}
                 tip={t('How the picture fills a new shape: crop it to fit, put a blurred copy of the clip behind it, or add bars of one colour.')}
@@ -358,10 +409,11 @@ export default function ExportSettingsCard(): JSX.Element {
                   />
                 </Field>
               )}
-            </>
+            </div>
           )}
 
           <Field
+            place={LEFT}
             label={t('Quality')}
             tip={t('Smallest file: small files that still look fine on a phone. Balanced: a good picture at a sensible size. High: the most detail and the biggest files. Custom: set the quality number or the bitrate yourself.')}
           >
@@ -378,39 +430,19 @@ export default function ExportSettingsCard(): JSX.Element {
               ))}
             </select>
           </Field>
-          {preset.quality === 'custom' && (
-            <Group
-              label={t('Custom quality')}
-              tip={t('Quality number: lower is better and bigger. 18 looks like the original, 23 is balanced and 28 is small (1 to 51). Bitrate: how much each second of picture gets, in kbps. 6000 suits a 1080p clip, and the file comes out close to it.')}
-            >
-              <select
-                className={`${SELECT} min-w-0`}
-                aria-label={t('Set the quality by')}
-                value={preset.rate}
-                onChange={(e) => change({ rate: e.target.value === 'bitrate' ? 'bitrate' : 'crf' })}
-              >
-                <option value="crf">{t('Quality number')}</option>
-                <option value="bitrate">{t('Bitrate')}</option>
-              </select>
-              {preset.rate === 'crf'
-                ? number('crf', t('Quality number'), '!w-16 shrink-0')
-                : number('bitrate_kbps', t('Bitrate in kbps'), '!w-24 shrink-0')}
-            </Group>
-          )}
-
           <Field
+            place={RIGHT}
             label={t('Format')}
             tip={
               codecs === null
                 ? t('Checking what this PC can make…')
-                : t('H.264 plays everywhere. HEVC makes smaller files at the same quality, but some older devices and sites can’t play it. AV1 is offered only when your graphics card can make it. Only the formats this PC can make are listed.')
+                : t('H.264 plays everywhere. HEVC makes smaller files at the same quality, but some older devices and sites can’t play it. AV1 is offered only when your graphics card can make it.')
             }
           >
             <select
               className={SELECT}
               aria-label={t('Format')}
               value={preset.codec}
-              disabled={codecs === null}
               onChange={(e) => pickCodec(e.target.value as ExportCodec)}
             >
               {codecList.map((c) => (
@@ -422,10 +454,33 @@ export default function ExportSettingsCard(): JSX.Element {
               ))}
             </select>
           </Field>
+          {preset.quality === 'custom' && (
+            <Group place={ROW} label={t('Custom quality')} tip={ownQualityTip}>
+              <select
+                className={`${SELECT} !w-auto shrink-0`}
+                aria-label={t('Set the quality by')}
+                title={ownQualityTip}
+                value={preset.rate}
+                onChange={(e) => change({ rate: e.target.value === 'bitrate' ? 'bitrate' : 'crf' })}
+              >
+                <option value="crf">{t('Quality number')}</option>
+                <option value="bitrate">{t('Bitrate')}</option>
+              </select>
+              {preset.rate === 'crf' ? (
+                number('crf', t('Quality number'), ownQualityTip, '!w-16 shrink-0')
+              ) : (
+                <>
+                  {number('bitrate_kbps', t('Bitrate in kbps'), ownQualityTip, '!w-24 shrink-0')}
+                  <span className="text-xs text-muted">{t('kbps')}</span>
+                </>
+              )}
+            </Group>
+          )}
           {madeOn && (
             <Field
+              place={RIGHT}
               label={t('Made on')}
-              tip={t('Automatic uses the graphics card when it can, which is faster, and the processor when it can’t. An export the graphics card can’t make is made on the processor instead.')}
+              tip={t('Automatic usually uses the graphics card, which is faster. If the graphics card fails while making an H.264 or HEVC export, the processor makes it instead.')}
             >
               <select
                 className={SELECT}
@@ -441,6 +496,7 @@ export default function ExportSettingsCard(): JSX.Element {
           )}
 
           <Field
+            place={LEFT}
             label={t('Frame rate')}
             tip={t('Frames a second. It never goes above the clip’s own: a 30 fps clip stays at 30.')}
           >
@@ -461,6 +517,7 @@ export default function ExportSettingsCard(): JSX.Element {
             </select>
           </Field>
           <Field
+            place={RIGHT}
             label={t('Sound')}
             tip={t('How much detail the sound keeps. 128 kbps is plenty for speech; music sounds better at 192 or more.')}
           >
@@ -480,36 +537,48 @@ export default function ExportSettingsCard(): JSX.Element {
             </select>
           </Field>
 
-          <Group
-            label={t('Keep under')}
-            tip={t('Leave it empty for no limit. With a limit (5 to 4000 MB), Clips Kitty picks the quality that fits each clip’s length, checks the finished file, and makes it once more a little smaller if it came out over. Short clips aren’t made bigger to fill it.')}
-          >
-            {number('max_mb', t('Size limit in MB'), '!w-28', t('no limit'))}
+          <Group place={LEFT} label={t('Keep under')} tip={limitTip}>
+            {number('max_mb', t('Size limit in MB'), limitTip, '!w-28', t('no limit'))}
             <span className="text-xs text-muted">{t('MB')}</span>
           </Group>
         </div>
       )}
 
-      {sizeLine && (
-        <p className="text-xs text-muted flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span title={sizeTip}>{sizeLine}</span>
+      {/* Always there, a line high, so the cards below don't move when the
+          figure arrives. */}
+      <p className="text-xs text-muted flex flex-wrap items-center gap-x-3 gap-y-1 min-h-4">
+        {sizeLine && <span title={sizeTip}>{sizeLine}</span>}
+        {/* The warnings take keyboard focus, so their tooltip is read as their
+            description, and a warning that appears is announced. */}
+        <span aria-live="polite" className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
           {custom && estimate?.upscale && (
             <span
               className="text-warn"
-              title={t('Bigger than the clip. Clips Kitty makes clips at 1080x1920, so at this size or shape the picture is enlarged from that: the file gets bigger, but it looks no sharper.')}
+              tabIndex={0}
+              title={t('At this size or shape, the picture of a tall 1080x1920 clip is enlarged, so it looks no sharper.')}
             >
               {'⚠ '}
               {t('Enlarged')}
             </span>
           )}
+          {watchable !== null && (
+            <span
+              className="text-warn"
+              tabIndex={0}
+              title={`${t('Under this limit, a clip at up to 60 fps still looks good at this size and frame rate if it’s no longer than about')} ${clipLength(watchable, t)}. ${t('A longer clip isn’t squeezed any further, so it can come out over your limit. A smaller Size or frame rate fits longer clips.')}`}
+            >
+              {'⚠ '}
+              {t('Limit too small for long clips')}
+            </span>
+          )}
           {custom && estimate && !estimate.available && (
-            <span className="text-warn" title={t('This PC can’t make this format. Choose another one.')}>
+            <span className="text-warn" tabIndex={0} title={t('This PC can’t make this format. Choose another one.')}>
               {'⚠ '}
               {t('Not on this PC')}
             </span>
           )}
-        </p>
-      )}
+        </span>
+      </p>
       {error && <p className="text-xs text-error">{error}</p>}
     </div>
   )

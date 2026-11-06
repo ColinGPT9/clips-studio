@@ -6,9 +6,11 @@ nothing changes for anyone who never picks a preset. Any other preset is one
 more encode of the finished clip (after its end card), run on the editor lane
 (server/editor_lane.py):
 
-- size: 240p to 2160p, counted on the SHORT side (720p is 720x1280 for 9:16,
+- size: 720p to 2160p, counted on the SHORT side (720p is 720x1280 for 9:16,
   1280x720 for 16:9, 720x720 for 1:1, 720x900 for 4:5), or a custom width x
-  height. Every size is even, as 4:2:0 video needs.
+  height of 720 to 4096 each. Every size is even, as 4:2:0 video needs.
+  Nothing smaller is offered (the owner's call, 2026-11-06: 240p-540p look
+  bad); a preset saved with one of those sizes loads as 720p (from_saved).
 - shape: the clip's own, 9:16, 16:9, 1:1, 4:5 or a custom ratio, filled by
   cropping, a blurred copy of the picture behind it, or plain colour bars.
 - quality: Smallest file, Balanced, High, or a custom CRF/CQ or bitrate.
@@ -17,9 +19,15 @@ more encode of the finished clip (after its end card), run on the editor lane
   this PC can do, without touching the encoder renders use.
 - frame rate: the clip's own, 24, 25, 30, 50 or 60, never above the clip's.
 - sound: AAC at 64-320 kbps, 48 kHz.
-- an optional "keep under N MB" (5-4000): the bitrate is worked out from the
-  clip's length, and the file is checked afterwards, with one retry at 0.9x
-  the bitrate when it came out over.
+- an optional "keep under N MB" (5-4000). A clip is held to the limit's
+  bitrate from the start only when its size without the limit is known well
+  enough to be sure it won't fit (make_plan: a bitrate, or an estimate
+  measured for this kind of export, whose low end is over the limit), and
+  never below a floor the picture still looks right at (floor_kbps). Any
+  other clip is made exactly as without the limit, checked, and made again
+  at the limit's bitrate only if it came out over, and the smallest file
+  made is kept. So a clip made as without the limit never ends up bigger
+  because of it.
 
 Every value comes from an allow-list or is a clamped number (normalize()), and
 the FFmpeg arguments are built only from the normalised values and the two
@@ -33,6 +41,7 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
 import threading
 from collections import deque
@@ -47,8 +56,11 @@ from video import encoding
 # under N binary megabytes, whichever one a platform's limit means.
 MB = 1_000_000
 
-RESOLUTIONS = {"240p": 240, "360p": 360, "480p": 480, "540p": 540, "720p": 720,
-               "1080p": 1080, "1440p": 1440, "2160p": 2160}
+RESOLUTIONS = {"720p": 720, "1080p": 1080, "1440p": 1440, "2160p": 2160}
+# Offered until 2026-11-06, when sizes started at 720p. A request naming one
+# is refused like any unknown size; a saved preset naming one loads as 720p.
+REMOVED_RESOLUTIONS = ("240p", "360p", "480p", "540p")
+MIN_SIDE = 720    # the smallest size offered, and the least a custom width or height can be
 CODEC_NAMES = {"h264": "H.264", "hevc": "HEVC", "av1": "AV1"}  # for messages
 ASPECTS = {"9:16": (9, 16), "16:9": (16, 9), "1:1": (1, 1), "4:5": (4, 5)}
 FILLS = ("crop", "blur", "bars")
@@ -63,10 +75,11 @@ _HEX_COLOUR = re.compile(r"#[0-9A-Fa-f]{6}")
 _NUMBER_TEXT = re.compile(r"-?\d{1,7}(\.\d{1,4})?")
 
 # (lowest, highest) for every number a preset holds. Out-of-range numbers are
-# clamped into these, not refused.
+# clamped into these, not refused, except a custom width or height under 720,
+# which is refused (_side): sizes start at 720p.
 LIMITS: dict[str, tuple[float, float]] = {
-    "width": (128, 4096),
-    "height": (128, 4096),
+    "width": (MIN_SIDE, 4096),
+    "height": (MIN_SIDE, 4096),
     "aspect_w": (1, 32),
     "aspect_h": (1, 32),
     "crf": (1, 51),
@@ -80,7 +93,7 @@ MAX_SIDE = 4096   # H.264 and the graphics-card encoders stop here
 # whether the rest is used ("original" is the copy).
 CUSTOM_DEFAULTS: dict = {
     "kind": "custom",
-    "resolution": "same",   # same | 240p ... 2160p | custom
+    "resolution": "same",   # same | 720p ... 2160p | custom
     "width": 1080,          # custom size only
     "height": 1920,
     "aspect": "same",       # same | 9:16 | 16:9 | 1:1 | 4:5 | custom
@@ -90,7 +103,7 @@ CUSTOM_DEFAULTS: dict = {
     "bar_color": "#000000",  # bars only
     "quality": "balanced",  # smallest | balanced | high | custom
     "rate": "crf",          # custom quality only: crf | bitrate
-    "crf": 23,              # custom CRF (CQ on NVIDIA, ICQ on Intel)
+    "crf": 23,              # custom number: CRF/CQ/ICQ on that encoder's scale; AMD, Apple, Intel AV1: a bitrate
     "bitrate_kbps": 6000,   # custom bitrate
     "codec": "h264",        # h264 | hevc | av1
     "encoder": "auto",      # auto | cpu | gpu
@@ -130,23 +143,76 @@ CQ_RANGE = {("nvenc", "av1"): (1, 63)}  # everything else takes 1-51
 # CPU: each came out at 0.85-1.10 times the estimate. Re-encoding a finished
 # clip at x264's medium preset saves nothing on the veryfast figure, so the
 # CPU's factor is 1. The other encoders' factors are estimates, not measured.
+#
+# HEVC on the CPU was measured (2026-11-06) with x265 fast, as exports run
+# it: 4 real finished clips (1080x1920 at 30 and 60 fps, 28-151 s,
+# busyness 0.63-1.46) at Smallest, Balanced and High at their own size, and
+# the 151 s one at 720p too, 15 files. Their video came to 0.42-0.52 times
+# the model's H.264 figure; at 0.46 every estimate is 0.88-1.09 times the
+# real file, and every file is inside the range shown (at 0.65 the estimates
+# were 1.20-1.52 times). x265 itself made 0.36-0.45 of x264 medium's bitrate
+# on the same clips (Balanced), whose x264 files came out 9-17% over the
+# model's H.264 figure.
+# The graphics cards' codec factors are estimates, not measured (no working
+# one here). They stay as they were: AMD's and Apple's quality levels are
+# bitrates worked out from them, and an export without a size limit keeps
+# its arguments.
 REF_KBPS = 6600.0
 REF_PIXELS = 1080 * 1920
 REF_FPS = 60.0
 ENCODER_GAIN = {"cpu": 1.0, "nvenc": 1.0, "qsv": 1.05, "amf": 1.1, "videotoolbox": 1.1}  # bits vs x264 veryfast
-CODEC_GAIN = {"h264": 1.0, "hevc": 0.65, "av1": 0.55}
+CODEC_GAIN = {"h264": 1.0, "hevc": 0.65, "av1": 0.55}      # the graphics cards'
+CPU_CODEC_GAIN = {"h264": 1.0, "hevc": 0.46}              # x264 and x265 (measured above)
 # How far a CRF export of real footage strays from the estimate: with the
 # clip in hand (its own bitrate says how busy the picture is), and without.
 SPREAD_KNOWN = (0.8, 1.25)
 SPREAD_UNKNOWN = (0.55, 1.6)
+# busyness() is kept within these. A clip at the bottom one is calmer than
+# the estimate can follow (a still screen, slides): its estimate is too high.
+BUSY_RANGE = (0.3, 3.0)
+# Where the estimate holds, and where it doesn't (measured 2026-11-06; the
+# table is in docs/editor-suite/api/step1-export.md): a 20 s excerpt of a real
+# 1080x1920 60 fps clip at High on the CPU, against the estimate's central
+# figure. At its own size 0.96, cropped
+# to 1:1 1.00, at 1440p 1.09 and 2160p 1.02 (enlarged), at 30 fps 1.31 and
+# 24 fps 1.47: never under the low end. With colour bars (16:9) 0.47, and
+# 0.53 at Smallest 720p; with a blurred background 0.82 (16:9) and 0.93
+# (1:1): bars cost next to nothing, and how much a blurred background costs
+# depends on how much of the frame it fills. A synthetic still picture whose
+# own bitrate is under BUSY_RANGE's floor came to 0.27. The graphics cards'
+# sizes weren't measured at all. A size limit holds a clip to its bitrate
+# from the start only where the estimate held (make_plan's `sure`).
 
 # ---- the size target ---------------------------------------------------------------
 SIZE_HEADROOM = 0.95      # aim 5% under: the container and the encoder's swings
-MIN_VIDEO_KBPS = 100      # the floor: below this there is nothing left to watch
+MIN_VIDEO_KBPS = 100      # the least a bitrate worked out for an export without a size limit gets
+                          # (AMD and Apple), and the floor of WoopSocial's smaller copy
 RETRY_FACTOR = 0.9        # the one retry when a file came out over
 # Bitrate caps on the graphics-card encoders, as multiples of the bitrate:
 # a size target stays close to its average; a chosen bitrate may peak more.
 CAPS = {"target": (1.2, 1.0), "bitrate": (1.5, 2.0)}  # (maxrate, bufsize)
+
+# The watchable floor (floor_kbps()): a size limit is never met by going below
+# this video bitrate. Measured 2026-11-06 (the table is in
+# docs/editor-suite/api/step1-export.md): a 42 s excerpt of a real 1080x1920
+# 60 fps clip (talking and walking) encoded the way a size target is (x264
+# medium and x265 fast, 2-pass) at ladders of bitrates, 240p to 1080p at 30
+# and 60 fps, each compared with the clip scaled the same way (SSIM, PSNR,
+# VMAF; colour and flat frames from signalstats) and looked at. H.264 at
+# 1080x1920 60 fps is rough but watchable from 700 kbps (VMAF 39, every frame
+# in colour): at 300, 39% of the frames had no colour (their average colour
+# was grey, where the clip's isn't) and 10% were one flat grey; at 400-600
+# faces smear. The other sizes and rates were matched to that
+# look (VMAF 39): pixels^0.66 x fps^0.56 is within 0-6% of all seven, never
+# under. x265 keeps that look on fewer bits but can't go that low: asked for
+# 200-350 kbps at 1080x1920 60 fps it made about 430-470, looking worse than
+# at 400. Its floor is the higher of the bitrate with that look and
+# the lowest bitrate it still keeps to (0-13% above the four measured). AV1
+# takes HEVC's floor (not measured: no AV1 encoder here); the graphics cards
+# take their codec's (not measured either).
+FLOOR_KBPS = {"h264": 700, "hevc": 420, "av1": 420}     # at 1080x1920, 60 fps
+FLOOR_PIXELS_EXP = {"h264": 0.66, "hevc": 0.60, "av1": 0.60}
+FLOOR_FPS_EXP = 0.56
 
 # A clip WoopSocial would refuse is copied smaller at its own size if this many
 # bits per pixel are left at the size that fits, and at 720p otherwise.
@@ -200,14 +266,32 @@ def _even(x: float) -> int:
     return max(2, int(round(x / 2.0)) * 2)
 
 
+def _side(key: str, value) -> int:
+    """A custom width or height, taken as _number takes a number and rounded
+    to even. Over its highest it is clamped like any number; under MIN_SIDE
+    it is refused, since no export is smaller than 720p."""
+    raw = value
+    if isinstance(value, str) and _NUMBER_TEXT.fullmatch(value.strip()):
+        value = float(value)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or \
+            (isinstance(value, float) and not math.isfinite(value)):
+        raise PresetError(f"{key} must be a number, not {_shown(raw)}.")
+    low, high = LIMITS[key]
+    side = _even(min(high, max(-1, value)))   # clamped first: an int too big for a float can't overflow
+    if side < low:
+        raise PresetError(f"{key.capitalize()} can't be {_shown(raw)}. A custom size is {low} to {high} pixels "
+                          "on each side.")
+    return side
+
+
 def normalize(raw) -> dict:
     """A preset with every key present and every value checked.
 
     None and "original" are the copy. Anything else must be an object whose
     keys are CUSTOM_DEFAULTS' and whose values are allowed. Choices that
     aren't allowed are refused (PresetError); numbers are clamped into
-    LIMITS and sizes rounded to even. The result is safe to build FFmpeg
-    arguments from.
+    LIMITS and sizes rounded to even, but a width or height under 720 is
+    refused. The result is safe to build FFmpeg arguments from.
     """
     if raw is None or raw == "original":
         return dict(ORIGINAL)
@@ -220,8 +304,8 @@ def normalize(raw) -> dict:
     out: dict = {}
     out["kind"] = _choice("kind", given["kind"], ("original", "custom"))
     out["resolution"] = _choice("resolution", given["resolution"], ("same", *RESOLUTIONS, "custom"))
-    out["width"] = _even(_number("width", given["width"]))
-    out["height"] = _even(_number("height", given["height"]))
+    out["width"] = _side("width", given["width"])
+    out["height"] = _side("height", given["height"])
     out["aspect"] = _choice("aspect", given["aspect"], ("same", *ASPECTS, "custom"))
     out["aspect_w"] = int(round(_number("aspect_w", given["aspect_w"])))
     out["aspect_h"] = int(round(_number("aspect_h", given["aspect_h"])))
@@ -250,6 +334,38 @@ def normalize(raw) -> dict:
     else:
         out["max_mb"] = round(_number("max_mb", given["max_mb"]), 1)
     return out
+
+
+def from_saved(raw) -> dict:
+    """The preset saved in Settings → Export, normalised (server/api.py).
+
+    One saved before sizes started at 720p still loads, so a saved choice
+    never breaks the Settings card or an export: a removed size
+    (REMOVED_RESOLUTIONS) loads as 720p, and a width x height with a side
+    under 720 is enlarged, keeping its shape, until that side is 720 (where
+    its long side would then pass 4096, it goes back to the default size
+    and, if it was the size in use, the preset becomes 720p). Anything else
+    is checked as normalize() checks it, and is refused as it would be."""
+    if isinstance(raw, dict):
+        raw = dict(raw)
+        if raw.get("resolution") in REMOVED_RESOLUTIONS:
+            raw["resolution"] = "720p"
+        w, h = raw.get("width"), raw.get("height")
+        if _plain_number(w) and _plain_number(h) and 0 < min(w, h) < MIN_SIDE:
+            short, long = min(w, h), max(w, h)
+            if long * MIN_SIDE <= MAX_SIDE * short:   # still within MAX_SIDE once grown (no float overflow)
+                raw["width"], raw["height"] = w * MIN_SIDE / short, h * MIN_SIDE / short
+            else:
+                raw["width"], raw["height"] = CUSTOM_DEFAULTS["width"], CUSTOM_DEFAULTS["height"]
+                if raw.get("resolution") == "custom":
+                    raw["resolution"] = "720p"
+    return normalize(raw)
+
+
+def _plain_number(value) -> bool:
+    """An int or a finite float, as JSON gives them (not a bool)."""
+    return (isinstance(value, int) and not isinstance(value, bool)) or \
+        (isinstance(value, float) and math.isfinite(value))
 
 
 def is_original(preset) -> bool:
@@ -375,8 +491,8 @@ def content_scale(src_w: int, src_h: int, out_w: int, out_h: int, fill: str) -> 
 
 
 def is_upscale(src_w: int, src_h: int, out_w: int, out_h: int, fill: str) -> bool:
-    """Whether the export is bigger than the clip, so it can only look softer
-    than its size suggests (until native 4K masters, Phase 4)."""
+    """Whether the clip's picture is enlarged by more than 1%, so it can only
+    look softer than its size suggests (until native 4K masters, Phase 4)."""
     return content_scale(src_w, src_h, out_w, out_h, fill) > 1.01
 
 
@@ -430,7 +546,8 @@ def model_kbps(width: int, height: int, fps: float, crf: float, codec: str, fami
     `busy` scales it for how much is going on in the picture."""
     kbps = REF_KBPS * (width * height / REF_PIXELS) ** 0.75 * (max(fps, 1.0) / REF_FPS) ** 0.7
     kbps *= 2 ** ((20 - crf) / 6)
-    return kbps * ENCODER_GAIN.get(family, 1.0) * CODEC_GAIN.get(codec, 1.0) * busy
+    gain = (CPU_CODEC_GAIN if family == "cpu" else CODEC_GAIN).get(codec, 1.0)
+    return kbps * ENCODER_GAIN.get(family, 1.0) * gain * busy
 
 
 def busyness(source: Source) -> float | None:
@@ -442,17 +559,34 @@ def busyness(source: Source) -> float | None:
         return None
     expected = REF_KBPS * (source.width * source.height / REF_PIXELS) ** 0.75 * \
         (max(source.fps, 1.0) / REF_FPS) ** 0.7
-    return min(3.0, max(0.3, source.video_kbps / expected))
+    return min(BUSY_RANGE[1], max(BUSY_RANGE[0], source.video_kbps / expected))
 
 
 def target_video_kbps(max_bytes: float, duration: float, audio_kbps: float) -> int:
     """The video bitrate that keeps `duration` seconds under `max_bytes`:
-    0.95 x 8 x bytes / seconds, less the sound, never below MIN_VIDEO_KBPS."""
+    0.95 x 8 x bytes / seconds, less the sound, never below MIN_VIDEO_KBPS.
+    WoopSocial's smaller copy is planned with this; a size limit someone
+    sets is held to floor_kbps() instead (make_plan)."""
     return max(MIN_VIDEO_KBPS, int(_target_kbps_raw(max_bytes, duration, audio_kbps)))
 
 
 def _target_kbps_raw(max_bytes: float, duration: float, audio_kbps: float) -> float:
     return SIZE_HEADROOM * 8 * max_bytes / max(duration, 0.1) / 1000 - audio_kbps
+
+
+def floor_kbps(width: int, height: int, fps: float, codec: str) -> int:
+    """The lowest video bitrate a size limit is met with at this picture size,
+    frame rate and codec (FLOOR_KBPS): below it the picture breaks up."""
+    kbps = FLOOR_KBPS[codec] * (width * height / REF_PIXELS) ** FLOOR_PIXELS_EXP[codec] \
+        * (max(fps, 1.0) / REF_FPS) ** FLOOR_FPS_EXP
+    return max(1, int(round(kbps)))
+
+
+def longest_watchable(max_bytes: float, floor: float, audio_kbps: float) -> float:
+    """The longest clip, in seconds, that `max_bytes` holds at `floor` kbps of
+    video and `audio_kbps` of sound: where target_video_kbps's formula comes
+    to the floor. A longer clip under that limit is too small to look good."""
+    return SIZE_HEADROOM * max_bytes / (125 * (floor + audio_kbps))
 
 
 def _level_crf(preset: dict) -> float:
@@ -474,7 +608,7 @@ class Plan:
     fps: float
     fps_filter: str | None
     vf: str | None
-    mode: str                 # what was asked for: quality | bitrate | target
+    mode: str                 # what was asked for: quality | bitrate | target (a size limit)
     rate: str                 # how it is encoded: crf | kbps
     crf: int | None           # CRF / CQ / ICQ, on the encoder's own scale
     video_kbps: int | None
@@ -484,12 +618,50 @@ class Plan:
     upscale: bool
     target_reachable: bool | None
     busy: float | None
+    # A size limit's plan (mode "target"); left at these without one.
+    binds: bool | None = None         # held to the limit's bitrate; False: made as without the limit
+    fits_anyway: bool | None = None   # it may fit anyway: the low end of its estimate is under the limit
+    sure: bool | None = None          # its size without the limit is known well enough to hold it to the limit
+    floor_kbps: int | None = None     # never below this for the limit (floor_kbps())
+    limit_kbps: int | None = None     # the video bitrate the limit leaves (the formula, before the floor)
+    too_small: bool = False           # that is below the floor: too small to look good
 
 
-def make_plan(source: Source, preset: dict, encoder: encoding.Encoder, *, max_bytes: int | None = None) -> Plan:
-    """How `preset` encodes `source` on `encoder`. `max_bytes` sets a size
-    target in bytes in place of the preset's max_mb, for the app's own
-    callers (smaller_copy), so it isn't held to max_mb's limits."""
+def make_plan(source: Source, preset: dict, encoder: encoding.Encoder, *, max_bytes: int | None = None,
+              typical_clip: bool = False) -> Plan:
+    """How `preset` encodes `source` on `encoder`.
+
+    A size limit (the preset's max_mb) is kept from making an export bigger
+    than the same export without it. The clip is planned exactly as without
+    the limit, with the same arguments (binds False), and encode() checks
+    the file afterwards and makes it again at the limit's bitrate only if it
+    came out over, keeping the first file if that try is no smaller, unless
+    its size without the limit is known well enough beforehand (sure) to be
+    sure it won't fit:
+    - sure: the export without the limit is at a bitrate (its size is that
+      bitrate), or it is a CRF encode on the CPU of a kind the estimate was
+      measured on (BUSY_RANGE's comment): the clip's own bitrate is known
+      and over BUSY_RANGE's floor (`typical_clip`: there is no clip, and the
+      estimate is for the app's typical one, REFERENCE), and the picture is
+      the clip's shape or cropped to a new one (not bars or a blurred
+      background). The graphics cards' sizes were never measured.
+    - It may fit anyway (fits_anyway): even the low end of its estimate
+      (_expected) is under the limit.
+    Only a sure clip whose whole estimate is over the limit is held to the
+    limit's bitrate from the start (binds), which then comes to less than
+    even that low end, and never below the watchable floor (floor_kbps()):
+    a limit that leaves less is made at the floor (too_small,
+    target_reachable False), and where a file at the floor could be bigger
+    than the export without the limit, it is made as without it. So an
+    export made as without the limit is never bigger than without it, and
+    one held to the limit is aimed below the low end of a measured estimate
+    of the export without it.
+
+    `max_bytes` sets a size target in bytes in place of the preset's max_mb,
+    for the app's own callers (smaller_copy), so it isn't held to max_mb's
+    limits. Such a target keeps the rules it always had: always held to its
+    bitrate, the lower of the target's and what the quality asked for needs,
+    and never below MIN_VIDEO_KBPS."""
     preset = normalize(preset)
     if preset["kind"] == "original":
         raise PresetError("Original is a copy of the clip, not an encode.")
@@ -500,42 +672,94 @@ def make_plan(source: Source, preset: dict, encoder: encoding.Encoder, *, max_by
     vf = video_filter(source.width, source.height, width, height, preset["fill"], preset["bar_color"], fps_filter)
     busy = busyness(source)
     family, codec = encoder.family, encoder.codec
-    crf_capable = (family, codec) in CRF_OFFSET
     audio = preset["audio_kbps"] if source.has_audio else 0
     level = _level_crf(preset)
+    upscale = is_upscale(source.width, source.height, width, height, preset["fill"])
 
     def quality_kbps(spread: float = 1.0) -> int:
         return int(model_kbps(width, height, fps, level, codec, family, busy or 1.0) * spread)
 
-    mode = "quality"
-    rate, crf, kbps, reachable = "crf", None, None, None
-    if preset["max_mb"] is not None:
-        mode = "target"
-        max_bytes = int(max_bytes if max_bytes is not None else preset["max_mb"] * MB)
-        raw = _target_kbps_raw(max_bytes, source.duration, audio)
-        reachable = raw >= MIN_VIDEO_KBPS
-        # Never more than the quality asked for needs: a 20-second clip
-        # "under 100 MB" is not made 95 MB.
-        if preset["quality"] == "custom" and preset["rate"] == "bitrate":
-            ceiling = preset["bitrate_kbps"]
-        else:
-            ceiling = quality_kbps(SPREAD_KNOWN[1] if busy else SPREAD_UNKNOWN[1])
-        rate, kbps = "kbps", max(MIN_VIDEO_KBPS, min(int(raw), ceiling))
-    elif preset["quality"] == "custom" and preset["rate"] == "bitrate":
-        mode, rate, kbps = "bitrate", "kbps", preset["bitrate_kbps"]
-    elif crf_capable:
+    def plan(mode: str, rate: str, crf: int | None, kbps: int | None, *, max_bytes: int | None = None,
+             target_reachable: bool | None = None, **limit) -> Plan:
+        passes = 2 if rate == "kbps" and not encoder.hardware and mode in ("bitrate", "target") else 1
+        return Plan(source=source, encoder=encoder, width=width, height=height, fps=fps, fps_filter=fps_filter,
+                    vf=vf, mode=mode, rate=rate, crf=crf, video_kbps=kbps, audio_kbps=audio, passes=passes,
+                    max_bytes=max_bytes, upscale=upscale, target_reachable=target_reachable, busy=busy, **limit)
+
+    # The export as it is without a size limit.
+    custom_bitrate = preset["quality"] == "custom" and preset["rate"] == "bitrate"
+    if custom_bitrate:
+        free = plan("bitrate", "kbps", None, preset["bitrate_kbps"])
+    elif (family, codec) in CRF_OFFSET:
         low, high = CQ_RANGE.get((family, codec), (1, 51))
         value = preset["crf"] if preset["quality"] == "custom" else LEVEL_CRF[preset["quality"]] + CRF_OFFSET[
             (family, codec)]
-        crf = int(min(high, max(low, value)))
+        free = plan("quality", "crf", int(min(high, max(low, value))), None)
     else:
-        rate, kbps = "kbps", max(MIN_VIDEO_KBPS, quality_kbps())
-    passes = 2 if rate == "kbps" and not encoder.hardware and mode in ("bitrate", "target") else 1
-    return Plan(source=source, encoder=encoder, width=width, height=height, fps=fps, fps_filter=fps_filter,
-                vf=vf, mode=mode, rate=rate, crf=crf, video_kbps=kbps, audio_kbps=audio, passes=passes,
-                max_bytes=max_bytes,
-                upscale=is_upscale(source.width, source.height, width, height, preset["fill"]),
-                target_reachable=reachable, busy=busy)
+        free = plan("quality", "kbps", None, max(MIN_VIDEO_KBPS, quality_kbps()))
+    if preset["max_mb"] is None:
+        return free
+
+    limit = int(max_bytes if max_bytes is not None else preset["max_mb"] * MB)
+    raw = _target_kbps_raw(limit, source.duration, audio)
+    if max_bytes is not None:
+        # WoopSocial's smaller copy, as it always was. Never more than the
+        # quality asked for needs: a 20-second clip "under 100 MB" is not
+        # made 95 MB.
+        ceiling = preset["bitrate_kbps"] if custom_bitrate else \
+            quality_kbps(SPREAD_KNOWN[1] if busy else SPREAD_UNKNOWN[1])
+        return plan("target", "kbps", None, max(MIN_VIDEO_KBPS, min(int(raw), ceiling)), max_bytes=limit,
+                    target_reachable=raw >= MIN_VIDEO_KBPS, binds=True, floor_kbps=MIN_VIDEO_KBPS,
+                    limit_kbps=int(raw), too_small=raw < MIN_VIDEO_KBPS)
+    floor = floor_kbps(width, height, fps, codec)
+    limits = {"max_bytes": limit, "floor_kbps": floor, "limit_kbps": int(raw), "too_small": raw < floor}
+    free_low, free_typical = _expected(free)[:2]
+    fits = free_low < limit
+    sure = free.rate == "kbps" or (
+        family == "cpu" and (typical_clip or (busy is not None and busy > BUSY_RANGE[0]))
+        and (_same_shape(source.width, source.height, width, height) or preset["fill"] == "crop"))
+    held = plan("target", "kbps", None, max(floor, int(raw)), target_reachable=raw >= floor, binds=True,
+                fits_anyway=False, sure=True, **limits)
+    if fits or not sure:
+        # It may fit anyway (even the low end of its estimate is under the
+        # limit), or its estimate can't say it won't. Made exactly as without
+        # the limit, then checked, and made again at the limit's bitrate only
+        # if it came out over.
+        return replace(free, mode="target", target_reachable=raw >= floor or free_typical < limit, binds=False,
+                       fits_anyway=fits, sure=sure, **limits)
+    if _expected(held)[1] >= free_low:
+        # The limit leaves less than the floor, and a file at the floor could
+        # be bigger than the export without the limit: made as without it,
+        # then checked (and made again at the floor if it came out bigger).
+        return replace(free, mode="target", target_reachable=False, binds=False, fits_anyway=False, sure=True,
+                       **limits)
+    return held
+
+
+def _expected(plan: Plan) -> tuple[float, float, float, str]:
+    """(low, typical, high, kind): the bytes `plan` is expected to come to.
+    "close" for a bitrate; a "range" for a CRF, which depends on the footage."""
+    seconds = plan.source.duration
+    audio_bytes = plan.audio_kbps * 125 * seconds
+    if plan.rate == "kbps":
+        close = (plan.video_kbps * 125 * seconds + audio_bytes) * 1.01
+        return close * 0.93, close, close * 1.05, "close"
+    video = _crf_kbps(plan) * 125 * seconds
+    spread = SPREAD_KNOWN if plan.busy else SPREAD_UNKNOWN
+    return video * spread[0] + audio_bytes, video + audio_bytes, video * spread[1] + audio_bytes, "range"
+
+
+def _crf_kbps(plan: Plan) -> float:
+    """The video bitrate a CRF plan is expected to come to (model_kbps)."""
+    enc = plan.encoder
+    crf = float(plan.crf) - CRF_OFFSET.get((enc.family, enc.codec), 0)
+    return model_kbps(plan.width, plan.height, plan.fps, crf, enc.codec, enc.family, plan.busy or 1.0)
+
+
+def _held(plan: Plan, kbps: int) -> Plan:
+    """`plan` made again at `kbps`, held to its size limit: 2-pass on the CPU."""
+    return replace(plan, rate="kbps", crf=None, video_kbps=kbps, passes=1 if plan.encoder.hardware else 2,
+                   binds=True)
 
 
 def _video_args(plan: Plan, pass_no: int | None, passlog: str) -> list[str]:
@@ -563,7 +787,9 @@ def _video_args(plan: Plan, pass_no: int | None, passlog: str) -> list[str]:
         elif pass_no is not None:
             args += ["-pass", str(pass_no), "-passlogfile", passlog]
         return [*args, "-b:v", f"{kbps}k"]
-    maxrate, bufsize = CAPS["target" if plan.mode == "target" else "bitrate"]
+    # A bitrate held to a size limit stays close to its average; a size limit
+    # the clip fits under anyway leaves it exactly as without the limit.
+    maxrate, bufsize = CAPS["target" if plan.binds else "bitrate"]
     if family == "nvenc":
         args += ["-rc", "vbr"]
     args += ["-b:v", f"{kbps}k", "-maxrate", f"{round(kbps * maxrate)}k"]
@@ -573,6 +799,16 @@ def _video_args(plan: Plan, pass_no: int | None, passlog: str) -> list[str]:
 
 
 PASSLOG = "export2pass"   # the 2-pass log's name, in the export's working folder
+KEPT_TRY = ".kept.mp4"   # how encode() names a file it sets aside while it is made again, in that folder
+
+
+def _move(src: Path, dst: Path) -> None:
+    """Move a finished file, replacing `dst`: a rename on one drive, a copy
+    across drives (an export's working folder can be on another drive)."""
+    try:
+        os.replace(src, dst)
+    except OSError:
+        shutil.move(str(src), str(dst))
 
 
 def commands(plan: Plan, src, dst, *, passlog: str = PASSLOG) -> list[list[str]]:
@@ -610,10 +846,24 @@ def estimate(duration: float, preset, *, source: Source | None = None,
              encoder: encoding.Encoder | None = None) -> dict:
     """What an export with `preset` comes to for `duration` seconds.
 
-    A range for the quality levels and a custom CRF, because how much a CRF
-    encode needs depends on the footage; a close figure for a bitrate or a
-    size target. Without a clip (`source`), it assumes the app's own 1080x1920
-    60 fps clip (REFERENCE). Without an encoder, the CPU's."""
+    A range for a CRF, CQ or ICQ encode (the quality levels and a custom
+    number, except on AMD, Apple and Intel's AV1, which make them at a
+    bitrate), because how much such an encode needs depends on the footage;
+    a close figure for a bitrate or a size target. Without a clip (`source`), it assumes the app's own 1080x1920
+    60 fps clip (REFERENCE). Without an encoder, the CPU's.
+
+    With a size limit it follows make_plan: a clip made as without the limit
+    (it may fit anyway, fits_anyway, or its size can't be told beforehand,
+    sure False) is estimated as without it, no higher than what a file that
+    came out over is made again at (the limit, or the size at the floor where
+    the limit leaves less), and where its typical file would be over the
+    limit, the typical figure is that remake's size; so no figure goes up for
+    setting a limit. One held to the limit is the close figure at the limit's
+    bitrate; one the limit is too small for (target_reachable False) is the
+    size at the floor, over the limit. longest_watchable_s is the longest
+    clip the limit holds at the floor, at this size, frame rate and codec.
+    Without a clip, the plan is the one for the app's typical clip
+    (make_plan's typical_clip)."""
     preset = normalize(preset)
     known = source is not None
     source = replace(source or REFERENCE, duration=max(0.1, float(duration)))
@@ -628,29 +878,33 @@ def estimate(duration: float, preset, *, source: Source | None = None,
             * 125 * source.duration
         return _sized("range", typical * SPREAD_UNKNOWN[0], typical, typical * SPREAD_UNKNOWN[1], duration,
                       source.width, source.height, source.fps, preset, None, upscale=False)
-    plan = make_plan(source, preset, encoder or assumed_encoder(preset["codec"]))
-    encoder = plan.encoder
-    audio_bytes = plan.audio_kbps * 125 * source.duration
-    if plan.rate == "kbps":
-        close = (plan.video_kbps * 125 * source.duration + audio_bytes) * 1.01
-        low, high = close * 0.93, close * 1.05
-        if plan.max_bytes and plan.target_reachable:
-            high = min(high, plan.max_bytes)
-            close = min(close, plan.max_bytes)
-        kind = "close"
-    else:
-        crf = float(plan.crf) - CRF_OFFSET.get((encoder.family, encoder.codec), 0)
-        video = model_kbps(plan.width, plan.height, plan.fps, crf, encoder.codec, encoder.family,
-                           plan.busy or 1.0) * 125 * source.duration
-        spread = SPREAD_KNOWN if plan.busy else SPREAD_UNKNOWN
-        close = video + audio_bytes
-        low, high = video * spread[0] + audio_bytes, video * spread[1] + audio_bytes
-        kind = "range"
-    out = _sized(kind, low, close, high, duration, plan.width, plan.height, plan.fps, preset, encoder,
+    plan = make_plan(source, preset, encoder or assumed_encoder(preset["codec"]), typical_clip=not known)
+    low, close, high, kind = _expected(plan)
+    cap = None
+    if plan.max_bytes and plan.binds is False:
+        # Made as without the limit: one that came out over it is made again
+        # at the limit's bitrate, never below the floor (encode()). When the
+        # typical file would be over, the typical outcome is that remake.
+        again = _expected(_held(plan, max(plan.floor_kbps, plan.limit_kbps)))[1]
+        if close > plan.max_bytes:
+            close = min(close, again)
+        cap = max(plan.max_bytes, again)
+    elif plan.max_bytes and plan.target_reachable:
+        # Held to the limit: a file that came out over it is made again, smaller.
+        cap = plan.max_bytes
+    if cap is not None:
+        high = min(high, cap)
+        close = min(close, high)
+        low = min(low, close)
+    out = _sized(kind, low, close, high, duration, plan.width, plan.height, plan.fps, preset, plan.encoder,
                  upscale=plan.upscale)
     out.update({"mode": plan.mode, "video_kbps": plan.video_kbps, "audio_kbps": plan.audio_kbps,
                 "crf": plan.crf, "passes": plan.passes,
                 "target_bytes": plan.max_bytes, "target_reachable": plan.target_reachable})
+    if plan.mode == "target":
+        out.update({"fits_anyway": plan.fits_anyway, "sure": plan.sure, "floor_kbps": plan.floor_kbps,
+                    "longest_watchable_s": round(longest_watchable(plan.max_bytes, plan.floor_kbps,
+                                                                   plan.audio_kbps), 1)})
     return out
 
 
@@ -670,6 +924,7 @@ def _sized(kind, low, typical, high, duration, width, height, fps, preset, encod
         "mode": "copy" if preset["kind"] == "original" else None,
         "video_kbps": None, "audio_kbps": None, "crf": None, "passes": 0,
         "target_bytes": None, "target_reachable": None,
+        "fits_anyway": None, "sure": None, "floor_kbps": None, "longest_watchable_s": None,
     }
 
 
@@ -773,11 +1028,24 @@ def encode(src, dst, preset, *, workdir, run: Runner | None = None, encoder: enc
 
     `run` runs each FFmpeg command (run_ffmpeg by default; the editor lane
     passes one it can cancel, which raises Cancelled). A graphics-card encode
-    that fails is made again on the CPU (H.264 and HEVC), the way a render is
-    (video/cutter.py). With a size target, the file is checked afterwards
-    and, if it came out over, made once more at 0.9x the bitrate; a 2-pass
-    encode reuses its first pass for that. Returns what was made: its size,
-    picture, codec and encoder, and whether it is over a target anyway."""
+    that fails, a first try or a file made again to fit, is made again on the
+    CPU (H.264 and HEVC), the way a render is (video/cutter.py).
+
+    With a size limit the file is checked afterwards. One made as without the
+    limit (make_plan: binds False) that came out over is made again at the
+    limit's bitrate, below the bitrate it came out at; one made at a bitrate
+    that came out over is made again at 0.9x it, and a 2-pass encode reuses
+    its first pass for that. Neither goes below the plan's floor. With a
+    limit someone set, the smallest file made is the one kept: each file is
+    set aside (in `workdir`) while it is made again, and comes back if that
+    is no smaller (an encoder can overshoot). So an export made as without
+    the limit never ends up bigger than without it. While a file is made
+    again the progress step says so ("smaller", with "attempt_fraction" for
+    that attempt alone). Returns what was made: its size, picture, codec and
+    encoder, whether the file is one made again (retried), and whether it is
+    over the limit anyway and why ("over_reason": "too_small" when the limit
+    is too small for the clip to look good, so it went no lower than the
+    floor; "missed" when it is over all the same)."""
     preset = normalize(preset)
     src, dst, workdir = Path(src).resolve(), Path(dst).resolve(), Path(workdir).resolve()
     workdir.mkdir(parents=True, exist_ok=True)
@@ -792,16 +1060,20 @@ def encode(src, dst, preset, *, workdir, run: Runner | None = None, encoder: enc
         if on_progress is not None:
             on_progress(done[0], step)
 
-    def attempt(p: Plan, *, from_pass: int = 1, span: tuple[float, float] = (0.0, 1.0)) -> None:
+    def attempt(p: Plan, *, from_pass: int = 1, span: tuple[float, float] = (0.0, 1.0),
+                smaller: bool = False) -> None:
         every = commands(p, src, dst, passlog=PASSLOG)
         todo = every[from_pass - 1:]
         lo, hi = span
         for i, argv in enumerate(todo):
-            step = {"pass": from_pass + i, "passes": len(every), "encoder": p.encoder.name}
+            step = {"pass": from_pass + i, "passes": len(every), "encoder": p.encoder.name, "smaller": smaller}
 
             def progress(f: float, i=i, step=step) -> None:
-                report(lo + (hi - lo) * (i + f) / len(todo), step)
+                part = (i + f) / len(todo)
+                report(lo + (hi - lo) * part, {**step, "attempt_fraction": round(part, 4)})
 
+            if smaller:
+                progress(0.0)   # say so now, not at FFmpeg's first progress line
             code, err = run(argv, cwd=workdir, duration=source.duration, on_progress=progress)
             if code != 0:
                 lines = err.strip().splitlines()
@@ -821,14 +1093,74 @@ def encode(src, dst, preset, *, workdir, run: Runner | None = None, encoder: enc
     size = dst.stat().st_size if dst.exists() else 0
     if size <= 0:
         raise ExportError("FFmpeg finished without writing the export.")
-    if plan.max_bytes and size > plan.max_bytes and plan.video_kbps:
-        lower = max(MIN_VIDEO_KBPS, int(plan.video_kbps * RETRY_FACTOR))
-        if lower < plan.video_kbps:
-            print(f"      Export: {size / MB:.1f} MB is over {plan.max_bytes / MB:g} MB; once more at {lower} kbps")
-            plan, retried = replace(plan, video_kbps=lower), True
-            attempt(plan, from_pass=plan.passes, span=(done[0], 1.0))
-            size = dst.stat().st_size
-    report(1.0, {"pass": plan.passes, "passes": plan.passes, "encoder": plan.encoder.name})
+    floored = plan.too_small
+
+    def lower(made_kbps: float, wanted: int) -> int | None:
+        """The bitrate to make it again at: `wanted`, or 0.9x what was made if
+        that isn't lower, never below the floor. None when nothing is left
+        between the floor and what was made."""
+        nonlocal floored
+        kbps = wanted if wanted < made_kbps else int(made_kbps * RETRY_FACTOR)
+        if kbps < plan.floor_kbps:
+            floored, kbps = True, plan.floor_kbps
+        return kbps if kbps < made_kbps else None
+
+    # A size limit someone set (not the smaller copy's, which keeps its old
+    # rules) gets the smallest file made: before a file is made again, the
+    # smallest so far is set aside in `workdir`, and it comes back if what
+    # was made again is no smaller (an encoder can overshoot its bitrate).
+    kept = None   # (where it is set aside, its size, its plan, whether it was made again, whether on the CPU instead)
+
+    def set_aside() -> None:
+        nonlocal kept
+        if max_bytes is None and (kept is None or size < kept[1]):
+            path = workdir / f"{dst.stem}{KEPT_TRY}"
+            _move(dst, path)
+            kept = (path, size, plan, retried, fell_back)
+
+    def again(p: Plan, from_pass: int) -> None:
+        """Make the file again as `p`, smaller, to fit its limit. A graphics
+        card that fails at it hands it to the CPU, as a first try does: the
+        same bitrate, 2-pass. A cancel (Cancelled) is never caught here."""
+        nonlocal plan, retried, fell_back, size
+        try:
+            attempt(p, from_pass=from_pass, span=(done[0], 1.0), smaller=True)
+        except ExportError:
+            cpu = encoding.encoder_for(preset["codec"], "cpu") if p.encoder.hardware else None
+            if cpu is None:
+                raise
+            print(f"      Export: {p.encoder.name} failed making it again; making it on the CPU instead")
+            p = _held(make_plan(source, preset, cpu, max_bytes=max_bytes), int(p.video_kbps))
+            attempt(p, span=(done[0], 1.0), smaller=True)
+            fell_back = True
+        plan, retried = p, True
+        size = dst.stat().st_size
+
+    if plan.max_bytes and size > plan.max_bytes and plan.binds is False:
+        # Made as without the limit, and over it: once more at the limit's
+        # bitrate, and never above a bitrate it was made at.
+        made = size * 8 / 1000 / source.duration - plan.audio_kbps
+        if plan.rate == "kbps":
+            made = min(made, plan.video_kbps)
+        kbps = lower(made, plan.limit_kbps)
+        if kbps is not None:
+            print(f"      Export: {size / MB:.1f} MB is over {plan.max_bytes / MB:g} MB; again at {kbps} kbps")
+            set_aside()
+            from_pass = 2 if plan.rate == "kbps" and plan.passes == 2 else 1   # a 2-pass log to reuse
+            again(_held(plan, kbps), from_pass)
+    if plan.max_bytes and size > plan.max_bytes and plan.binds and plan.video_kbps:
+        kbps = lower(plan.video_kbps, int(plan.video_kbps * RETRY_FACTOR))
+        if kbps is not None:
+            print(f"      Export: {size / MB:.1f} MB is over {plan.max_bytes / MB:g} MB; once more at {kbps} kbps")
+            set_aside()
+            again(replace(plan, video_kbps=kbps), plan.passes)
+    if kept is not None and size >= kept[1]:
+        print(f"      Export: made again it came to {size / MB:.1f} MB; keeping the {kept[1] / MB:.1f} MB one")
+        _move(kept[0], dst)
+        size, plan, retried, fell_back = kept[1], kept[2], kept[3], kept[4]
+    report(1.0, {"pass": plan.passes, "passes": plan.passes, "encoder": plan.encoder.name, "smaller": retried,
+                 "attempt_fraction": 1.0})
+    over = bool(plan.max_bytes and size > plan.max_bytes)
     return {
         "bytes": size,
         "width": plan.width, "height": plan.height, "fps": round(plan.fps, 3),
@@ -837,7 +1169,9 @@ def encode(src, dst, preset, *, workdir, run: Runner | None = None, encoder: enc
         "mode": plan.mode, "video_kbps": plan.video_kbps, "crf": plan.crf, "audio_kbps": plan.audio_kbps,
         "upscale": plan.upscale,
         "target_bytes": plan.max_bytes,
-        "over_target": bool(plan.max_bytes and size > plan.max_bytes),
+        "over_target": over,
+        "over_reason": ("too_small" if floored else "missed") if over else None,
+        "floor_kbps": plan.floor_kbps,
         "retried": retried, "fell_back_to_cpu": fell_back,
     }
 
