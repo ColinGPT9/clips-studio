@@ -212,6 +212,10 @@ def main() -> int:
     from sources import ytdlp_common
 
     ytdlp_common.set_cookies(config.get("youtube_cookies"), config["paths"]["data_dir"])
+    # video.encoder, for every encode this process makes, as the engine sets it.
+    from video import encoding
+
+    encoding.configure(config)
     db = StateDB(Path(config["paths"]["data_dir"]) / "state.db")
 
     try:

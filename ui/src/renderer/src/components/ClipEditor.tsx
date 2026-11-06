@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
 import { Folder, Scissors } from './icons'
+import ExportProgress from './ExportProgress'
 import type { Clip, PluginNote } from '../lib/types'
 import { t } from '../lib/i18n'
 import { sportMoment } from '../lib/sports'
 import { suggestionLine } from '../lib/editSuggestions'
+import { clipExports, isActive } from '../lib/exportJobs'
+import type { ExportTracker } from '../lib/useExportJobs'
 
 const CHANNELS = ['text', 'audio', 'visual', 'reaction', 'engagement'] as const
 
@@ -26,7 +29,8 @@ export default function ClipEditor({
   clip,
   onChanged,
   onOpenEditor,
-  onPublish
+  onPublish,
+  exports
 }: {
   clip: Clip
   onChanged: () => void
@@ -34,6 +38,9 @@ export default function ClipEditor({
   /** Publish this one clip. Absent when no provider is set up, which hides
    *  the button rather than showing one that can only apologise. */
   onPublish?: () => void
+  /** Exports made in the background (Settings → Export set to anything but
+   *  Original), so this clip's progress and result show under its buttons. */
+  exports?: ExportTracker
 }): JSX.Element {
   const [title, setTitle] = useState(clip.title)
   const [description, setDescription] = useState(clip.description)
@@ -92,9 +99,29 @@ export default function ClipEditor({
       flash('Re-render queued — watch the Dashboard activity feed')
     })
 
+  // This clip's exports in the background: the waiting and running ones, or
+  // the last one this window started once it is finished.
+  const clipJobs = exports ? clipExports(exports.jobs.values(), clip.id, exports.started) : []
+  const exporting = clipJobs.some(isActive)
+  // The bar goes under the buttons, which can sit at the bottom of the
+  // panel: brought into view when an export starts, not when a clip is picked.
+  const progressRow = useRef<HTMLDivElement>(null)
+  const [showProgress, setShowProgress] = useState(0)
+  useEffect(() => {
+    if (showProgress) progressRow.current?.scrollIntoView({ block: 'nearest' })
+  }, [showProgress])
+
   const exportOne = (): Promise<void> =>
     run('export', async () => {
+      // With the preset chosen in Settings → Export: Original copies the file
+      // here and now, exactly as before; anything else is made in the
+      // background, and its progress shows below.
       const res = await api.exportClip(clip.id, folder)
+      if (res.jobs?.length) {
+        exports?.start(res.jobs)
+        setShowProgress((n) => n + 1)
+        return
+      }
       flash(res.exported.length ? `Exported: ${res.exported[0]}` : 'Nothing exported')
       onChanged() // exporting stars the clip; show it on its card
     })
@@ -272,8 +299,8 @@ export default function ClipEditor({
         >
           <Folder />
         </button>
-        <button className="btn-ghost" onClick={exportOne} disabled={busy !== null}>
-          {busy === 'export' ? t('Exporting…') : t('Export')}
+        <button className="btn-ghost" onClick={exportOne} disabled={busy !== null || exporting}>
+          {busy === 'export' || exporting ? t('Exporting…') : t('Export')}
         </button>
         {/* Beside Export rather than only on the card in the grid: Export
             writes this one clip to a folder, and Publish is the same scope
@@ -287,6 +314,11 @@ export default function ClipEditor({
           </button>
         )}
       </div>
+      {exports && clipJobs.length > 0 && (
+        <div ref={progressRow}>
+          <ExportProgress jobs={clipJobs} onCancel={exports.cancel} />
+        </div>
+      )}
       {notice && <p className="text-sm text-accent">{notice}</p>}
     </div>
   )

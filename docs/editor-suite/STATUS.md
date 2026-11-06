@@ -1,6 +1,6 @@
 # Editor suite status
 
-Now: step 0 (guardrails) done, waiting to merge. Next: step 1 (export presets).
+Now: step 0 (guardrails) done, waiting to merge. Step 1 (export presets) in progress: the engine and the UI are built; Colin's click-through is next.
 
 A readable view of [`state.json`](state.json), updated 2026-11-05. When the two disagree, `state.json` wins. Step statuses are todo, in progress, blocked and done.
 
@@ -32,7 +32,7 @@ In run order. Size S, M or L is small, medium or large. "Users see it" marks the
 | Step | Size | What | Closes | Depends on | Users see it | Status |
 |---|---|---|---|---|---|---|
 | 0 | S | Guardrails | — | — | no | done |
-| 1 | M | Export presets, encoder fix and editor lane | #203, #177 (sizes) | 0 | yes | todo |
+| 1 | M | Export presets, encoder fix and editor lane | #203, #177 (sizes) | 0 | yes | in progress |
 | 2 | S | Make clips again; edits follow a widened clip | #190 | 0 | yes | todo |
 | 3 | M | Caption fonts and animated presets | #174 (fonts and captions) | 0 | yes | todo |
 | 4 | S | Creator description; CC0 sound and music library | #174 (creator notes), #155 (library) | 0 | yes | todo |

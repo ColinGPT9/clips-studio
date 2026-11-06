@@ -343,7 +343,7 @@
       "depends_on": [
         "0"
       ],
-      "status": "todo",
+      "status": "in_progress",
       "user_visible": true,
       "acceptance": [
         "140 MB clip exports under 100 MB",
@@ -352,20 +352,68 @@
         "Plain argv unchanged"
       ],
       "files": [
-        "video/encoding.py",
+        "video/encoding.py (configure, encoder_for, export_codecs)",
         "video/export_presets.py (new)",
         "server/editor_lane.py (new)",
-        "server/api.py:2462",
-        "publish/woopsocial.py:270",
-        "ui/src/renderer/src/pages/Settings.tsx"
+        "server/api.py (export routes, /export/*, settings export, the lane's start and stop)",
+        "publish/woopsocial.py (smaller copy)",
+        "server/woopsocial_service.py (the smaller_copy setting; a background send with it on is held from the stale-send sweep while it runs)",
+        "server/woopsocial_api.py",
+        "main.py (configure for the command line)",
+        "tests/test_export_presets.py (new)",
+        "tests/test_encoder_config.py (new)",
+        "tests/test_editor_lane.py (new)",
+        "tests/test_export_route.py (new)",
+        "tests/test_woopsocial_smaller_copy.py (new)",
+        "tests/test_export_presets_ffmpeg.py (new, platform tier)",
+        ".github/workflows/ci.yml (new platform files added to the Plugin platform job)",
+        "docs/editor-suite/api/step1-export.md (new: the API contract for the UI)",
+        "docs/editor-suite/USER-GUIDE.md",
+        "docs/API.md (the export routes' optional preset)",
+        "docs/developers/api-reference.md (regenerated)",
+        "CHANGELOG.md",
+        "ui/src/renderer/src/pages/Settings.tsx (the Export card, after Export location)",
+        "ui/src/renderer/src/components/ExportSettingsCard.tsx (new: Settings → Export)",
+        "ui/src/renderer/src/components/ExportProgress.tsx (new: an export's bar, Cancel and result)",
+        "ui/src/renderer/src/components/ClipEditor.tsx (Export uses the default preset, with progress and Cancel)",
+        "ui/src/renderer/src/pages/ClipStudio.tsx (Export all likewise)",
+        "ui/src/renderer/src/components/WoopSocialCard.tsx (the smaller-copy checkbox)",
+        "ui/src/renderer/src/lib/api.ts (export routes; the session header on guarded calls)",
+        "ui/src/renderer/src/lib/types.ts (export types; the 'export' event)",
+        "ui/src/renderer/src/lib/exportJobs.ts (new: following exports, Node-testable)",
+        "ui/src/renderer/src/lib/useExportJobs.ts (new: the hook, with a recheck while one runs)",
+        "tests/test_ui_export_settings.py (new)",
+        "tests/test_ui_translatable_attributes.py (the two new components added)",
+        "ui/src/renderer/src/pages/Dashboard.tsx (Activity tells when an export starts and how it ended, not its raw event)"
       ],
       "notes": [
         "#177: sizes only; aspects come in step 11",
         "Until Phase 4, sizes above 1080 upscale from the 1080 master, with a warning",
-        "Only its maths may run in the cloud, as a draft PR on Colin's go"
+        "Only its maths may run in the cloud, as a draft PR on Colin's go",
+        "Engine side built 2026-11-05: encoder fix, export presets, editor lane, routes, WoopSocial smaller copy, tests.",
+        "UI built 2026-11-05 against docs/editor-suite/api/step1-export.md: Settings → Export card (estimate a minute, ⚠ Enlarged marker), Export and Export all with progress, Cancel and the result, the WoopSocial smaller-copy checkbox. Clicked through in the sandbox's browser build with the session header added by a Playwright route; Colin's click-through is pending",
+        "The browser build (npm run dev:web) has no session secret, so saving a Custom preset, exporting with one and cancelling answer 403 there; Original exports and everything read-only work",
+        "NVENC, AMF, QSV and AV1 export arguments are unit-tested only: the dev PC has no working hardware encoder"
       ],
       "results": [],
-      "defects": []
+      "defects": [
+        {
+          "id": "1-D1",
+          "date": "2026-11-05",
+          "found_by": "QC",
+          "summary": "The Dashboard's Activity feed showed every export event as raw JSON, about twice a second while an export ran, with the export folder and the whole preset in each line",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D2",
+          "date": "2026-11-05",
+          "found_by": "QC",
+          "summary": "With the smaller copy on, a background send's copy is made after its rows are written as sending, so a copy that took over 20 minutes let the stale-send sweep (reconcile_sending) show a send still under way as failed and safe to send again. Fixed: publish_clips holds such a send as under way until it ends, and the sweep leaves held sends alone (tests/test_woopsocial_smaller_copy.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        }
+      ]
     },
     {
       "id": "2",

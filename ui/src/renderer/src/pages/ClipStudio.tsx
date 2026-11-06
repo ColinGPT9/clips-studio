@@ -10,13 +10,16 @@ import EditorView from '../components/EditorModal'
 import ProcessingBar from '../components/ProcessingBar'
 import PublishAllDialog from '../components/PublishAllDialog'
 import ScheduleView from '../components/ScheduleView'
+import ExportProgress from '../components/ExportProgress'
 import { api } from '../lib/api'
 import type { Provider } from '../lib/uploadpost'
 import { getExportFolder } from '../lib/exportFolder'
+import { isActive } from '../lib/exportJobs'
 import { useEvents } from '../lib/useEvents'
+import { useExportJobs } from '../lib/useExportJobs'
 import { useJobWatch } from '../lib/useJobWatch'
 import type { StudioTarget } from '../App'
-import type { Clip, StudioEvent, Video } from '../lib/types'
+import type { Clip, ExportJob, StudioEvent, Video } from '../lib/types'
 
 /** Browse and edit the clips of processed videos. New videos are started from
  *  the Dashboard; clicking a clip there navigates here with it selected. */
@@ -135,10 +138,22 @@ export default function ClipStudio({
     onTargetConsumed()
   }, [target])
 
+  // Exports made in the background (Settings → Export set to anything but
+  // Original). The engine stars a clip as its file is made, so the list is
+  // read again as each one is done.
+  const exports = useExportJobs((job) => {
+    if (job.status === 'done' && activeVideo) void refreshClips(activeVideo)
+  })
+  const batchJobs = (exports.batch?.keys ?? [])
+    .map((key) => exports.jobs.get(key))
+    .filter((job): job is ExportJob => job !== undefined)
+  const batchRunning = batchJobs.some(isActive)
+
   useEffect(() => {
     if (activeVideo) refreshClips(activeVideo)
     if (pendingClip.current === null) setSelectedClip(null)
     setExportNotice(null)
+    exports.clearFinishedBatch()
   }, [activeVideo])
 
   useEvents((e: StudioEvent) => {
@@ -255,6 +270,12 @@ export default function ClipStudio({
         toExport.map((c) => c.id),
         folder
       )
+      if (res.jobs?.length) {
+        // Settings → Export chose a size or quality of its own: each clip is
+        // made in the background, and the bar below follows them.
+        exports.start(res.jobs, { folder, starred: skipped, missing: res.skipped?.length ?? 0 })
+        return
+      }
       const n = res.exported.length
       const missing = toExport.length - n
       setExportNotice(
@@ -383,14 +404,14 @@ export default function ClipStudio({
               <button
                 className="btn-accent !py-1 !px-3 text-xs ml-auto"
                 onClick={exportAll}
-                disabled={exportingAll || toExport.length === 0}
+                disabled={exportingAll || batchRunning || toExport.length === 0}
                 title={
                   toExport.length === 0
                     ? 'Every clip here is already starred as exported'
                     : `Export the ${toExport.length} clip${toExport.length === 1 ? '' : 's'} here that are not starred yet`
                 }
               >
-                {exportingAll ? 'Exporting…' : `Export all (${toExport.length})`}
+                {exportingAll || batchRunning ? 'Exporting…' : `Export all (${toExport.length})`}
               </button>
               {/* Deliberately not styled as a twin of Export beside it.
                   Export writes files you can delete; this posts publicly and
@@ -417,6 +438,9 @@ export default function ClipStudio({
               )}
             </div>
             {exportNotice && <p className="text-sm text-accent">{exportNotice}</p>}
+            {exports.batch && batchJobs.length > 0 && (
+              <ExportProgress jobs={batchJobs} onCancel={exports.cancel} batch={exports.batch} />
+            )}
             {activeMatch && <SportsNote report={activeMatch} />}
             {activeDirection && <ClipDirectionNote direction={activeDirection} />}
             {activeOutcome?.steps?.length ? <PluginStepsNote outcome={activeOutcome} /> : null}
@@ -452,6 +476,7 @@ export default function ClipStudio({
                 onChanged={() => activeVideo && refreshClips(activeVideo)}
                 onOpenEditor={() => setEditingClipId(current.id)}
                 onPublish={publishReady ? () => setPublishOne(current) : undefined}
+                exports={exports}
               />
             ) : (
               <div className="card text-muted text-sm">Select a clip to preview and edit it.</div>

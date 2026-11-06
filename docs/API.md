@@ -792,6 +792,17 @@ exist**. Check the array, not the status.
 
 `POST /export/batch` takes `{"clip_ids": [...], "folder": "..."}`.
 
+Both take an optional `preset`. Without one (or with `null` or `"original"`)
+the clip is copied exactly as above. `"default"` is the preset saved in
+Settings → Export, and an object is a preset of its own: a size, shape,
+quality, codec, frame rate, sound and an optional size limit. Anything but
+Original is encoded in the background instead of copied: the answer is
+`{"exported": [], "jobs": [...], "skipped": [...]}` at once, the file appears
+when its job is done, and progress arrives as `export` events on `/ws`. A
+preset needs the `X-Clips-Kitty-Session` header (see Plugins). The preset's
+fields, the job routes and the events are internal for now:
+[docs/editor-suite/api/step1-export.md](editor-suite/api/step1-export.md).
+
 Every clip that is copied out gets `exported_at` set to the time of the export.
 Clip JSON from `GET /videos/{video_id}/clips` carries `exported_at`, an ISO
 timestamp or `""`. Set or clear it by hand with `PATCH /clips/{clip_id}` and

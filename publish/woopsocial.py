@@ -22,6 +22,7 @@ Stdlib only, like the rest of `publish/`.
 
 import json
 import re
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -46,6 +47,11 @@ UPLOAD_TIMEOUT = 900
 # The single-request upload endpoint is documented up to 100 MB; past that
 # their chunked upload-session flow is required. Most clips are well under.
 SINGLE_UPLOAD_MAX_BYTES = 100 * 1024 * 1024
+
+# What a smaller copy of a clip over that aims for, when the creator turned
+# the copy on (WoopSocialPublisher's smaller_copy; off by default): about 95 MB,
+# room to spare under the limit.
+SMALLER_COPY_BYTES = 95_000_000
 
 # Their platform identifiers are upper case. Mapped to the same lower-case
 # names Clips Kitty uses everywhere else, so the UI and the database do not
@@ -474,13 +480,21 @@ def parse_post(payload: dict) -> FanOutResult:
 
 
 class WoopSocialPublisher:
-    """Publishes one clip to several platforms through WoopSocial."""
+    """Publishes one clip to several platforms through WoopSocial.
+
+    `smaller_copy` (Settings → WoopSocial, off by default): a clip over the
+    100 MB WoopSocial takes in one piece is sent as a copy under about 95 MB,
+    made with video/export_presets.py at the clip's own size if that still
+    looks right and at 720p if not, then deleted. Off, a clip is uploaded
+    exactly as it always was, and one over 100 MB is refused as before.
+    """
 
     name = "woopsocial"
 
-    def __init__(self, client: WoopSocialClient, project_id: str):
+    def __init__(self, client: WoopSocialClient, project_id: str, *, smaller_copy: bool = False):
         self.client = client
         self.project_id = project_id
+        self.smaller_copy = smaller_copy
 
     def start(
         self,
@@ -513,7 +527,7 @@ class WoopSocialPublisher:
                 "Open Manage Social Accounts to connect them."
             )
 
-        media_id = self.client.upload_media(video, self.project_id)
+        media_id = self._upload(video)
         if on_media is not None:
             # Before the post exists, so a caller can find it again by its media
             # if nothing after this line gets the chance to run.
@@ -546,6 +560,26 @@ class WoopSocialPublisher:
             )
         result.outcomes.sort(key=lambda o: o.platform)
         return result
+
+    def _upload(self, video: Path) -> str:
+        """Upload the clip, or with smaller_copy on, a copy under the limit
+        of one that is over it. The copy is made in a temporary folder and
+        deleted once it is uploaded, or once the upload failed."""
+        if not self.smaller_copy or video.stat().st_size <= SINGLE_UPLOAD_MAX_BYTES:
+            return self.client.upload_media(video, self.project_id)
+        from video import export_presets
+
+        size_mb = video.stat().st_size // (1024 * 1024)
+        with tempfile.TemporaryDirectory(prefix="clips-kitty-upload-", ignore_cleanup_errors=True) as folder:
+            copy = Path(folder) / video.name   # the name WoopSocial shows, as the clip's own upload had
+            try:
+                export_presets.smaller_copy(video, copy, SMALLER_COPY_BYTES, workdir=Path(folder) / "work")
+            except (export_presets.ExportError, export_presets.PresetError, OSError) as e:
+                raise WoopSocialError(
+                    f"That clip is {size_mb} MB, over the 100 MB WoopSocial takes, and a smaller "
+                    f"copy couldn't be made: {e}"
+                ) from e
+            return self.client.upload_media(copy, self.project_id)
 
     def check(self, post_id: str) -> FanOutResult:
         result = parse_post(self.client.get_post(post_id))

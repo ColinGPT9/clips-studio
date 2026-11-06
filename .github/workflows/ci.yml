@@ -128,6 +128,7 @@ jobs:
           tests/test_connected_accounts_*.py tests/test_connected_feed.py tests/test_twitch_*.py
           tests/test_stream_workflow*.py tests/test_automation.py tests/test_text_updates_api.py
           tests/test_render_argv_snapshots.py
+          tests/test_export_presets_ffmpeg.py tests/test_export_route.py tests/test_woopsocial_smaller_copy.py
 
   sdk-windows:
     name: SDK (Windows)

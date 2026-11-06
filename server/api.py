@@ -19,7 +19,7 @@ import urllib.error
 from pathlib import Path
 
 import requests as _requests
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -34,6 +34,9 @@ from server.jobs import Worker
 # Version of the supported API described in docs/API.md. Bumped only when a
 # supported endpoint changes shape, never for additions.
 API_VERSION = 1
+
+# The app_state key the default export preset (Settings → Export) is kept under.
+EXPORT_SETTING = "export_settings"
 
 # ---- request bodies ----------------------------------------------------------
 
@@ -319,11 +322,23 @@ class AgentIn(BaseModel):
 
 class ExportIn(BaseModel):
     folder: str
+    # Optional (video/export_presets.py): absent, null or "original" copies the
+    # clip exactly as before; "default" is the preset saved in Settings; an
+    # object is a preset. Anything but Original is an editor-lane job and
+    # needs the X-Clips-Kitty-Session header.
+    preset: dict | str | None = None
 
 
 class BatchExportIn(BaseModel):
     clip_ids: list[int]
     folder: str
+    preset: dict | str | None = None  # as ExportIn's
+
+
+class EstimateIn(BaseModel):
+    preset: dict | str | None = None
+    clip_id: int | None = None    # that clip's own file; without one, a 1080x1920 60 fps clip...
+    seconds: float | None = None  # ...this long (default 60)
 
 
 class ModelIn(BaseModel):
@@ -344,6 +359,9 @@ class SettingsPatch(BaseModel):
     # youtube_cookies_text, kept in the data folder, and the setting is "file".
     youtube_cookies: str | None = None
     youtube_cookies_text: str | None = None
+    # The default export preset (Settings → Export), kept in the database,
+    # not settings.yaml. Needs the X-Clips-Kitty-Session header.
+    export: dict | str | None = None
 
 
 class TranslateIn(BaseModel):
@@ -713,6 +731,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     data_dir = Path(config["paths"]["data_dir"]).resolve()
     db_path = data_dir / "state.db"
+    # settings' video.encoder, for every encode this engine makes. "auto" (the
+    # shipped setting) changes nothing: renders probe as they always have.
+    from video import encoding
+
+    encoding.configure(config)
     worker = Worker(config)
 
     def db() -> StateDB:
@@ -727,12 +750,22 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     publish_worker = PublishWorker(config, db_path, data_dir)
 
+    # Exports in other sizes and codecs (and the new editor's previews, later)
+    # run on a lane of their own, beside the processing queue and never
+    # behind it: server/editor_lane.py.
+    from server.editor_lane import EditorLane
+    from video import export_presets
+
+    editor_lane = EditorLane(data_dir)
+    app.state.editor_lane = editor_lane
+
     @app.on_event("startup")
     async def _startup():
         asyncio.get_running_loop().set_exception_handler(_quiet_connection_resets)
         broadcaster.attach_loop(asyncio.get_running_loop())
         worker.start()
         publish_worker.start()
+        editor_lane.start()
         stream_watcher.start()
         channel_watcher.start()
         clip_update_bot.start()
@@ -742,6 +775,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     async def _shutdown():
         worker.stop()
         publish_worker.stop()
+        editor_lane.stop()
         stream_watcher.stop()
         channel_watcher.stop()
         clip_update_bot.stop()
@@ -812,6 +846,15 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     from plugins import api as plugins_api
 
     desktop_session = plugins_api.install(app, data_dir=data_dir, config=config, app_version=app_version)
+
+    def _require_session(request: Request) -> None:
+        """The session check the plugin routes make (plugins/api.py), for what
+        here starts an encode or changes the export settings."""
+        from plugins import session
+
+        if not session.matches(desktop_session, request.headers.get(session.HEADER)):
+            raise HTTPException(403, f"This needs the {session.HEADER} header. The desktop app sends it; a "
+                                     f"script finds it in {session.path(data_dir)}.")
 
     # Account connections belong to the desktop engine. Watches, the UI and
     # other integrations share this service; no plugin implements OAuth.
@@ -2467,12 +2510,180 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         return {"discarded": language}
 
     @app.post("/clips/{clip_id}/export")
-    def export_clip(clip_id: int, body: ExportIn):
-        return {"exported": _export([clip_id], Path(body.folder))}
+    def export_clip(clip_id: int, body: ExportIn, request: Request):
+        preset = _export_preset(body.preset)
+        if preset is None:  # Original: the copy, exactly as it always was
+            return {"exported": _export([clip_id], Path(body.folder))}
+        _require_session(request)
+        return _queue_exports([clip_id], Path(body.folder), preset)
 
     @app.post("/export/batch")
-    def export_batch(body: BatchExportIn):
-        return {"exported": _export(body.clip_ids, Path(body.folder))}
+    def export_batch(body: BatchExportIn, request: Request):
+        preset = _export_preset(body.preset)
+        if preset is None:
+            return {"exported": _export(body.clip_ids, Path(body.folder))}
+        _require_session(request)
+        return _queue_exports(body.clip_ids, Path(body.folder), preset)
+
+    # ---- export presets (video/export_presets.py) and the editor lane ---------
+    #
+    # Original is the copy above. Any other preset is an encode of the finished
+    # clip on the editor lane (server/editor_lane.py): the route answers at once
+    # with the queued jobs, and progress arrives as "export" events on /ws.
+
+    def _saved_export() -> dict:
+        """The default export preset from Settings → Export: Original until
+        one is saved, and Original again if what is stored can't be read."""
+        d = db()
+        try:
+            raw = d.get_flag(EXPORT_SETTING, "")
+        finally:
+            d.close()
+        try:
+            return export_presets.normalize(json.loads(raw) if raw else None)
+        except (ValueError, TypeError):
+            return export_presets.normalize(None)
+
+    def _read_preset(raw) -> dict:
+        """A request's preset, normalised: an object, "default" (the saved
+        one) or "original" / null. 400 for anything else."""
+        if raw is None or raw == "original":
+            return export_presets.normalize(None)
+        if raw == "default":
+            return _saved_export()
+        if not isinstance(raw, dict):
+            raise HTTPException(400, 'preset is an object of export settings, "default" or "original"')
+        try:
+            return export_presets.normalize(raw)
+        except export_presets.PresetError as e:
+            raise HTTPException(400, str(e)) from e
+
+    def _export_preset(raw) -> dict | None:
+        """The preset an export request asks for, or None for the copy."""
+        preset = _read_preset(raw)
+        return None if preset["kind"] == "original" else preset
+
+    def _check_encodable(preset: dict) -> None:
+        """400 when this PC can't encode what the preset asks for at all: AV1
+        without a graphics card that makes it, or a graphics card asked for
+        that isn't there. Probes on first use (video/encoding.py)."""
+        if preset["kind"] == "original":
+            return
+        codec, pref = preset["codec"], preset["encoder"]
+        if codec == "av1" and encoding.encoder_for("av1", pref) is None:
+            raise HTTPException(400, "This PC can't make AV1 videos: that needs a graphics card that encodes AV1.")
+        if pref == "gpu" and encoding.encoder_for(codec, "gpu") is None:
+            raise HTTPException(400, f"This PC has no graphics card that can encode "
+                                     f"{export_presets.CODEC_NAMES[codec]} videos. Choose the CPU or Automatic.")
+
+    def _exported(job: dict) -> None:
+        """A lane export finished: mark the clip exported, as the copy does."""
+        from core.state import _now
+
+        d = db()
+        try:
+            row = d.get_clip(job["clip_id"]) if job.get("clip_id") is not None else None
+            if row is not None:
+                d.set_clip(row["id"], exported_at=_now())  # Export all skips it from now on
+                _log_feedback(d, row, "exported")
+        finally:
+            d.close()
+
+    def _queue_exports(clip_ids: list[int], folder: Path, preset: dict) -> dict:
+        _check_encodable(preset)
+        try:
+            folder = folder.resolve()
+            folder.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            raise HTTPException(400, f"Clips Kitty can't save into that folder: {e}") from e
+        d = db()
+        jobs, skipped = [], []
+        try:
+            for cid in clip_ids:
+                # An id beyond any row is skipped like a missing clip: SQLite
+                # can't even take one outside 64 bits (OverflowError, a 500).
+                row = d.get_clip(cid) if 0 < cid < 2**63 else None
+                if row is None or not row["path"] or not Path(row["path"]).exists():
+                    skipped.append(cid)
+                    continue
+                name = _slugify(row["title"] or row["hook"] or Path(row["path"]).stem)
+                jobs.append(editor_lane.submit_export(source=row["path"], folder=folder, name=name,
+                                                      preset=preset, clip_id=cid, on_done=_exported))
+        finally:
+            d.close()
+        return {"exported": [], "jobs": jobs, "skipped": skipped}
+
+    @app.get("/export/presets")
+    def list_export_presets():
+        """The saved default, Original, the custom preset's starting values,
+        and every allowed value. Probes nothing."""
+        return {
+            "default": _saved_export(),
+            "original": export_presets.normalize(None),
+            "custom": dict(export_presets.CUSTOM_DEFAULTS),
+            "choices": export_presets.choices(),
+            "limits": {key: [low, high] for key, (low, high) in export_presets.LIMITS.items()},
+        }
+
+    @app.get("/export/codecs")
+    def list_export_codecs():
+        """What this PC can encode an export as. The first call probes each
+        encoder with a test encode (under a second where the drivers answer
+        at once); later calls answer from memory."""
+        found = encoding.export_codecs()
+        return {"codecs": [{"codec": codec, **found[codec]} for codec in export_presets.CODECS if codec in found]}
+
+    @app.post("/export/estimate")
+    def estimate_export(body: EstimateIn):
+        preset = _read_preset(body.preset)
+        source = None
+        seconds = 60.0 if body.seconds is None else min(6 * 3600.0, max(1.0, float(body.seconds)))
+        if body.clip_id is not None and not 0 < body.clip_id < 2**63:
+            raise HTTPException(404, "no such clip")   # beyond any row id; SQLite can't even take it
+        if body.clip_id is not None:
+            d = db()
+            try:
+                row = d.get_clip(body.clip_id)
+            finally:
+                d.close()
+            if row is None:
+                raise HTTPException(404, "no such clip")
+            if not row["path"] or not Path(row["path"]).exists():
+                raise HTTPException(400, "This clip has no video file yet.")
+            try:
+                source = export_presets.probe(row["path"])
+            except export_presets.ExportError as e:
+                raise HTTPException(400, str(e)) from e
+            seconds = source.duration
+        encoder = None
+        if preset["kind"] == "custom":
+            codec = preset["codec"]
+            encoder = encoding.encoder_for(codec, preset["encoder"])
+            if encoder is None and codec != "av1":
+                encoder = encoding.encoder_for(codec, "cpu")
+        out = export_presets.estimate(seconds, preset, source=source, encoder=encoder)
+        out["available"] = preset["kind"] == "original" or encoder is not None
+        out["clip_id"] = body.clip_id
+        return out
+
+    @app.get("/export/jobs")
+    def list_export_jobs():
+        return {"jobs": editor_lane.jobs()}
+
+    @app.get("/export/jobs/{export_id}")
+    def get_export_job(export_id: int):
+        job = editor_lane.get(export_id)
+        if job is None:
+            raise HTTPException(404, "no such export")
+        return job
+
+    @app.post("/export/jobs/{export_id}/cancel")
+    def cancel_export_job(export_id: int, request: Request):
+        _require_session(request)
+        job = editor_lane.cancel(export_id)
+        if job is None:
+            raise HTTPException(404, "no such export")
+        return job
 
     def _export(clip_ids: list[int], folder: Path) -> list[str]:
         from core.state import _now
@@ -3270,10 +3481,26 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             "outro": config.get("clips", {}).get("outro", True),
             "min_score": int(config.get("clips", {}).get("min_score", 55)),
             "youtube_cookies": ytdlp_common.cookies(),  # as the engine uses it: "", "firefox" or "file"
+            # Settings → Export: the preset the Export button uses (Original
+            # until one is saved). Kept in the database, not settings.yaml.
+            "export": _saved_export(),
         }
 
     @app.patch("/settings")
-    def patch_settings(body: SettingsPatch):
+    def patch_settings(body: SettingsPatch, request: Request):
+        saved_export = None
+        if body.export is not None:
+            # First, so a refused one changes nothing else either.
+            _require_session(request)
+            saved_export = _read_preset(body.export)
+            _check_encodable(saved_export)
+            d = db()
+            try:
+                d.set_flag(EXPORT_SETTING, json.dumps(saved_export))
+            finally:
+                d.close()
+            if not (body.model_fields_set - {"export"}):
+                return {"ok": True, "export": saved_export}
         text = settings_path.read_text(encoding="utf-8")
         if body.translation_model is not None:
             # Nested under llm:, so patch it in place rather than via the
@@ -3360,6 +3587,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         if body.content_language is not None:
             # Applies to the NEXT processed video — no restart needed.
             config["content_language"] = body.content_language
+        if saved_export is not None:
+            return {"ok": True, "note": "restart serve to apply pipeline-level changes", "export": saved_export}
         return {"ok": True, "note": "restart serve to apply pipeline-level changes"}
 
     return app

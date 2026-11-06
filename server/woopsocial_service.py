@@ -10,6 +10,9 @@ The API key goes through core/secrets.py, not into the settings blob.
 
 import json
 import re
+import threading
+from collections import Counter
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -41,6 +44,9 @@ DEFAULTS = {
     # Overrides AFFILIATE_URL above for this install only, for trying a link
     # before committing it.
     "affiliate_url": "",
+    # Send a clip over WoopSocial's 100 MB as a smaller copy instead of being
+    # refused (publish/woopsocial.py WoopSocialPublisher). Off unless chosen.
+    "smaller_copy": False,
 }
 
 
@@ -309,8 +315,35 @@ ALIVE = ("queued", "processing", "published", "sending")
 
 # How long a post may sit at "sending" before it is treated as interrupted.
 # Longer than the upload and create timeouts together can run, so a slow send
-# that is still in progress is never mistaken for one that died.
+# that is still in progress is never mistaken for one that died. A smaller copy
+# (the creator's smaller_copy setting) is made inside the send, before the
+# upload, and has no such bound, so with the copy on, publish_clips holds a
+# background send as under way until it ends (_hold), and reconcile_sending
+# leaves a held send alone.
 STALE_SENDING_SECONDS = 20 * 60
+
+# The background sends this process has under way with the copy on:
+# (clip_id, platform) -> how many. In memory only, on purpose: a send the app
+# stopped in the middle of is no longer held, so it is settled as before.
+_held: Counter[tuple[int, str]] = Counter()
+_held_lock = threading.Lock()
+
+
+@contextmanager
+def _hold(clip_id: int, platforms):
+    """Hold a clip's background send as under way until the block ends,
+    however it ends."""
+    keys = {(int(clip_id), str(p)) for p in platforms}
+    with _held_lock:
+        _held.update(keys)
+    try:
+        yield
+    finally:
+        with _held_lock:
+            for key in keys:
+                _held[key] -= 1
+                if _held[key] <= 0:
+                    del _held[key]
 
 
 def already_sent(db, clip, platforms: list[str]) -> set[str]:
@@ -386,8 +419,12 @@ def publish_clips(
     from publish.woopsocial import WoopSocialPublisher
 
     client = make_client(data_dir)
-    publisher = WoopSocialPublisher(client, resolve_project(db, client))
-    standing = (load_settings(db).get("common_description") or "").strip()
+    settings = load_settings(db)
+    # Only a creator who turned the smaller copy on gets it; everyone else's
+    # publisher is made exactly as it always was.
+    shrink = {"smaller_copy": True} if settings.get("smaller_copy") else {}
+    publisher = WoopSocialPublisher(client, resolve_project(db, client), **shrink)
+    standing = (settings.get("common_description") or "").strip()
 
     start = datetime.now(tz.utc)
     if start_at:
@@ -528,16 +565,22 @@ def publish_clips(
         # Only a background run asks to hear about the media; a person's
         # publish calls start() exactly as it always has.
         extra = {"on_media": on_media} if on_media is not None else {}
+        # The smaller copy is made inside start() and can outlast the window
+        # reconcile_sending allows a send (STALE_SENDING_SECONDS), so with the
+        # copy on, a background send is held as under way until start() is
+        # done. With it off, nothing is held.
+        holding = _hold(clip_id, wanted) if once and shrink else nullcontext()
         try:
-            result = publisher.start(
-                _Path(clip["path"]),
-                platforms=wanted,
-                title=(clip["title"] or clip["hook"] or f"Clip {clip_id}").strip(),
-                text=text,
-                scheduled_for=when,
-                overrides=overrides or {},
-                **extra,
-            )
+            with holding:
+                result = publisher.start(
+                    _Path(clip["path"]),
+                    platforms=wanted,
+                    title=(clip["title"] or clip["hook"] or f"Clip {clip_id}").strip(),
+                    text=text,
+                    scheduled_for=when,
+                    overrides=overrides or {},
+                    **extra,
+                )
         except PublishError as e:
             # One clip's problem must not cost the rest of the batch.
             skipped.append({"clip_id": clip_id, "reason": e.message})
@@ -575,6 +618,10 @@ def reconcile_sending(db, data_dir: Path, *, older_than: float = STALE_SENDING_S
     sending again would post it twice. The uploaded media tells which: no media
     means no post could exist, and a post carrying the media is adopted with
     its id, so the ordinary status refresh follows it from there.
+
+    A send this process still has under way (publish_clips holds one that may
+    make a smaller copy) has not stopped, however long it has taken, and is
+    left alone: it records its own outcome when it ends.
     """
     from datetime import timedelta
 
@@ -587,6 +634,9 @@ def reconcile_sending(db, data_dir: Path, *, older_than: float = STALE_SENDING_S
         "ORDER BY clip_id",
         (cutoff,),
     ).fetchall()
+    with _held_lock:
+        held = set(_held)
+    rows = [r for r in rows if (int(r["clip_id"]), r["platform"]) not in held]
     if not rows:
         return {"adopted": 0, "failed": 0}
 
@@ -798,4 +848,5 @@ def status_payload(db, data_dir: Path) -> dict:
         "common_description": settings.get("common_description") or "",
         "affiliate_url": settings.get("affiliate_url") or AFFILIATE_URL,
         "storage": secrets.backend_name(),
+        "smaller_copy": bool(settings.get("smaller_copy")),
     }

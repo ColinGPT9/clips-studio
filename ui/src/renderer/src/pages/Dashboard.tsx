@@ -6,10 +6,11 @@ import { Trash } from '../components/icons'
 import ProcessingBar from '../components/ProcessingBar'
 import SystemStats from '../components/SystemStats'
 import { api } from '../lib/api'
+import { exportActivityLine } from '../lib/exportJobs'
 import { useEvents } from '../lib/useEvents'
 import { useJobWatch } from '../lib/useJobWatch'
 import { t } from '../lib/i18n'
-import type { Clip, Settings, StudioEvent, Video } from '../lib/types'
+import type { Clip, ExportJob, Settings, StudioEvent, Video } from '../lib/types'
 
 const DONATE_URL = 'https://paypal.me/clipsstudio'
 
@@ -50,7 +51,9 @@ function rememberHeight(px: number): void {
 
 type SortMode = 'newest' | 'channel'
 
-function describeEvent(e: StudioEvent): string {
+/** The Activity feed's line for an event, or null when it has nothing new to
+ *  say. `exportsSaid`: what the feed has said about each export. */
+function describeEvent(e: StudioEvent, exportsSaid: Map<string, ExportJob['status']>): string | null {
   if (e.type === 'progress') {
     if (e.stage === 'render') return `Rendering clip ${e.clip}/${e.total}${e.remote ? ` · ${e.remote}` : ''}`
     if (e.stage === 'done') return `Finished — ${e.clips} clip(s) created`
@@ -59,6 +62,9 @@ function describeEvent(e: StudioEvent): string {
   }
   if (e.type === 'job') return `Job ${e.job_id}: ${e.status}${e.error ? ` (${e.error})` : ''}`
   if (e.type === 'model_pull') return `Model ${e.tag}: ${e.status}`
+  // About two a second while an export runs: the feed tells only when one
+  // starts and how it ended (Clip Studio has the progress bar).
+  if (e.type === 'export') return e.export ? exportActivityLine(exportsSaid, e.export, t) : null
   return JSON.stringify(e)
 }
 
@@ -87,6 +93,8 @@ export default function Dashboard({
   })
   const [clipsByVideo, setClipsByVideo] = useState<Record<string, Clip[]>>({})
   const lastEventAt = useRef(Date.now())
+  // How far along each export was when the Activity feed last heard of it.
+  const exportsSaid = useRef(new Map<string, ExportJob['status']>())
   const logRef = useRef<HTMLDivElement>(null)
   // Only follow the feed while the user is already at the bottom, so
   // scrolling up to read something is not yanked away by the next event.
@@ -315,17 +323,19 @@ export default function Dashboard({
 
   useEvents((e) => {
     lastEventAt.current = Date.now()
-    const msg = describeEvent(e)
-    const line = `${new Date().toLocaleTimeString()}  ${msg}`
-    setLog((prev) => {
-      // Skip consecutive duplicates: only log when the message actually
-      // changes, so a stage that emits every second doesn't spam the feed.
-      const last = prev[prev.length - 1]
-      if (last && last.slice(last.indexOf('  ') + 2) === msg) return prev
-      // Oldest first, newest at the bottom: a feed you read downwards, and
-      // the only order in which following it means anything.
-      return [...prev, line].slice(-200)
-    })
+    const msg = describeEvent(e, exportsSaid.current)
+    if (msg !== null) {
+      const line = `${new Date().toLocaleTimeString()}  ${msg}`
+      setLog((prev) => {
+        // Skip consecutive duplicates: only log when the message actually
+        // changes, so a stage that emits every second doesn't spam the feed.
+        const last = prev[prev.length - 1]
+        if (last && last.slice(last.indexOf('  ') + 2) === msg) return prev
+        // Oldest first, newest at the bottom: a feed you read downwards, and
+        // the only order in which following it means anything.
+        return [...prev, line].slice(-200)
+      })
+    }
     if (e.type === 'job' && (e.status === 'done' || e.status === 'failed')) refresh()
   })
 

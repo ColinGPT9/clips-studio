@@ -13,12 +13,19 @@ tried, so a wrong flag on some AMD driver degrades to CPU encoding instead
 of breaking renders.
 
 Config: video.encoder in settings.yaml — "auto" (default) or force one of
-"nvenc" / "amf" / "qsv" / "videotoolbox" / "cpu".
+"nvenc" / "amf" / "qsv" / "videotoolbox" / "cpu". configure() applies it
+once, at engine start, to every render in the process.
+
+Exports in other sizes and codecs (video/export_presets.py) pick their encoder
+with encoder_for(), which has probes and a cache of its own: an export can
+never change the encoder the renders use.
 """
 
 import subprocess
 import threading
+import time
 import uuid
+from dataclasses import dataclass
 
 from core.binaries import ffmpeg, ffprobe
 from core.paths import discard
@@ -36,6 +43,47 @@ _CANDIDATES: dict[str, list[str]] = {
 }
 
 _selected: tuple[str, list[str]] | None = None  # cached (name, args)
+
+# The encoder settings asked for (video.encoder), set by configure() when the
+# engine starts. Every render without a config of its own uses it. Only two of
+# the fifteen or so places that encode passed the config, so a forced encoder
+# used to reach those two and, through them, whatever rendered after them.
+_mode = "auto"
+
+# Forced encoders whose probe failed. The render falls back to the CPU and
+# the probe is not run again before every encode: with the setting reaching
+# every encode, that would be a failing FFmpeg start for each one.
+_refused: set[str] = set()
+
+
+def _normalise_mode(value) -> str:
+    """A video.encoder value as the code reads it: "auto", "cpu" or one of
+    _CANDIDATES. Anything else counts as "auto", as it always has."""
+    mode = str(value).strip().lower()
+    return mode if mode in ("auto", "cpu") or mode in _CANDIDATES else "auto"
+
+
+def _mode_of(config, default: str) -> str:
+    """The encoder a config names, or `default` when it names none."""
+    video = config.get("video") if isinstance(config, dict) else None
+    value = video.get("encoder") if isinstance(video, dict) else None
+    return default if value is None else _normalise_mode(value)
+
+
+def configure(config: dict | None) -> str:
+    """Use the settings' video.encoder for every render in this process.
+
+    Called once when the engine starts (server/api.py create_app, and main.py
+    for the command line). Nothing is probed here: the first encode probes, as
+    it always has, so "auto" runs exactly the probes it ran before, in the
+    same order and at the same moment. Returns the mode now in use."""
+    global _mode, _selected
+    mode = _mode_of(config, "auto")
+    if mode != _mode:
+        _mode = mode
+        _selected = None
+        _refused.clear()
+    return _mode
 
 
 def _probe(args: list[str]) -> bool:
@@ -181,11 +229,19 @@ def sampled_frames(clip_path, every: int, width: int, height: int, hwaccel: bool
 
 
 def video_encoder_args(config: dict | None = None) -> list[str]:
-    """The `-c:v ...` argument block for FFmpeg output encoding."""
+    """The `-c:v ...` argument block for FFmpeg output encoding.
+
+    The encoder is the one configure() set from the settings. A config passed
+    here that names an encoder still chooses it for the whole process, as it
+    always has: the golden-render and benchmark scripts force the CPU encoder
+    that way. A config that names none leaves the settings' choice alone.
+    """
     global _selected
-    mode = (config or {}).get("video", {}).get("encoder", "auto")
-    if _selected is None or (mode != "auto" and _selected[0] != mode):
+    mode = _mode_of(config, _mode)
+    if _selected is None or (mode != "auto" and _selected[0] != mode and mode not in _refused):
         _selected = _select(mode)
+        if mode != "auto" and _selected[0] != mode:
+            _refused.add(mode)
     return _selected[1]
 
 
@@ -199,6 +255,126 @@ def using_hardware_encoder() -> bool:
     without this it cannot tell whether falling back would change anything.
     """
     return _selected is not None and _selected[0] != "cpu"
+
+
+# ---- Encoders for exports (video/export_presets.py) --------------------------
+#
+# An export can ask for H.264, HEVC or AV1, on the CPU or the graphics card.
+# Which of those this PC can encode is found the same way as for renders, by
+# encoding a test frame, but with probes and a cache of their own. That is the
+# point: asking for an export on a particular encoder must never change the
+# encoder every later render uses (_selected).
+
+
+@dataclass(frozen=True)
+class Encoder:
+    """One FFmpeg video encoder an export can use."""
+
+    codec: str    # h264 | hevc | av1
+    family: str   # cpu | nvenc | amf | qsv | videotoolbox
+    name: str     # FFmpeg's name for it: libx264, h264_nvenc, ...
+
+    @property
+    def hardware(self) -> bool:
+        return self.family != "cpu"
+
+
+# By codec, then family. AV1 has no CPU entry: the CPU AV1 encoders are far
+# too slow for a creator waiting on an export, so AV1 is offered only where a
+# graphics card encodes it (an RTX 40-series, a recent Radeon or Intel Arc).
+EXPORT_ENCODERS: dict[str, dict[str, str]] = {
+    "h264": {"nvenc": "h264_nvenc", "amf": "h264_amf", "qsv": "h264_qsv",
+             "videotoolbox": "h264_videotoolbox", "cpu": "libx264"},
+    "hevc": {"nvenc": "hevc_nvenc", "amf": "hevc_amf", "qsv": "hevc_qsv",
+             "videotoolbox": "hevc_videotoolbox", "cpu": "libx265"},
+    "av1": {"nvenc": "av1_nvenc", "amf": "av1_amf", "qsv": "av1_qsv"},
+}
+HARDWARE_FAMILIES = ("nvenc", "amf", "qsv", "videotoolbox")  # the order "auto" tries them in
+
+# The flags an export runs each encoder with, before its rate control
+# (video/export_presets.py adds that). The probe encodes with these plus a
+# bitrate, which every encoder here takes.
+EXPORT_BASE_ARGS: dict[str, list[str]] = {
+    "libx264": ["-c:v", "libx264", "-preset", "medium"],
+    "libx265": ["-c:v", "libx265", "-preset", "fast", "-x265-params", "log-level=error"],
+    **{f"{codec}_nvenc": ["-c:v", f"{codec}_nvenc", "-preset", "p5"] for codec in ("h264", "hevc", "av1")},
+    **{f"{codec}_amf": ["-c:v", f"{codec}_amf", "-quality", "quality"] for codec in ("h264", "hevc", "av1")},
+    **{f"{codec}_qsv": ["-c:v", f"{codec}_qsv", "-preset", "medium"] for codec in ("h264", "hevc", "av1")},
+    "h264_videotoolbox": ["-c:v", "h264_videotoolbox"],
+    "hevc_videotoolbox": ["-c:v", "hevc_videotoolbox"],
+}
+_EXPORT_PROBE_RATE = ["-b:v", "2M", "-maxrate", "3M", "-bufsize", "4M"]
+
+# A probe that failed is tried again after this long. A graphics card that is
+# busy can refuse one more encoding session (consumer cards allow only a few
+# at once, and a render may be using them), and that must not hide the card
+# from exports until the app restarts. One that worked stays known.
+EXPORT_RECHECK_SECONDS = 300.0
+
+_export_probes: dict[str, tuple[bool, float]] = {}  # encoder name -> (works, when probed)
+_export_lock = threading.Lock()  # one probe at a time: each opens an encoding session
+
+
+def export_probe_args(name: str) -> list[str]:
+    """What encoder `name`'s export probe encodes its test frame with."""
+    return [*EXPORT_BASE_ARGS[name], *_EXPORT_PROBE_RATE]
+
+
+def export_encoder_works(name: str) -> bool:
+    """Whether this PC can encode with `name` for an export. Probed once and
+    remembered (a failure only for EXPORT_RECHECK_SECONDS). Never reads or
+    changes the render encoder (_selected)."""
+    if name not in EXPORT_BASE_ARGS:
+        return False
+    with _export_lock:
+        known = _export_probes.get(name)
+        if known is not None and (known[0] or time.monotonic() - known[1] < EXPORT_RECHECK_SECONDS):
+            return known[0]
+        works = _probe(export_probe_args(name))
+        _export_probes[name] = (works, time.monotonic())
+        return works
+
+
+def encoder_for(codec: str, pref: str = "auto") -> Encoder | None:
+    """The encoder an export of `codec` uses, or None when this PC has none.
+
+    `pref` is "cpu", "gpu" (the first graphics-card encoder that works) or
+    "auto": the encoder the settings forced first (video.encoder, read and
+    never changed), then the graphics card, then the CPU. AV1 is GPU only.
+    """
+    families = EXPORT_ENCODERS.get(codec)
+    if not families:
+        return None
+    if pref == "cpu":
+        order = ["cpu"]
+    elif pref == "gpu":
+        order = list(HARDWARE_FAMILIES)
+    elif _mode == "cpu":
+        order = ["cpu", *HARDWARE_FAMILIES]
+    elif _mode in HARDWARE_FAMILIES:
+        order = [_mode, *(f for f in HARDWARE_FAMILIES if f != _mode), "cpu"]
+    else:
+        order = [*HARDWARE_FAMILIES, "cpu"]
+    for family in order:
+        name = families.get(family)
+        if name and export_encoder_works(name):
+            return Encoder(codec, family, name)
+    return None
+
+
+def export_codecs() -> dict[str, dict[str, str | None]]:
+    """What this PC can encode an export as: for each codec with at least one
+    working encoder, its CPU encoder and its graphics-card encoder (None for
+    neither). Probes on first use; see export_encoder_works."""
+    out: dict[str, dict[str, str | None]] = {}
+    for codec, families in EXPORT_ENCODERS.items():
+        cpu = families.get("cpu")
+        gpu = next((families[f] for f in HARDWARE_FAMILIES if f in families and export_encoder_works(families[f])),
+                   None)
+        cpu = cpu if cpu and export_encoder_works(cpu) else None
+        if cpu or gpu:
+            out[codec] = {"cpu": cpu, "gpu": gpu}
+    return out
 
 
 # Codecs that software-decode slowly enough to drag the whole pipeline

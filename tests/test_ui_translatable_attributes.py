@@ -27,6 +27,8 @@ FILES = (
     "components/EditSuggestions.tsx",
     "components/TranslationReview.tsx",
     "components/EditorModal.tsx",
+    "components/ExportSettingsCard.tsx",
+    "components/ExportProgress.tsx",
 )
 
 ATTRIBUTE = re.compile(r"""\b(?:placeholder|title|aria-label)\s*=\s*(['"])(.*?)\1""", re.DOTALL)

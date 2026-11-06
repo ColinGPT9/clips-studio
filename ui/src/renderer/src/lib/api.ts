@@ -12,6 +12,11 @@ import type {
   CreatorDetail,
   CreatorSuggestion,
   CreatorSummary,
+  ExportCodecInfo,
+  ExportEstimate,
+  ExportJob,
+  ExportPreset,
+  ExportPresetsInfo,
   FilterName,
   FrameBox,
   GamingSettings,
@@ -74,6 +79,34 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(`${res.status} ${path}: ${body.slice(0, 200)}`)
   }
   return res.json() as Promise<T>
+}
+
+/** The headers of a call the engine guards with the desktop app's session
+ *  secret (an export in another size, cancelling one, saving Settings →
+ *  Export): Content-Type as well, since request() replaces the whole headers
+ *  object. The secret is the plugin routes' one (sessionSecret() in
+ *  plugins.ts, which can't be imported here: plugins.ts imports this file).
+ *  Without one (the browser shim) no header is sent: Original exports work as
+ *  always, and the engine answers anything else with its own refusal. */
+async function sessionHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const secret = await (window.studio?.pluginSession?.() ?? Promise.resolve('')).catch(() => '')
+  if (secret) headers['X-Clips-Kitty-Session'] = secret
+  return headers
+}
+
+/** Which preset an export uses: the one saved in Settings → Export
+ *  ('default', which is Original until another is chosen), Original, or one
+ *  given in full. */
+export type ExportPresetChoice = 'default' | 'original' | ExportPreset
+
+/** What an export answers. Original is the copy, made before the answer
+ *  (`exported`). Any other preset answers at once with one editor-lane job
+ *  per clip (`jobs`), and `skipped` lists the clips that have no file. */
+export interface ExportAnswer {
+  exported: string[]
+  jobs?: ExportJob[]
+  skipped?: number[]
 }
 
 export const api = {
@@ -334,15 +367,48 @@ export const api = {
         ...(suggestions ? { suggestions } : {})
       })
     }),
-  exportClip: (id: number, folder: string) =>
-    request<{ exported: string[] }>(`/clips/${id}/export`, {
+  /** Export with the preset saved in Settings → Export unless told otherwise.
+   *  Original copies the file, exactly as before; anything else queues an
+   *  editor-lane job, whose progress arrives as 'export' events. */
+  exportClip: async (id: number, folder: string, preset: ExportPresetChoice = 'default') =>
+    request<ExportAnswer>(`/clips/${id}/export`, {
       method: 'POST',
-      body: JSON.stringify({ folder })
+      headers: await sessionHeaders(),
+      body: JSON.stringify({ folder, preset })
     }),
-  exportBatch: (clipIds: number[], folder: string) =>
-    request<{ exported: string[] }>('/export/batch', {
+  exportBatch: async (clipIds: number[], folder: string, preset: ExportPresetChoice = 'default') =>
+    request<ExportAnswer>('/export/batch', {
       method: 'POST',
-      body: JSON.stringify({ clip_ids: clipIds, folder })
+      headers: await sessionHeaders(),
+      body: JSON.stringify({ clip_ids: clipIds, folder, preset })
+    }),
+  /** The saved default, Original, a custom preset's starting values and every
+   *  allowed value. Probes nothing, so it answers at once. */
+  exportPresets: () => request<ExportPresetsInfo>('/export/presets'),
+  /** The codecs this PC can export in. The engine's first answer tests each
+   *  encoder (under a second where the drivers answer at once). */
+  exportCodecs: () => request<{ codecs: ExportCodecInfo[] }>('/export/codecs'),
+  /** How big an export comes out: for `clip_id`'s own file, or else for a
+   *  1080x1920 60 fps clip `seconds` long (60: the per-minute figure). */
+  exportEstimate: (body: { preset?: ExportPresetChoice; clip_id?: number; seconds?: number }) =>
+    request<ExportEstimate>('/export/estimate', { method: 'POST', body: JSON.stringify(body) }),
+  /** The editor lane's exports, newest first: waiting, running and the last
+   *  100 finished. Empty after the engine restarts. */
+  exportJobs: () => request<{ jobs: ExportJob[] }>('/export/jobs'),
+  /** A waiting export is dropped; a running one is stopped and its
+   *  unfinished file deleted. Answers the job, normally cancelled. */
+  cancelExport: async (exportId: number) =>
+    request<ExportJob>(`/export/jobs/${exportId}/cancel`, {
+      method: 'POST',
+      headers: await sessionHeaders()
+    }),
+  /** Save Settings → Export (the Export buttons' preset). The engine answers
+   *  it as it keeps it: checked, clamped and complete. */
+  saveExportDefault: async (preset: ExportPreset) =>
+    request<{ ok: boolean; export: ExportPreset }>('/settings', {
+      method: 'PATCH',
+      headers: await sessionHeaders(),
+      body: JSON.stringify({ export: preset })
     }),
   mediaUrl: (clipId: number) => `${API_BASE}/media/${clipId}`,
   clipWords: (clipId: number) => request<{ words: Word[] }>(`/clips/${clipId}/words`),
@@ -609,7 +675,8 @@ export const api = {
 
   settings: () => request<Settings>('/settings'),
   // youtube_cookies_text: a cookies.txt's contents, kept by the engine in the data folder (#136)
-  patchSettings: (patch: Partial<Settings> & { youtube_cookies_text?: string }) =>
+  // `export` goes through saveExportDefault, which sends the header it needs.
+  patchSettings: (patch: Partial<Omit<Settings, 'export'>> & { youtube_cookies_text?: string }) =>
     request<{ ok: boolean }>('/settings', { method: 'PATCH', body: JSON.stringify(patch) }),
 
   // ---- YouTube publishing ----
