@@ -17,14 +17,15 @@ were often broken in a way that only showed up on somebody else's machine.
   as Clips Kitty made it. Custom makes a new file from 720p to 2160p, in another shape
   (filled by cropping, a blurred background or colour bars), at Smallest file, Balanced,
   High or your own quality, as H.264, HEVC or (with a graphics card that makes it) AV1,
-  with its frame rate and sound, and optionally kept under a size you set. The card
-  shows about how big a minute comes out, and warns when your choices would enlarge a
-  tall clip's picture or your size limit is too small for long clips.
+  with its frame rate and sound, and optionally kept under a size you set (a tick box,
+  off by default). The card shows about how big a minute comes out, and warns when your
+  choices would enlarge a tall clip's picture or your size limit is too small for long
+  clips.
   Custom exports are made in the background, beside the processing queue rather than
   behind it, with a progress bar, Cancel, and the file's size and resolution when done.
 - **WoopSocial: make a smaller copy when a clip is over 100 MB** (off unless you tick
-  it). A clip WoopSocial would refuse is sent as a copy under about 95 MB (for clips
-  up to about 55 minutes), which is deleted once it's sent.
+  it). A clip WoopSocial would refuse is sent as a copy under about 95 MB, which is
+  deleted once it's sent.
 - **Optional Clip updates.** App-wide Approve/Deny cards, private Discord
   updates and an Away from desk approval gate, with local-model wording and
   plain-text fallback. Includes a configurable attorney joke popup. Off by default.

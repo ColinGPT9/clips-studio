@@ -252,6 +252,12 @@ graphics cards' encoders take their codec's (not measured: none worked here).
 
 ## Settings → Export
 
+The Settings → Export card (`ExportSettingsCard.tsx`) reads and saves the default
+preset with the calls below; its "Keep files under a size limit" tick box saves
+`max_mb: null` when unticked and, when ticked, the last number used, which the card
+remembers in the browser (`localStorage` key `export-size-limit-mb`, in
+`lib/exportJobs.ts`), or 100 the first time.
+
 ### `GET /settings`
 
 The existing answer, plus:

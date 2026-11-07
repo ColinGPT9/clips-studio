@@ -229,6 +229,8 @@ export default function WoopSocialCard(): JSX.Element {
 
   const affiliate = status.affiliate_url.trim()
   const mine = PLATFORMS.filter((p) => WOOPSOCIAL_PLATFORMS.includes(p.id))
+  // On the tick box too, so keyboard and screen-reader users get it.
+  const smallerCopyTip = t('WoopSocial takes clips up to 100 MB. With this on, a bigger clip is sent as a copy under about 95 MB: the same size picture if it still looks good, or 720p if not. It is deleted once it is sent, and your clip stays as it is.')
 
   return (
     <section className="card space-y-3" aria-label="WoopSocial publishing">
@@ -440,11 +442,12 @@ export default function WoopSocialCard(): JSX.Element {
 
           <label
             className="flex items-center gap-2 cursor-pointer text-sm"
-            title={t('WoopSocial takes clips up to 100 MB. With this on, a bigger clip is sent as a copy under about 95 MB: the same size picture if it still looks good, or 720p if not. A clip over about 55 minutes can’t get that small, and from about an hour it can’t be sent. Making the copy can take a while. It is deleted once it is sent, and your clip stays as it is.')}
+            title={smallerCopyTip}
           >
             <input
               type="checkbox"
               className="size-4 accent-[#38BDF8]"
+              title={smallerCopyTip}
               checked={Boolean(status.smaller_copy)}
               disabled={busy}
               onChange={(e) => void setSmallerCopy(e.target.checked)}

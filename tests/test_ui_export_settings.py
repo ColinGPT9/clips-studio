@@ -280,7 +280,8 @@ def test_the_export_warnings_take_keyboard_focus_and_are_announced():
     sit in a polite live region that is always there, so one that appears is
     announced; the result's warning keeps its phrase on one line."""
     card = _source("components/ExportSettingsCard.tsx")
-    region = card.index('<span aria-live="polite"')
+    line = card.index('<p className="text-xs text-muted flex flex-wrap items-center gap-x-3 gap-y-1 min-h-4">')
+    region = card.index('<span aria-live="polite"', line)
     end = card.index("</p>", region)
     warnings = card[region:end]
     for label in ("{t('Enlarged')}", "{t('Limit too small for long clips')}", "{t('Not on this PC')}"):
@@ -323,7 +324,7 @@ def test_the_settings_card_answers_at_once_and_stays_put():
 
 
 def test_sizes_and_totals_read_the_way_the_size_limit_counts(tmp_path):
-    """Decimal megabytes, as "Keep under N MB" and the engine count them; a
+    """Decimal megabytes, as the size limit and the engine count them; a
     finished export counts as whole in the bar; the summary adds the files up."""
     jobs = [
         _job(export_id=1, status="done", fraction=1.0, result=_result(20_000_000)),
@@ -545,7 +546,8 @@ def test_settings_has_the_export_card_and_woopsocial_the_smaller_copy():
     assert re.search(r"<ExportFolderCard />\n(\s*\{/\*.*?\*/\}\n)?\s*<ExportSettingsCard />", settings, re.S)
 
     card = _source("components/ExportSettingsCard.tsx")
-    for name in ("Export as", "Size", "Shape", "Fill", "Quality", "Format", "Frame rate", "Sound", "Keep under"):
+    for name in ("Export as", "Size", "Shape", "Fill", "Quality", "Format", "Frame rate", "Sound",
+                 "Keep files under a size limit"):
         assert f"t('{name}')" in card, name
     # Only the formats this PC can make, asked of the engine; the estimate a minute; the upscale marker.
     assert re.search(r"api\s*\.exportCodecs\(\)", card) and re.search(r"api\s*\.exportEstimate\(\{ preset \}\)", card)
@@ -589,6 +591,155 @@ def test_what_a_size_limit_does_is_said_as_it_is():
     assert "so Clips Kitty didn’t squeeze it down to your limit." in progress
     for gone in ("once more, a little smaller", "too small for a clip this long", "made as small as still looks good"):
         assert gone not in progress and gone not in card, gone
+
+
+# ---- the size limit's tick box (the owner's call, 2026-11-06) ------------------------------------
+
+# A stand-in for localStorage (getItem and setItem over a Map, `kept`), and
+# storage that is there but throws, as blocked site data or a full disk does.
+_STORES = """
+    const store = (items = {}) => {
+      const kept = new Map(Object.entries(items))
+      return {kept, getItem: (key) => (kept.has(key) ? kept.get(key) : null),
+              setItem: (key, value) => { kept.set(key, String(value)) }}
+    }
+    const throwing = {getItem() { throw new Error('blocked') }, setItem() { throw new Error('full') }}
+    const range = [5, 4000]
+"""
+
+
+def test_the_size_limit_box_is_ticked_only_with_a_limit(tmp_path):
+    """Unticked means no limit: the preset's max_mb is null, the default. A
+    saved preset with a limit loads ticked, with its number in the box under
+    the label; the box isn't there while it's unticked."""
+    got = _run(tmp_path, "exportJobs", """
+        return [{max_mb: null}, {max_mb: 100}, {max_mb: 95.5}, {max_mb: 5}, {}, null].map(m.hasLimit)
+    """)
+    assert got == [False, True, True, True, False, False]
+
+    card = _source("components/ExportSettingsCard.tsx")
+    assert "const limited = hasLimit(preset)" in card
+    assert re.search(r'<input\s+type="checkbox"\s+className="size-4 accent-\[#38BDF8\]"\s+title=\{limitTip\}\s+'
+                     r"checked=\{limited\}\s+onChange=\{\(e\) => tickLimit\(e\.target\.checked\)\}", card)
+    # A full-width row after Frame rate and Sound, its MB box on the next
+    # line, indented under the label, only while it's ticked.
+    tick = card.index("{t('Keep files under a size limit')}")
+    assert card.index("label={t('Sound')}") < card.rindex("<div className={ROW}>", 0, tick)
+    assert re.search(r"\{limited && \(\s*<div className=\"mt-1 pl-6 flex items-center gap-1\.5\">\s*"
+                     r"\{number\('max_mb', t\('Size limit in MB'\), limitTip, '!w-28'\)\}\s*"
+                     r"<span className=\"text-xs text-muted\">\{t\('MB'\)\}</span>", card[tick:])
+    # It is never an empty box meaning "no limit" any more.
+    for gone in ("t('Keep under')", "t('no limit')", "Leave it empty"):
+        assert gone not in card, gone
+
+
+def test_ticking_the_box_saves_the_last_limit_used_or_100(tmp_path):
+    """Ticking it saves the last limit this person used, as this browser
+    remembers it, or 100 the first time: also when storage is missing or
+    throws, or holds nothing the engine would keep (5 to 4000 MB)."""
+    got = _run(tmp_path, "exportJobs", _STORES + """
+        const tick = (s) => m.limitAfterTick(true, null, range, s)
+        const with_ = (value) => tick(store({[m.LIMIT_KEY]: value}))
+        return {
+          key: m.LIMIT_KEY,
+          first: tick(store()),
+          remembered: [with_('250'), with_('95.5'), with_('5'), with_('4000')],
+          unusable: ['', ' ', 'abc', '3', '4001', 'Infinity', 'NaN', '-50'].map(with_),
+          throwing: tick(throwing),
+          none: tick(null),
+          default_store: m.limitAfterTick(true, null),   // Node has no localStorage
+          no_range: m.limitToTick(undefined, store({[m.LIMIT_KEY]: '120'})),
+          already: m.limitAfterTick(true, 42, range, store({[m.LIMIT_KEY]: '250'})),
+        }
+    """)
+    assert got == {"key": "export-size-limit-mb", "first": 100, "remembered": [250, 95.5, 5, 4000],
+                   "unusable": [100] * 8, "throwing": 100, "none": 100, "default_store": 100,
+                   "no_range": 120, "already": 42}
+
+    card = _source("components/ExportSettingsCard.tsx")
+    # The checkbox saves what limitAfterTick says, from the newest choice and
+    # the engine's own limits.
+    assert re.search(r"const tickLimit = \(on: boolean\): void =>\s*change\(\{ max_mb: limitAfterTick\(on, "
+                     r"wanted\.current\?\.max_mb \?\? null, limit\('max_mb'\)\) \}\)", card)
+
+
+def test_unticking_the_box_saves_no_limit_and_remembers_the_one_it_had(tmp_path):
+    """Unticking saves max_mb null and remembers the limit for the next tick.
+    The limit the card shows, a saved preset's included, is remembered too;
+    storage that is missing or throws only means it isn't."""
+    got = _run(tmp_path, "exportJobs", _STORES + """
+        const s = store()
+        const off = m.limitAfterTick(false, 180, range, s)
+        const kept = s.kept.get(m.LIMIT_KEY)
+        const again = m.limitAfterTick(true, null, range, s)
+        m.rememberLimit(null, s)                       // no limit: the one remembered stays
+        const after_null = s.kept.get(m.LIMIT_KEY)
+        m.rememberLimit(95.5, s)                       // a saved preset's limit, as the card shows it
+        return {
+          off, kept, again, after_null,
+          shown: s.kept.get(m.LIMIT_KEY),
+          throwing: m.limitAfterTick(false, 250, range, throwing),
+          none: m.limitAfterTick(false, 250, range, null),
+          default_store: m.limitAfterTick(false, 250),
+        }
+    """)
+    assert got == {"off": None, "kept": "180", "again": 180, "after_null": "180", "shown": "95.5",
+                   "throwing": None, "none": None, "default_store": None}
+
+    card = _source("components/ExportSettingsCard.tsx")
+    assert re.search(r"const shownLimit = preset\?\.max_mb \?\? null\n\s*useEffect\(\(\) => \{\n\s*"
+                     r"rememberLimit\(shownLimit\)\n\s*\}, \[shownLimit\]\)", card)
+    # Unticking is what removes a limit: an emptied MB box shows the saved
+    # limit again, as any number box does.
+    commit = card[card.index("const commit = (key: NumberKey): void => {"):]
+    commit = commit[: commit.index("\n  }\n")]
+    assert "max_mb" not in commit and "if (trimmed === '' || !Number.isFinite(value)" in commit
+
+
+def test_slower_shows_beside_the_ticked_box_takes_focus_and_is_announced():
+    """Ticked, "⚠ Slower" sits beside the box's label, styled like the card's
+    other warnings: it takes keyboard focus, its tooltip says why, and it is
+    in a polite live region that is always there, so it is announced when the
+    box is ticked. The box and its label say what a limit does."""
+    card = _source("components/ExportSettingsCard.tsx")
+    assert ("const slowerTip = t('To stay under your limit, each file is checked and made again if it came out "
+            "over, so an export can take twice as long or more. Smaller files can also look less sharp.')") in card
+    assert re.search(
+        r"<label className=\"flex items-center gap-2 cursor-pointer text-sm\" title=\{limitTip\}>"
+        r"(?:(?!</label>).)*\{t\('Keep files under a size limit'\)\}\s*</label>\s*"
+        r"(?:\{/\*(?:(?!\*/).)*\*/\}\s*)?"
+        r"<span aria-live=\"polite\" className=\"text-xs\">\s*"
+        r"\{limited && \(\s*<span className=\"text-warn\" tabIndex=\{0\} title=\{slowerTip\}>\s*"
+        r"\{'⚠ '\}\s*\{t\('Slower'\)\}\s*</span>\s*\)\}\s*</span>",
+        card, re.S)
+    assert ("const limitTip = t('Tick the box to set a size limit for each exported file, from 5 to 4000 MB. "
+            "Unticked, there is no limit. With a limit, a clip that may fit") in card
+
+
+def test_the_woopsocial_smaller_copy_has_no_caveat():
+    """The owner's rule: nothing WoopSocial carries a warning or a caveat
+    about limits or slowness where a creator reads it. The smaller copy's
+    tooltip, its section in the user guide and its changelog line say what it
+    does and nothing about long clips."""
+    woop = _source("components/WoopSocialCard.tsx")
+    tip = re.search(r"const smallerCopyTip = t\('([^']*)'\)", woop).group(1)
+    assert tip == ("WoopSocial takes clips up to 100 MB. With this on, a bigger clip is sent as a copy under about "
+                   "95 MB: the same size picture if it still looks good, or 720p if not. It is deleted once it is "
+                   "sent, and your clip stays as it is.")
+    box = woop.index("{t('Make a smaller copy when a clip is over 100 MB')}")
+    label = woop[woop.rindex("<label", 0, box):box]
+    # On the label and on the tick box itself, so keyboard and screen-reader users get it too.
+    assert label.count("title={smallerCopyTip}") == 2
+    assert "⚠" not in label and "text-warn" not in label
+
+    guide = (ROOT / "docs" / "editor-suite" / "USER-GUIDE.md").read_text(encoding="utf-8")
+    section = guide[guide.index("### Clips over 100 MB on WoopSocial"):]
+    section = section[: section.index("\n### ", 1)]
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    line = changelog[changelog.index("- **WoopSocial: make a smaller copy"):]
+    line = line[: line.index("\n- ")]
+    for text in (tip, section, line):
+        assert not re.search(r"55 minutes|an hour|can.t be (?:made that small|sent)|take a while|slow|⚠", text), text
 
 
 def test_the_new_screens_show_no_untranslated_english():

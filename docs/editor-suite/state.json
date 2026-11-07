@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "Clips Kitty editor suite",
-  "updated": "2026-11-06",
+  "updated": "2026-11-07",
   "about": "Machine-readable tracker for the editor suite. STATUS.md is the readable view of this file; when they disagree, this file wins. Acceptance criteria are copied from the plan's Proof column; step 0 also carries the checks from the plan's section on keeping plain auto-clipping identical. depends_on is read from the plan's text (which earlier step's output a step uses): the plan gives the run order, not a dependency list.",
   "now": "1",
   "stop_after_phase": 2,
@@ -397,7 +397,7 @@
         "Checks done 2026-11-06 (QC, black-box re-test, performance, UX, docs audit); waiting for Colin's click-through and his word to merge",
         "The browser build (npm run dev:web) has no session secret, so saving a Custom preset, exporting with one and cancelling answer 403 there; Original exports and everything read-only work",
         "NVENC, AMF, QSV and AV1 export arguments are unit-tested only: the dev PC has no working hardware encoder (its NVIDIA driver is older than the bundled FFmpeg needs)",
-        "Open, for Colin: with a size limit, a clip that may fit (even the low end of its estimate is under the limit) is made as without the limit first, so one that comes out over takes a second, 2-pass encode: Keep under 100 MB at Balanced on the 150 s 1080p60 clip took 232 s against 122 s at step 1's first version (the same file). Deciding by the estimate's middle figure would hold more clips to the limit from the start (faster), but a calm clip could then come out bigger than without the limit (still under it)",
+        "Colin's call, 2026-11-06, on the size limit's speed: keep the rule as it is (a clip that may fit is made as without the limit first and made again, 2-pass, only if it comes out over), with no engine change. In Settings → Export the limit becomes a tick box, \"Keep files under a size limit\", off by default (max_mb null): ticked, it saves the last limit used (remembered in the browser) or 100, opens the MB box under its label, and shows \"⚠ Slower\" beside it. No WoopSocial caveats in user-facing text: the smaller copy's tooltip, the user guide and the changelog no longer mention clips over about 55 minutes (the developer notes keep it)",
         "Open: estimates for a changed frame rate are low (1.31x at 30 fps, 1.47x at 24 fps); bars, blur and calm clips are estimated too high; H.264 Balanced came out 9-17% over its estimate on 4 real clips (Smallest 1.27x on one); hardware encoders' floors and estimates and anything AV1 are unmeasured",
         "Open: the WoopSocial smaller copy keeps its first rule (held to 95 MB, at least 100 kbps): from about 30 minutes of 1080p60 its video is under the 720p60 floor, and from about 55 minutes the copy is over 95 MB",
         "Open: a custom shape longer than about 5.7:1 comes out under 720 on its short side (documented); a typed Custom bitrate under the floor still shows the 'too small for long clips' warning; Format lists HEVC only after the encoder check (about 2.2 s); a refused custom width's message clears at the next saved edit",

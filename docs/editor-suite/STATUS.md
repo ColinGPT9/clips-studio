@@ -2,7 +2,7 @@
 
 Now: step 0 (guardrails) done, waiting to merge. Step 1 (export presets) built and checked, waiting for Colin's click-through and his word to merge.
 
-A readable view of [`state.json`](state.json), updated 2026-11-06. When the two disagree, `state.json` wins. Step statuses are todo, in progress, blocked and done.
+A readable view of [`state.json`](state.json), updated 2026-11-07. When the two disagree, `state.json` wins. Step statuses are todo, in progress, blocked and done.
 
 ## Phases
 
@@ -83,7 +83,8 @@ Full records are in `state.json`.
   - UX passed (4 minors, fixed).
   - A docs audit: about 30 sentences reworded (1-D20).
   - 21 defects in all, every one fixed.
-- **Performance, one named exception:** a limited export whose first try comes out over is made again, 2-pass. Keep under 100 MB at Balanced on the 150 s clip took 232 s, against 122 s at step 1's first version, for the same file. That trade-off is Colin's to keep or change.
+- **Performance, one named exception:** a limited export whose first try comes out over is made again, 2-pass. Keep under 100 MB at Balanced on the 150 s clip took 232 s, against 122 s at step 1's first version, for the same file.
+- **Colin's call on that (2026-11-06):** keep the rule; the engine doesn't change. In Settings → Export the limit becomes a tick box, "Keep files under a size limit", off by default. Ticked, it fills in the last limit used (or 100) and shows "⚠ Slower" beside it. No WoopSocial caveats in user-facing text: the smaller copy's tooltip, the guide and the changelog no longer mention clips over about 55 minutes.
 - **Open:**
   - Estimates: a changed frame rate is under-estimated (1.31x at 30 fps); bars, blur and calm clips are over-estimated; H.264 Balanced came out 9-17% over on 4 real clips.
   - Hardware encoders and AV1 were checked as arguments only.

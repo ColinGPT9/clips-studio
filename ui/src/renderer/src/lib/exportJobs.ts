@@ -192,6 +192,74 @@ export function clipLength(seconds: number, tr: Words = english): string {
   return parts.join(' ')
 }
 
+/** Settings → Export's size limit is a tick box, "Keep files under a size
+ *  limit", off unless ticked: unticked, the preset's max_mb is null (no
+ *  limit). Ticked, it saves the last limit this person used, which this
+ *  browser remembers under LIMIT_KEY, or FIRST_LIMIT_MB the first time. The
+ *  saved preset is the same as before: max_mb is null or a number.
+ *
+ *  Storage can be missing, and reaching it, reading it or writing to it can
+ *  throw (blocked site data, a private window, a full disk), so every use is
+ *  wrapped: a limit that can't be remembered is only not remembered. */
+export const LIMIT_KEY = 'export-size-limit-mb'
+export const FIRST_LIMIT_MB = 100
+
+/** Whether the box is ticked: the preset has a size limit (max_mb is a
+ *  number). A saved preset with a limit loads ticked, with its number. */
+export function hasLimit(preset: { max_mb?: number | null } | null | undefined): boolean {
+  return typeof preset?.max_mb === 'number'
+}
+
+/** Where the last limit is kept: localStorage, or a stand-in in the tests. */
+export type LimitStore = Pick<Storage, 'getItem' | 'setItem'>
+
+function localStore(): LimitStore | null {
+  try {
+    return globalThis.localStorage ?? null
+  } catch {
+    return null
+  }
+}
+
+/** The limit, in MB, that ticking the box saves: the one remembered, when it
+ *  is a number inside `range` (the engine's limits.max_mb), or FIRST_LIMIT_MB. */
+export function limitToTick(range: readonly [number, number] = [5, 4000], store: LimitStore | null = localStore()): number {
+  let mb = NaN
+  try {
+    mb = Number(store?.getItem(LIMIT_KEY) || NaN)
+  } catch {
+    /* nothing remembered: the first time's limit */
+  }
+  return Number.isFinite(mb) && mb >= range[0] && mb <= range[1] ? mb : FIRST_LIMIT_MB
+}
+
+/** Remembers `mb` as the last limit used, for the next tick. No limit (null)
+ *  leaves the one remembered as it is. */
+export function rememberLimit(mb: number | null, store: LimitStore | null = localStore()): void {
+  if (typeof mb !== 'number' || !Number.isFinite(mb)) return
+  try {
+    store?.setItem(LIMIT_KEY, String(mb))
+  } catch {
+    /* not remembered: the next tick saves the one remembered before, or FIRST_LIMIT_MB */
+  }
+}
+
+/** The preset's max_mb once the box is ticked (`on`) or unticked. Ticked:
+ *  limitToTick. Unticked: null, after the limit it had (`current`) is
+ *  remembered for the next tick. */
+export function limitAfterTick(
+  on: boolean,
+  current: number | null,
+  range?: readonly [number, number],
+  store: LimitStore | null = localStore()
+): number | null {
+  if (!on) {
+    rememberLimit(current, store)
+    return null
+  }
+  return current ?? limitToTick(range, store)
+}
+
 /** How many exports the Activity feed remembers what it said about. */
 const ACTIVITY_REMEMBERS = 200
 

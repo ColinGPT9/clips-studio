@@ -1,7 +1,7 @@
 import { cloneElement, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { api, errorText } from '../lib/api'
 import { t } from '../lib/i18n'
-import { clipLength, formatBytes, watchableUnder } from '../lib/exportJobs'
+import { clipLength, formatBytes, hasLimit, limitAfterTick, rememberLimit, watchableUnder } from '../lib/exportJobs'
 import type {
   ExportAspect,
   ExportCodec,
@@ -16,13 +16,13 @@ import type {
  *
  *  Original, the default, saves the clip's own file exactly as before. Custom
  *  makes a new file in the size, shape, quality, format, frame rate and sound
- *  chosen here, with an optional size limit, in the background on the editor
- *  lane (video/export_presets.py, server/editor_lane.py). Each choice is saved
- *  as it is made and comes back as the engine keeps it: checked, clamped, and
- *  sizes made even. What each choice does is in its tooltip, on its name and
- *  on the control itself. The main choices keep their places; what a choice
- *  opens (Custom size, Custom shape, a new shape's Fill, Custom quality) takes
- *  a row of its own under it. */
+ *  chosen here, with a size limit if its box is ticked, in the background on
+ *  the editor lane (video/export_presets.py, server/editor_lane.py). Each
+ *  choice is saved as it is made and comes back as the engine keeps it:
+ *  checked, clamped, and sizes made even. What each choice does is in its
+ *  tooltip, on its name and on the control itself. The main choices keep
+ *  their places; what a choice opens (Custom size, Custom shape, a new shape's
+ *  Fill, Custom quality, the size limit's MB) takes a row of its own under it. */
 
 const SIZES: [ExportResolution, string][] = [
   ['same', 'Same as clip'],
@@ -171,6 +171,13 @@ export default function ExportSettingsCard(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shown])
 
+  // The limit shown, a saved preset's included, is the last one used: this
+  // browser remembers it, so ticking the box again brings it back.
+  const shownLimit = preset?.max_mb ?? null
+  useEffect(() => {
+    rememberLimit(shownLimit)
+  }, [shownLimit])
+
   const flush = async (): Promise<void> => {
     if (sending.current) return
     sending.current = true
@@ -214,12 +221,9 @@ export default function ExportSettingsCard(): JSX.Element {
     })
     if (text === undefined || !wanted.current) return
     const trimmed = text.trim()
-    if (key === 'max_mb' && trimmed === '') {
-      if (wanted.current.max_mb !== null) change({ max_mb: null })
-      return
-    }
     const value = Number(trimmed)
-    // Not a number: the saved value shows again.
+    // Not a number, an empty box included (unticking is what removes a size
+    // limit): the saved value shows again.
     if (trimmed === '' || !Number.isFinite(value) || wanted.current[key] === value) return
     change({ [key]: value } as Partial<ExportPreset>)
   }
@@ -237,7 +241,7 @@ export default function ExportSettingsCard(): JSX.Element {
   const allowed = (key: keyof ExportPresetsInfo['choices'], value: string | number): boolean =>
     (info.choices[key] as (string | number)[] | undefined)?.includes(value) ?? true
 
-  const number = (key: NumberKey, label: string, tip: string, className: string, placeholder?: string): JSX.Element => (
+  const number = (key: NumberKey, label: string, tip: string, className: string): JSX.Element => (
     <input
       type="number"
       className={`input !py-1 text-sm ${className}`}
@@ -245,7 +249,6 @@ export default function ExportSettingsCard(): JSX.Element {
       title={tip}
       min={limit(key)?.[0]}
       max={limit(key)?.[1]}
-      placeholder={placeholder}
       value={typing[key] ?? String(preset[key] ?? '')}
       onChange={(e) => {
         const value = e.target.value
@@ -303,7 +306,14 @@ export default function ExportSettingsCard(): JSX.Element {
   const ownSizeTip = t('Your own size in pixels, from 720 to 4096. It sets the shape too. Odd numbers are made even.')
   const ownShapeTip = t('Your own shape, as width to height, each a whole number from 1 to 32.')
   const ownQualityTip = t('Quality number: lower is better and bigger (1 to 51). For H.264 made on the processor, 18 looks like the original, 23 is balanced and 28 is small; other formats and graphics cards may need other numbers. Bitrate: how much each second of picture gets, in kbps. 6000 suits a 1080p clip, and the file comes out close to it.')
-  const limitTip = t('Leave it empty for no limit. With a limit (5 to 4000 MB), a clip that may fit, or one Clips Kitty can’t size up beforehand, is made just as it would be without one, so short clips aren’t made bigger to fill it. A clip it’s sure won’t fit is made smaller to fit its length, but never so small that the picture breaks up. Every finished file is checked: one over the limit is made again to fit, as far as the picture allows, and you get the smallest file made.')
+  const limitTip = t('Tick the box to set a size limit for each exported file, from 5 to 4000 MB. Unticked, there is no limit. With a limit, a clip that may fit, or one Clips Kitty can’t size up beforehand, is made just as it would be without one, so short clips aren’t made bigger to fill it. A clip it’s sure won’t fit is made smaller to fit its length, but never so small that the picture breaks up. Every finished file is checked: one over the limit is made again to fit, as far as the picture allows, and you get the smallest file made.')
+  const slowerTip = t('To stay under your limit, each file is checked and made again if it came out over, so an export can take twice as long or more. Smaller files can also look less sharp.')
+  // Off unless ticked: no limit (max_mb null). Ticking saves the last limit
+  // used, or 100 the first time; unticking saves no limit and remembers the
+  // one it had (lib/exportJobs.ts).
+  const limited = hasLimit(preset)
+  const tickLimit = (on: boolean): void =>
+    change({ max_mb: limitAfterTick(on, wanted.current?.max_mb ?? null, limit('max_mb')) })
 
   return (
     <div className="card space-y-3" aria-label={t('Export settings')}>
@@ -537,10 +547,38 @@ export default function ExportSettingsCard(): JSX.Element {
             </select>
           </Field>
 
-          <Group place={LEFT} label={t('Keep under')} tip={limitTip}>
-            {number('max_mb', t('Size limit in MB'), limitTip, '!w-28', t('no limit'))}
-            <span className="text-xs text-muted">{t('MB')}</span>
-          </Group>
+          <div className={ROW}>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <label className="flex items-center gap-2 cursor-pointer text-sm" title={limitTip}>
+                <input
+                  type="checkbox"
+                  className="size-4 accent-[#38BDF8]"
+                  title={limitTip}
+                  checked={limited}
+                  onChange={(e) => tickLimit(e.target.checked)}
+                />
+                {t('Keep files under a size limit')}
+              </label>
+              {/* Always there, as on the size line below, so the marker is
+                  announced when it appears; it takes keyboard focus, so its
+                  tooltip is read as its description. */}
+              <span aria-live="polite" className="text-xs">
+                {limited && (
+                  <span className="text-warn" tabIndex={0} title={slowerTip}>
+                    {'⚠ '}
+                    {t('Slower')}
+                  </span>
+                )}
+              </span>
+            </div>
+            {/* The limit, on the next line, under the label. */}
+            {limited && (
+              <div className="mt-1 pl-6 flex items-center gap-1.5">
+                {number('max_mb', t('Size limit in MB'), limitTip, '!w-28')}
+                <span className="text-xs text-muted">{t('MB')}</span>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
