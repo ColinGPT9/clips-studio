@@ -34,6 +34,8 @@ type Status = {
   common_description: string
   affiliate_url: string
   storage: string
+  /** Send a clip over WoopSocial's 100 MB as a smaller copy (off unless ticked). */
+  smaller_copy?: boolean
 }
 
 const empty: Status = {
@@ -43,7 +45,8 @@ const empty: Status = {
   platforms: [],
   common_description: '',
   affiliate_url: '',
-  storage: ''
+  storage: '',
+  smaller_copy: false
 }
 
 export default function WoopSocialCard(): JSX.Element {
@@ -105,6 +108,16 @@ export default function WoopSocialCard(): JSX.Element {
   const toggle = async (enabled: boolean): Promise<void> => {
     try {
       setStatus((await api.patchWoopSocialSettings({ enabled })) as unknown as Status)
+    } catch (e) {
+      failed(e)
+    }
+  }
+
+  /** A clip over the 100 MB WoopSocial takes is sent as a smaller copy,
+   *  made when it is published (publish/woopsocial.py). */
+  const setSmallerCopy = async (on: boolean): Promise<void> => {
+    try {
+      setStatus((await api.patchWoopSocialSettings({ smaller_copy: on })) as unknown as Status)
     } catch (e) {
       failed(e)
     }
@@ -216,6 +229,8 @@ export default function WoopSocialCard(): JSX.Element {
 
   const affiliate = status.affiliate_url.trim()
   const mine = PLATFORMS.filter((p) => WOOPSOCIAL_PLATFORMS.includes(p.id))
+  // On the tick box too, so keyboard and screen-reader users get it.
+  const smallerCopyTip = t('WoopSocial takes clips up to 100 MB. With this on, a bigger clip is sent as a copy under about 95 MB: the same size picture if it still looks good, or 720p if not. It is deleted once it is sent, and your clip stays as it is.')
 
   return (
     <section className="card space-y-3" aria-label="WoopSocial publishing">
@@ -424,6 +439,21 @@ export default function WoopSocialCard(): JSX.Element {
               />
             </details>
           )}
+
+          <label
+            className="flex items-center gap-2 cursor-pointer text-sm"
+            title={smallerCopyTip}
+          >
+            <input
+              type="checkbox"
+              className="size-4 accent-[#38BDF8]"
+              title={smallerCopyTip}
+              checked={Boolean(status.smaller_copy)}
+              disabled={busy}
+              onChange={(e) => void setSmallerCopy(e.target.checked)}
+            />
+            {t('Make a smaller copy when a clip is over 100 MB')}
+          </label>
 
           <div className="text-[11px] text-muted">
             {t('Can publish to:')} {mine.map((p) => p.label).join(', ')}.{' '}

@@ -31,6 +31,7 @@ import WoopSocialCard from '../components/WoopSocialCard'
 import YouTubeCard from '../components/YouTubeCard'
 import ConnectedAccountsCard from '../components/ConnectedAccountsCard'
 import RemoteRenderCard from '../components/RemoteRenderCard'
+import ExportSettingsCard from '../components/ExportSettingsCard'
 import { Folder } from '../components/icons'
 
 // Content languages offered in the dropdown — the transcription/caption
@@ -781,6 +782,9 @@ export default function Settings(): JSX.Element {
       <NotificationsCard />
 
       <ExportFolderCard />
+      {/* What the Export buttons make: Original (the clip's own file) unless
+          a size, shape or quality is chosen here. */}
+      <ExportSettingsCard />
 
       <StorageCard />
       <VideoStorageCard />

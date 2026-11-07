@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "Clips Kitty editor suite",
-  "updated": "2026-11-05",
+  "updated": "2026-11-07",
   "about": "Machine-readable tracker for the editor suite. STATUS.md is the readable view of this file; when they disagree, this file wins. Acceptance criteria are copied from the plan's Proof column; step 0 also carries the checks from the plan's section on keeping plain auto-clipping identical. depends_on is read from the plan's text (which earlier step's output a step uses): the plan gives the run order, not a dependency list.",
   "now": "1",
   "stop_after_phase": 2,
@@ -343,7 +343,7 @@
       "depends_on": [
         "0"
       ],
-      "status": "todo",
+      "status": "in_progress",
       "user_visible": true,
       "acceptance": [
         "140 MB clip exports under 100 MB",
@@ -352,20 +352,299 @@
         "Plain argv unchanged"
       ],
       "files": [
-        "video/encoding.py",
+        "video/encoding.py (configure, encoder_for, export_codecs)",
         "video/export_presets.py (new)",
         "server/editor_lane.py (new)",
-        "server/api.py:2462",
-        "publish/woopsocial.py:270",
-        "ui/src/renderer/src/pages/Settings.tsx"
+        "server/api.py (export routes, /export/*, settings export, the lane's start and stop)",
+        "publish/woopsocial.py (smaller copy)",
+        "server/woopsocial_service.py (the smaller_copy setting; a background send with it on is held from the stale-send sweep while it runs)",
+        "server/woopsocial_api.py",
+        "main.py (configure for the command line)",
+        "tests/test_export_presets.py (new)",
+        "tests/test_encoder_config.py (new)",
+        "tests/test_editor_lane.py (new)",
+        "tests/test_export_route.py (new)",
+        "tests/test_woopsocial_smaller_copy.py (new)",
+        "tests/test_export_presets_ffmpeg.py (new, platform tier)",
+        ".github/workflows/ci.yml (new platform files added to the Plugin platform job)",
+        "docs/editor-suite/api/step1-export.md (new: the API contract for the UI)",
+        "docs/editor-suite/USER-GUIDE.md",
+        "docs/API.md (the export routes' optional preset)",
+        "docs/developers/api-reference.md (regenerated)",
+        "CHANGELOG.md",
+        "ui/src/renderer/src/pages/Settings.tsx (the Export card, after Export location)",
+        "ui/src/renderer/src/components/ExportSettingsCard.tsx (new: Settings → Export)",
+        "ui/src/renderer/src/components/ExportProgress.tsx (new: an export's bar, Cancel and result)",
+        "ui/src/renderer/src/components/ClipEditor.tsx (Export uses the default preset, with progress and Cancel)",
+        "ui/src/renderer/src/pages/ClipStudio.tsx (Export all likewise)",
+        "ui/src/renderer/src/components/WoopSocialCard.tsx (the smaller-copy checkbox)",
+        "ui/src/renderer/src/lib/api.ts (export routes; the session header on guarded calls)",
+        "ui/src/renderer/src/lib/types.ts (export types; the 'export' event)",
+        "ui/src/renderer/src/lib/exportJobs.ts (new: following exports, Node-testable)",
+        "ui/src/renderer/src/lib/useExportJobs.ts (new: the hook, with a recheck while one runs)",
+        "tests/test_ui_export_settings.py (new)",
+        "tests/test_ui_translatable_attributes.py (the two new components added)",
+        "ui/src/renderer/src/pages/Dashboard.tsx (Activity tells when an export starts and how it ended, not its raw event)"
       ],
       "notes": [
-        "#177: sizes only; aspects come in step 11",
-        "Until Phase 4, sizes above 1080 upscale from the 1080 master, with a warning",
-        "Only its maths may run in the cloud, as a draft PR on Colin's go"
+        "#177: sizes only; aspects come in step 11. The requester wants sharper 4K, and 1440p/2160p are made from the 1080 master, so step 1 doesn't close #177",
+        "Until Phase 4, sizes above 1080 are made from the 1080 master and look no sharper; the card warns when the picture of a tall 1080x1920 clip is enlarged",
+        "Only its maths may run in the cloud, as a draft PR on Colin's go",
+        "Engine side built 2026-11-05: encoder fix, export presets, editor lane, routes, WoopSocial smaller copy, tests.",
+        "UI built 2026-11-05 against docs/editor-suite/api/step1-export.md: Settings → Export card (estimate a minute, ⚠ Enlarged marker), Export and Export all with progress, Cancel and the result, the WoopSocial smaller-copy checkbox",
+        "Colin's call, 2026-11-06: export sizes start at 720p (240p to 540p removed; a custom size is 720 to 4096 on each side; a saved 240p-540p loads as 720p)",
+        "Fix round 2026-11-06, after the black-box tester's 1-D5 and 1-D6: a measured watchable floor for size limits, a limit never makes a file bigger (a clip that may fit, or whose size can't be told beforehand, is made as without the limit, checked, and made again only if over; the smallest file made is kept), the HEVC estimate measured for x265, a graphics card that fails at a remake hands it to the CPU, the 8 UX minors and 2 black-box minors",
+        "Checks done 2026-11-06 (QC, black-box re-test, performance, UX, docs audit); waiting for Colin's click-through and his word to merge",
+        "The browser build (npm run dev:web) has no session secret, so saving a Custom preset, exporting with one and cancelling answer 403 there; Original exports and everything read-only work",
+        "NVENC, AMF, QSV and AV1 export arguments are unit-tested only: the dev PC has no working hardware encoder (its NVIDIA driver is older than the bundled FFmpeg needs)",
+        "Colin's call, 2026-11-06, on the size limit's speed: keep the rule as it is (a clip that may fit is made as without the limit first and made again, 2-pass, only if it comes out over), with no engine change. In Settings → Export the limit becomes a tick box, \"Keep files under a size limit\", off by default (max_mb null): ticked, it saves the last limit used (remembered in the browser) or 100, opens the MB box under its label, and shows \"⚠ Slower\" beside it. No WoopSocial caveats in user-facing text: the smaller copy's tooltip, the user guide and the changelog no longer mention clips over about 55 minutes (the developer notes keep it)",
+        "Open: estimates for a changed frame rate are low (1.31x at 30 fps, 1.47x at 24 fps); bars, blur and calm clips are estimated too high; H.264 Balanced came out 9-17% over its estimate on 4 real clips (Smallest 1.27x on one); hardware encoders' floors and estimates and anything AV1 are unmeasured",
+        "Open: the WoopSocial smaller copy keeps its first rule (held to 95 MB, at least 100 kbps): from about 30 minutes of 1080p60 its video is under the 720p60 floor, and from about 55 minutes the copy is over 95 MB",
+        "Open: a custom shape longer than about 5.7:1 comes out under 720 on its short side (documented); a typed Custom bitrate under the floor still shows the 'too small for long clips' warning; Format lists HEVC only after the encoder check (about 2.2 s); a refused custom width's message clears at the next saved edit",
+        "Found in existing code (not changed by step 1): FastAPI's 422 answer can't be written for a request holding a number that parses to inf or nan, so such requests answer 500 (app-wide, also in the released app); the Original export copy answers 500 for a clip id SQLite can't hold; a NUL character in an export folder name is cut at the NUL on Windows"
       ],
-      "results": [],
-      "defects": []
+      "results": [
+        {
+          "date": "2026-11-05",
+          "agent": "QC",
+          "check": "CI-light suite, typecheck, build, snapshots, golden renders, security and licences",
+          "outcome": "pass",
+          "evidence": "passed after 4 fixes (1-D1 to 1-D4); no-limit argv unchanged against step 0; the same 27 local failures as main"
+        },
+        {
+          "date": "2026-11-06",
+          "agent": "Black-box",
+          "check": "Scenarios S1-S10 (every preset, under 100 MB, upscale warning, Original, cancel)",
+          "outcome": "pass",
+          "evidence": "S2 Original byte-identical by sha256; S4 95,707,128 bytes under 100 MB; S8 cancel leaves nothing. Two faults outside the scenarios became 1-D5 and 1-D6"
+        },
+        {
+          "date": "2026-11-06",
+          "agent": "Performance",
+          "check": "Plain pipeline within 10% of the baseline",
+          "outcome": "pass",
+          "evidence": "+0.9% / -1.2% against the base in the same session, outputs byte-identical; one idle thread more, no measurable RAM or CPU; first GET /export/codecs 356-365 ms"
+        },
+        {
+          "date": "2026-11-06",
+          "agent": "UX",
+          "check": "Keyboard, screen reader, axe-core, layout at 3 window sizes",
+          "outcome": "pass",
+          "evidence": "8 minor issues, all fixed in the fix round"
+        },
+        {
+          "date": "2026-11-06",
+          "agent": "QC",
+          "check": "Fix round: gates and an independent re-check of the orchestrator's fixes",
+          "outcome": "pass",
+          "evidence": "1,857,492 no-limit argv identical to step 1's first version; 7,560 smaller-copy plans identical; 646,464 limited plans swept, none estimated bigger than without the limit; a graphics card's failed remake handed to the CPU with real FFmpeg; CI-light 4,850 passed, 27 failed (the base list)"
+        },
+        {
+          "date": "2026-11-06",
+          "agent": "Black-box",
+          "check": "Re-test R1-R7 (too-small limit, a limit never bigger, under 100 MB, estimates, unchanged outputs, UI fixes, sizes from 720p)",
+          "outcome": "pass",
+          "evidence": "Keep under 5 MB: 16,005,338 bytes, 0 flat or colourless frames, marked over the limit with its reason; High with and without Keep under 100: the same sha256; estimates within +5.5% to -10.3%; 720p H.264 and Original byte-identical to the references"
+        },
+        {
+          "date": "2026-11-06",
+          "agent": "Performance",
+          "check": "Fix round against the 10% rule",
+          "outcome": "partial",
+          "evidence": "pass, with one named exception: a limited export whose first try comes out over is made again 2-pass (Keep under 100 MB at Balanced, 150 s 1080p60 clip: 232.46 s against 122.26 s); the floor and fits-anyway cases are 13.9% and 23.4% faster than before; golden check exit 0"
+        },
+        {
+          "date": "2026-11-06",
+          "agent": "UX",
+          "check": "Re-check of the 8 fixes and the new warnings",
+          "outcome": "pass",
+          "evidence": "all 8 fixed; axe-core 0 step-1 nodes; 4 minor issues (1-D21), fixed by the orchestrator"
+        },
+        {
+          "date": "2026-11-06",
+          "agent": "Docs audit",
+          "check": "Every export sentence in the guide, the card, the API contract, ED5 and the changelog against the code (3 lenses, each verified)",
+          "outcome": "fail",
+          "evidence": "43 verdicts, all real (1-D20); every rewording applied by the orchestrator"
+        },
+        {
+          "date": "2026-11-06",
+          "agent": "Orchestrator",
+          "check": "After the last fixes",
+          "outcome": "pass",
+          "evidence": "ruff clean; typecheck and build pass; 825 step-1 and guard tests pass; CI-light full suite: the same 27 local failures as main; in the browser build the warnings take keyboard focus with their tooltip as the description, sit in a live region, axe finds 0 violations on the card, and the result's warning stays on one line"
+        }
+      ],
+      "defects": [
+        {
+          "id": "1-D1",
+          "date": "2026-11-05",
+          "found_by": "QC",
+          "summary": "The Dashboard's Activity feed showed every export event as raw JSON, about twice a second while an export ran, with the export folder and the whole preset in each line",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D2",
+          "date": "2026-11-05",
+          "found_by": "QC",
+          "summary": "With the smaller copy on, a background send's copy is made after its rows are written as sending, so a copy that took over 20 minutes let the stale-send sweep (reconcile_sending) show a send still under way as failed and safe to send again. Fixed: publish_clips holds such a send as under way until it ends, and the sweep leaves held sends alone (tests/test_woopsocial_smaller_copy.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D3",
+          "date": "2026-11-05",
+          "found_by": "QC",
+          "summary": "A JSON integer too big for a float (10**400) crashed the preset routes with a 500",
+          "routed_to": "Orchestrator",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D4",
+          "date": "2026-11-05",
+          "found_by": "QC",
+          "summary": "The same crash queuing exports for clip ids SQLite can't hold; in a batch the clips before it were still queued. Such ids are now skipped like a missing clip",
+          "routed_to": "Orchestrator",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D5",
+          "date": "2026-11-06",
+          "found_by": "Black-box",
+          "summary": "Keep under 5 MB on a 150 s clip gave a colourless, partly flat-grey file at 111 kbps, reported as a success. Now a measured floor (700 kbps of H.264 at 1080x1920 60 fps, scaled), the file marked over the limit as too small, and a warning on the card",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D6",
+          "date": "2026-11-06",
+          "found_by": "Black-box",
+          "summary": "A generous limit made files and estimates bigger (synth_20s at High: 8.1 MB without a limit, 11.2 MB with Keep under 100)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D7",
+          "date": "2026-11-06",
+          "found_by": "Black-box",
+          "summary": "The HEVC estimate was 30-50% too high; now 0.88-1.09x for x265 on 4 real clips",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D8",
+          "date": "2026-11-06",
+          "found_by": "QC",
+          "summary": "User guide: NVIDIA and Intel exports said to be always made as without the limit; Intel's AV1 and a typed bitrate are held to it",
+          "routed_to": "Orchestrator",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D9",
+          "date": "2026-11-06",
+          "found_by": "QC",
+          "summary": "User guide: the card's warning covers clips of up to 3 minutes only",
+          "routed_to": "Orchestrator",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D10",
+          "date": "2026-11-06",
+          "found_by": "QC",
+          "summary": "A graphics card that failed while making a file again failed the whole export and lost the first file; it now hands the remake to the CPU (H.264 and HEVC)",
+          "routed_to": "Orchestrator",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D11",
+          "date": "2026-11-06",
+          "found_by": "QC",
+          "summary": "User guide: bars, blurred backgrounds and very still clips are made as without the limit only on the processor",
+          "routed_to": "Orchestrator",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D12",
+          "date": "2026-11-06",
+          "found_by": "QC",
+          "summary": "User guide: the card's warning assumes clips at up to 60 fps",
+          "routed_to": "Orchestrator",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D13",
+          "date": "2026-11-06",
+          "found_by": "QC",
+          "summary": "User guide: the processor takes over only H.264 and HEVC; AV1 fails",
+          "routed_to": "Orchestrator",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D14",
+          "date": "2026-11-06",
+          "found_by": "QC",
+          "summary": "User guide: not every clip is tall; Longform clips are 1920x1080",
+          "routed_to": "Orchestrator",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D15",
+          "date": "2026-11-06",
+          "found_by": "QC",
+          "summary": "User guide: Made on shows only when both the processor and the card make the format",
+          "routed_to": "Orchestrator",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D16",
+          "date": "2026-11-06",
+          "found_by": "QC",
+          "summary": "User guide: no side goes past 4096, so a long custom shape comes out smaller than its number",
+          "routed_to": "Orchestrator",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D17",
+          "date": "2026-11-06",
+          "found_by": "QC",
+          "summary": "Fix round: 'fits anyway' judged by the estimate's middle figure still let a limit make a file bigger; now judged by its low end",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D18",
+          "date": "2026-11-06",
+          "found_by": "QC",
+          "summary": "Fix round: the floor table's count of colourless frames used two different rules",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D19",
+          "date": "2026-11-06",
+          "found_by": "QC",
+          "summary": "Fix round: a calm clip's estimate was far too high, so a limit could still make it bigger; a limit now holds a clip from the start only when its size is known (the 'sure' rule)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D20",
+          "date": "2026-11-06",
+          "found_by": "Docs audit",
+          "summary": "About 30 sentences in the guide, the card's tooltips, the API contract, ED5 and the changelog were not exactly true for some case a user can reach (single-figure estimates on AMD and Intel's AV1, the custom quality number's scale, what Enlarged means, the 60 fps assumption, the WoopSocial copy over about 55 minutes, the Activity list only while the Dashboard is open)",
+          "routed_to": "Orchestrator",
+          "status": "fixed"
+        },
+        {
+          "id": "1-D21",
+          "date": "2026-11-06",
+          "found_by": "UX",
+          "summary": "The new warnings couldn't be reached by keyboard or heard when they appeared; the result's warning broke mid-phrase; 'Too small for long clips' didn't say what was too small; a refused width's message began in lower case",
+          "routed_to": "Orchestrator",
+          "status": "fixed"
+        }
+      ]
     },
     {
       "id": "2",

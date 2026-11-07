@@ -96,26 +96,31 @@ The guarantee is the same argv and files for the same inputs, and bit-exact outp
 
 **Date:** 2026-11-05 · **Step:** 1 (sizes); AI framing in other aspects comes in step 11
 
-**Context:** #177 asks for resolutions other than 1080p, and #203 for FFmpeg settings, because clips go over WoopSocial's 100 MB limit. Output is always 1080x1920 H.264. NVENC runs at CQ 23 with `-b:v 0`, so there is no bitrate cap (`video/encoding.py:31`). Export is a plain file copy (`server/api.py:2462-2481`). `video.encoder` reaches only 2 of 15 call sites, and forcing an encoder flips the choice for every later render (`video/encoding.py:183-189`).
+**Context:** #177 asks for resolutions other than 1080p, and #203 for FFmpeg settings, because clips go over WoopSocial's 100 MB limit. Output is always 1080p H.264: 1080x1920, or 1920x1080 in Longform. NVENC runs at CQ 23 with `-b:v 0`, so there is no bitrate cap (`video/encoding.py:31`). Export is a plain file copy (`server/api.py:2462-2481`). `video.encoder` reaches only 2 of 15 call sites, and forcing an encoder flips the choice for every later render (`video/encoding.py:183-189`).
 
 **Decision:** `video/export_presets.py`, in the core app:
-- Sizes from 240p to 2160p, with a warning on any upscale.
+- Sizes from 720p to 2160p, with a warning on the Settings card when the choices would enlarge a tall 1080x1920 clip's picture by more than 1%; a custom width and height are 720 to 4096 each. (240p to 540p were offered until 2026-11-06, when the owner removed them: they look bad, and he exports at 1080p. A saved default that names one loads as 720p.)
 - Aspect 9:16, 16:9, 1:1, 4:5 or custom, filled by crop, blur pad or colour pad.
 - Quality Smallest, Balanced, High or Custom.
 - Codec H.264 or HEVC; AV1 only where the GPU can encode it (not an RTX 2060 or 3060).
 - CRF/CQ or a bitrate, plus fps and audio bitrate.
-- A size target such as "under 100 MB": bitrate = 0.95 × 8 × bytes ÷ duration − audio. Hardware encoders get VBV caps and the CPU uses 2-pass x264. The file is checked afterwards, with one retry at 0.9×.
+- A size target such as "under 100 MB" (revised in step 1's fix round, 2026-11-06; it was first a bitrate for every clip, from the formula below, with one retry at 0.9×, which could make a short clip bigger and a long one unwatchable):
+  - A clip is made exactly as without the limit, checked, and made again at the limit's bitrate only if it came out over, when it may fit anyway (even the low end of its estimate is under the limit) or its size can't be told beforehand: a graphics card's constant-quality encode (NVIDIA CQ, Intel ICQ in H.264 and HEVC; never measured), or a CPU encode at a quality level with colour bars or a blurred background (0.47× and 0.82× the estimate on a real clip), of a clip whose own bitrate is under the estimate's busyness floor, or of one whose bitrate can't be read. (AMD, Apple and Intel's AV1 are encoded at a bitrate, so their size is known.) Such a clip is never bigger than without the limit.
+  - Only a clip whose size is known (its export without the limit is at a bitrate, or is a CPU encode of a measured kind) and whose whole estimate is over the limit is held to it from the start: bitrate = 0.95 × 8 × bytes ÷ duration − audio, which is under that estimate's low end. Hardware encoders get VBV caps and the CPU uses 2-pass. (Where the limit leaves less than the floor and a file at the floor would come to the low end of the estimate without the limit or more, the clip is made as without the limit and checked instead.)
+  - Never below a measured watchable floor (700 kbps of H.264 at 1080x1920 60 fps, scaled for size, frame rate and codec): a limit that leaves less goes no lower, and the export says it is too small.
+  - A file over the limit is made again (at the limit's bitrate, or 0.9× a held one), and the smallest file made is the export. A graphics card that fails at making it again hands it to the CPU (H.264 and HEVC), as it does a failed first try.
+  - WoopSocial's smaller copy keeps the first rule: always held to its target, one 0.9× retry, at least 100 kbps.
 - A size estimate, shown before export.
 - For existing clips the preset is a transcode after the end card, and "Original" stays a plain copy; in Branch B (ED1) it is part of the final encode.
 - WoopSocial publishing gets an opt-in "make a copy under 100 MB".
 - The encoder fix: `encoding.configure(config)` runs once at startup, and a separate `encoder_for(codec, pref)` serves presets, so a preset never changes the global encoder.
 
-**Why:** It closes #203 and the size part of #177 for every user, while the 1080x1920 master, the cropper and the H.264 end-card join stay as they are. The 0.95 factor leaves room for container overhead (inferred).
+**Why:** It closes #203 and the size part of #177 for every user, while the 1080p masters, the cropper and the H.264 end-card join stay as they are. The 0.95 factor leaves room for container overhead (inferred).
 
 **Rejected:**
 - Export settings as a plugin or optional add-on: they are basic needs of every user.
 - Raw FFmpeg arguments from users or a model. An allow-listed "Advanced FFmpeg" section waits for Phase 4.
-- Rendering natively above 1080 now: that needs the canvas passed through the renderer, the cropper, the gaming layouts and the end card. Native 1440p and 2160p masters wait for Phase 4; until then, sizes above 1080 upscale from the 1080 master, with a warning.
+- Rendering natively above 1080 now: that needs the canvas passed through the renderer, the cropper, the gaming layouts and the end card. Native 1440p and 2160p masters wait for Phase 4; until then, sizes above 1080 are made from the 1080 master and look no sharper.
 - AV1 everywhere: RTX 30 cards can't encode it.
 
 **Undo:** "Original" stays a plain copy, so not picking a preset gives today's file. The presets run as a final transcode, which can be removed without touching rendering.

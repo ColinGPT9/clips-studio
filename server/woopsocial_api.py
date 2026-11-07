@@ -35,6 +35,8 @@ class SettingsIn(BaseModel):
     platforms: list[str] | None = None
     common_description: str | None = None
     affiliate_url: str | None = None
+    # Send a clip over 100 MB as a smaller copy (off unless chosen).
+    smaller_copy: bool | None = None
 
 
 class ConnectIn(BaseModel):
@@ -250,7 +252,9 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
                 raise _fail(e) from e
 
             client = _client()
-            publisher = WoopSocialPublisher(client, _project(d, client))
+            # The smaller copy only for a creator who turned it on.
+            shrink = {"smaller_copy": True} if settings.get("smaller_copy") else {}
+            publisher = WoopSocialPublisher(client, _project(d, client), **shrink)
             try:
                 post_links.prepare(d, destination_id=body.discord_destination_id, clip_id=clip_id,
                                    platforms=body.platforms, provider="woopsocial", title=body.title.strip())

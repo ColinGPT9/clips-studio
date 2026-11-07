@@ -791,6 +791,191 @@ export interface Settings {
   outro: boolean // append the Clips Kitty end card to each clip (clips.outro)
   min_score: number // clips.min_score: clips scoring below it are dropped (0-100)
   youtube_cookies: '' | 'firefox' | 'file' // 'file': the cookies.txt kept in the data folder (#136)
+  /** Settings → Export: the preset the Export buttons use (Original until one
+   *  is saved). Kept in the engine's database, and changed only through
+   *  api.saveExportDefault, which sends the session header it needs. */
+  export?: ExportPreset
+}
+
+// ---- Export presets (video/export_presets.py, docs/editor-suite/api/step1-export.md) ----
+
+export type ExportResolution = 'same' | '720p' | '1080p' | '1440p' | '2160p' | 'custom'
+export type ExportAspect = 'same' | '9:16' | '16:9' | '1:1' | '4:5' | 'custom'
+export type ExportCodec = 'h264' | 'hevc' | 'av1'
+
+/** What an exported clip comes out as. `kind: 'original'` is the clip's own
+ *  file, copied byte for byte, and the rest is kept but not used. */
+export interface ExportPreset {
+  kind: 'original' | 'custom'
+  /** Counts the SHORT side: 720p is 720x1280 at 9:16, 1280x720 at 16:9. */
+  resolution: ExportResolution
+  /** resolution 'custom' only (720-4096, even; under 720 is refused); the
+   *  shape then comes from them. */
+  width: number
+  height: number
+  aspect: ExportAspect
+  /** aspect 'custom' only (1-32). */
+  aspect_w: number
+  aspect_h: number
+  fill: 'crop' | 'blur' | 'bars'
+  /** fill 'bars' only: #RRGGBB. */
+  bar_color: string
+  quality: 'smallest' | 'balanced' | 'high' | 'custom'
+  /** quality 'custom' only: a CRF (`crf`, 1-51) or a bitrate (`bitrate_kbps`). */
+  rate: 'crf' | 'bitrate'
+  crf: number
+  bitrate_kbps: number
+  codec: ExportCodec
+  encoder: 'auto' | 'cpu' | 'gpu'
+  /** Never above the clip's own rate. */
+  fps: 'same' | 24 | 25 | 30 | 50 | 60
+  audio_kbps: number
+  /** "Keep under N MB" (decimal, 5-4000), or null for no limit. */
+  max_mb: number | null
+}
+
+/** GET /export/presets: the saved default, Original, the starting values of
+ *  a custom preset, and every value the engine allows. */
+export interface ExportPresetsInfo {
+  default: ExportPreset
+  original: ExportPreset
+  custom: ExportPreset
+  choices: {
+    kind: string[]
+    resolution: string[]
+    aspect: string[]
+    fill: string[]
+    bar_color: string[]
+    quality: string[]
+    rate: string[]
+    codec: string[]
+    encoder: string[]
+    fps: (string | number)[]
+    audio_kbps: number[]
+  }
+  limits: Record<string, [number, number]>
+}
+
+/** GET /export/codecs: a codec this PC can encode, with FFmpeg's encoder on
+ *  the processor and on the graphics card (null where there is none). */
+export interface ExportCodecInfo {
+  codec: ExportCodec
+  cpu: string | null
+  gpu: string | null
+}
+
+/** POST /export/estimate. `kind` 'range': show low-high (it depends on the
+ *  footage); 'close': show bytes; 'copy': Original with a clip, its size. */
+export interface ExportEstimate {
+  kind: 'range' | 'close' | 'copy'
+  bytes: number
+  low: number
+  high: number
+  per_minute: { bytes: number; low: number; high: number }
+  seconds: number
+  width: number
+  height: number
+  fps: number
+  codec: string
+  encoder: string | null
+  hardware: boolean
+  /** The export is bigger than the clip: it can look no sharper than the clip. */
+  upscale: boolean
+  mode: 'copy' | 'quality' | 'bitrate' | 'target' | null
+  video_kbps: number | null
+  audio_kbps: number | null
+  crf: number | null
+  passes: number
+  target_bytes: number | null
+  /** false: the size limit is too small for this clip to look good. It goes
+   *  no lower than the floor (floor_kbps), and the figures are about that
+   *  size, over the limit. */
+  target_reachable: boolean | null
+  /** With a size limit: true when the clip may fit under it anyway (even
+   *  the low end of its estimate is under it). null without a limit, as are
+   *  the next three. */
+  fits_anyway: boolean | null
+  /** true when its size without the limit is known well enough beforehand
+   *  to hold a clip that won't fit to the limit from the start. A clip that
+   *  may fit, or one this is false for (a graphics card, colour bars or a
+   *  blurred background, a very calm clip), is first made just as without
+   *  the limit, and made again only if it came out over. */
+  sure: boolean | null
+  /** The lowest video bitrate (kbps) a size limit is met with at this size,
+   *  frame rate and codec: below it the picture breaks up. */
+  floor_kbps: number | null
+  /** The longest clip, in seconds, that still looks good under the size
+   *  limit at this size, shape, frame rate, codec and sound. */
+  longest_watchable_s: number | null
+  /** false: this PC can't encode the preset's codec. */
+  available: boolean
+  clip_id: number | null
+}
+
+/** A finished export's file. */
+export interface ExportResult {
+  bytes: number
+  width: number
+  height: number
+  fps: number
+  codec: string
+  encoder: string
+  hardware: boolean
+  duration: number
+  mode: 'quality' | 'bitrate' | 'target'
+  video_kbps: number | null
+  crf: number | null
+  audio_kbps: number
+  upscale: boolean
+  target_bytes: number | null
+  /** Over the size limit, after it was made again where it could be. */
+  over_target: boolean
+  /** Why it is over (null when it isn't): 'too_small', the limit is too
+   *  small for this clip to look good, so it went no lower than the floor;
+   *  'missed', over all the same after it was made again. */
+  over_reason: 'too_small' | 'missed' | null
+  /** The floor the size limit was held to (kbps), or null without a limit. */
+  floor_kbps: number | null
+  /** It came out over the size limit, and this file is one made again, smaller.
+   *  false when the file made just as without the limit was kept, because
+   *  making it again gave nothing smaller. */
+  retried: boolean
+  /** The graphics card refused, so it was made on the processor. */
+  fell_back_to_cpu: boolean
+  path: string
+  file: string
+}
+
+/** An export on the editor lane (server/editor_lane.py): any preset but
+ *  Original. Kept in the engine's memory only, numbered from 1 at each
+ *  engine start. */
+export interface ExportJob {
+  export_id: number
+  kind: 'export'
+  clip_id: number | null
+  status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled'
+  /** A cancel was asked for and FFmpeg is being stopped. */
+  cancelling: boolean
+  /** 0-1 over every pass; never goes back. 1 only when done. */
+  fraction: number
+  pass: number | null
+  passes: number | null
+  encoder: string | null
+  /** It came out over the size limit and is being made again, smaller (and
+   *  stays true once done). `fraction` has used up the bar by then, so show
+   *  `attempt_fraction`. */
+  smaller: boolean
+  /** 0-1: how far along the current try is, from 0 again when it is made
+   *  again smaller. null until the export starts. */
+  attempt_fraction: number | null
+  folder: string
+  name: string
+  preset: ExportPreset
+  result: ExportResult | null
+  error: string | null
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
 }
 
 /** Events arriving over the WebSocket. */
@@ -799,8 +984,12 @@ export interface StudioEvent {
    *  'publish' is a YouTube upload. It is deliberately NOT 'job': jobProgress
    *  resets the global processing bar on any 'job' event, and an upload has
    *  nothing to do with the video pipeline's progress.
-   *  'clip_replaced' is a re-render done: the clip is back under a new id. */
-  type: 'progress' | 'job' | 'model_pull' | 'queue' | 'publish' | 'automation' | 'clip_replaced'
+   *  'clip_replaced' is a re-render done: the clip is back under a new id.
+   *  'export' is an export on the editor lane, with the job in `export`; the
+   *  processing bar ignores it, as it has nothing to do with the queue. */
+  type: 'progress' | 'job' | 'model_pull' | 'queue' | 'publish' | 'automation' | 'clip_replaced' | 'export'
+  /** export only: the export job as it is now. */
+  export?: ExportJob
   /** clip_replaced only: the clip's id before the re-render, and after it. */
   old?: number
   new?: number

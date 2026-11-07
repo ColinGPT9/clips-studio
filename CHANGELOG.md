@@ -12,6 +12,20 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Added
 
+- **Export in other sizes, qualities and formats** (#177, #203). Settings → Export sets
+  what the Export button makes. Original, the default, still saves each clip exactly
+  as Clips Kitty made it. Custom makes a new file from 720p to 2160p, in another shape
+  (filled by cropping, a blurred background or colour bars), at Smallest file, Balanced,
+  High or your own quality, as H.264, HEVC or (with a graphics card that makes it) AV1,
+  with its frame rate and sound, and optionally kept under a size you set (a tick box,
+  off by default). The card shows about how big a minute comes out, and warns when your
+  choices would enlarge a tall clip's picture or your size limit is too small for long
+  clips.
+  Custom exports are made in the background, beside the processing queue rather than
+  behind it, with a progress bar, Cancel, and the file's size and resolution when done.
+- **WoopSocial: make a smaller copy when a clip is over 100 MB** (off unless you tick
+  it). A clip WoopSocial would refuse is sent as a copy under about 95 MB, which is
+  deleted once it's sent.
 - **Optional Clip updates.** App-wide Approve/Deny cards, private Discord
   updates and an Away from desk approval gate, with local-model wording and
   plain-text fallback. Includes a configurable attorney joke popup. Off by default.
@@ -82,6 +96,11 @@ Kitty after you change it.
 
 ### Fixed
 
+- **A forced encoder setting now applies everywhere.** Setting `video.encoder` in
+  settings.yaml (`cpu`, `nvenc`, `amf`, `qsv`) used to reach only two of the places that
+  encode video, and the rest followed it only after one of those two had run. It now
+  applies to every render from the start, and a forced encoder that doesn't work on this
+  PC is tested once rather than before every encode. `auto`, the default, is unchanged.
 - **Longform no longer fails with "concat join failed" when a video's title has an
   apostrophe** (#197), as in "I'll" or "Let's". Clips of such a video also keep their
   end card, which they had quietly been made without, and its story reels join again.
