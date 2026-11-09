@@ -16,7 +16,7 @@ from contextlib import contextmanager, nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from core import secrets
+from core import in_use, secrets
 from server import posts
 
 SETTINGS_KEY = "woopsocial"
@@ -361,6 +361,10 @@ def already_sent(db, clip, platforms: list[str]) -> set[str]:
     return {r["platform"] for r in rows} & set(platforms)
 
 
+# Every clip of the run is held from before the first upload until the
+# loop ends (core/in_use.py): each post is recorded only once its upload is
+# done, and Make clips again must not delete a clip still to be sent.
+@in_use.holds_clips
 def publish_clips(
     db,
     data_dir: Path,

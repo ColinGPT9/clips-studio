@@ -834,6 +834,20 @@ def test_watch_options_reach_the_job(env):
     assert "preset" not in payload
 
 
+def test_a_watchs_options_never_make_its_jobs_replace_clips(env):
+    """Only Make clips again's own route queues a job that replaces a video's
+    clips (#190). A watch's saved options are free-form here (`env` saves
+    them unchecked, as a hand-written or older row could hold anything):
+    the flag among them is dropped, the rest reach the job."""
+    watch = watched(env)
+    env.client.patch(f"/automation/watches/{watch['id']}",
+                     json={"options": {"replace_untouched": True, "max_clips": 4}})
+    env.feed.listings[UC] = [yt("newnewnew01")]
+    env.later()
+    payload = json.loads(env.jobs()[0]["payload"])
+    assert payload["max_clips"] == 4 and "replace_untouched" not in payload
+
+
 def test_legacy_cli_channels_come_across_switched_off(tmp_path):
     path = tmp_path / "old.db"
     d = StateDB(path)

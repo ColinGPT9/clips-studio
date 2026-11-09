@@ -21,6 +21,7 @@ from fastapi import Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict
 
 from campaigns import eligibility, formatter, model, queue, statemachine, urls, views
+from core import in_use
 from plugins import session
 
 
@@ -200,6 +201,12 @@ def install(app, *, db, data_dir, publish_worker, session_secret: str) -> None:
 
     @app.post("/campaigns/submissions", dependencies=guarded)
     def campaign_attach(body: AttachIn):
+        # Its clips held while it reads them and saves their submissions
+        # (core/in_use.py): Make clips again keeps them meanwhile.
+        with in_use.holding([item.clip_id for item in body.items]):
+            return _attach(body)
+
+    def _attach(body: AttachIn):
         d = db()
         try:
             got = queue.attach(

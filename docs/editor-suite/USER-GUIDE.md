@@ -50,7 +50,68 @@ WoopSocial accepts clips up to 100 MB. A 60 fps clip longer than about 2 minutes
 
 ## Make clips again from a video you already added
 
-Coming in step 2
+Made a video's clips with a setting you didn't want, like 60+ second clips? You can make them again with other settings, without adding the video again.
+
+### Making clips again
+
+In the **Clip Editor**, pick the video and click **Make clips again…**. The window opens with the settings the video's clips were last made with. Change what you want, then click **Make clips again**. The video joins the queue like any other, the queue starts if it was stopped, and you see its progress as usual. When it's done, its clip list shows the new clips, and a line under the buttons says what changed, for example "15 new · 7 removed · 2 kept as they were". If the new settings found no new clips, it says so, and your clips stay as they were. The Queue page shows the same line under the finished video.
+
+If those settings aren't known any more (clearing the Queue page's finished list forgets them), the window starts from your usual settings instead.
+
+If the whole video was made into one clip last time (a watched channel's Twitch clips are), the window shows **Whole video (one clip)**, ticked. Leave it ticked to make that clip again with your new settings, or untick it to let the AI pick the best moments instead. 60s+, Sports and Marketplace plugins can't be used with it, so ticking one of them unticks Whole video.
+
+**Make clips again** is off, and hovering over it says why, while the video is waiting or being made in the queue, or when Clips Kitty no longer has the video:
+- A video you added by link is downloaded again if its download was deleted.
+- A file from your PC has to still be in Clips Kitty. If it's gone, add the file again.
+
+It's also off while the queue is full: let a video finish first. And it's off while one of the video's clips is being published, exported or edited: try again once that's done.
+
+If you start publishing or exporting one of its clips while the video waits in the queue, Clips Kitty waits up to two minutes for it when the video's turn comes. If it still isn't done by then, nothing is changed and the queue shows why. Press **Retry** on the Queue page once it's done.
+
+### What's kept and what's replaced
+
+The window tells you how many clips will be replaced and how many kept. Hover over that line to see why each kept clip is kept.
+
+These are **kept**:
+- clips you edited: cut, muted, recoloured, captions changed, a new start or end, a new title, description or hashtags, or a thumbnail you chose. An edit counts as soon as you apply it, even if making it fails, so **Retry** on the Queue page still has its clip;
+- clips you published or sent to publish, scheduled, exported (even if you took the star off since) or starred, translated or exported in other languages, or sent to a clipping campaign;
+- clips a watched channel chose to post;
+- clips with an edit, a translation or an export still being made, or a post still being sent, even one you started while the new clips were being made;
+- clips made before this update, or in another version of Clips Kitty;
+- 16:9 Longform clips and match reels.
+
+A new title, description or hashtags you gave a clip in another version of Clips Kitty counts too.
+
+The **other clips are replaced**, but only once the new clips are ready. A moment the new settings find again is made again with them, and keeps its title; its new video shows straight away, in the Clip Editor and in an open editor. The rest are deleted, with their files.
+
+Nothing is replaced, and the clips from before stay exactly as they were, if making the new clips fails, finds no clips, or can't make one of the clips it found. In that last case, the new clips it did make are added beside the old ones.
+
+**Cancel** works right up to the moment Clips Kitty starts replacing the clips from before, a moment at the very end: before then, pressing it stops everything and nothing is replaced. Once it has started replacing them, it finishes.
+
+A kept clip stays exactly as it was, its video too, even when the new settings find the same moment again. A scheduled one goes out as the video you scheduled.
+
+Make clips again makes the tall 9:16 clips. For 16:9 Longform clips, add the video again.
+
+### Your cuts stay where they were
+
+When you change a clip's start or end in its details, or ask the AI chat to, your cuts and muted words stay on the same moments of the video:
+- Made longer, the part you added plays.
+- Made shorter, cuts and mutes outside the clip go.
+- If none of the parts you kept are inside the new start and end, the whole clip plays.
+
+Before, a new start moved every cut and mute to a different moment.
+
+### Good to know
+
+- Clips made before this update, or in another version of Clips Kitty (an older one you went back to, say), are kept, because Clips Kitty can't tell whether you changed their titles there. If the new settings find one of them again at exactly the same start and end, it's made again with them and keeps its title. Delete the old ones you don't want yourself.
+- Closing Clips Kitty while it's making clips again is safe, and so is a power cut. The next time it starts, before the queue makes anything, every clip from before plays its own video again, and the video goes back in the queue as usual. If it was closed in the last moments, while it was replacing the clips from before, the ones it had already replaced stay replaced.
+- Wiping a creator's learned memory or deleting the creator (on the Creators page), taking a clip's star off, or clearing the Queue page doesn't make Clips Kitty forget a clip you edited, exported or published.
+- Edits you haven't applied don't keep a clip. If a clip you have open in the editor is deleted when the new clips are ready, the editor closes; one that's made again stays open and shows its new video. A preview you're making keeps its clip.
+- Process again, offered when you add a video that was already done, still keeps every clip and adds the new ones beside them.
+- A match reel from before stays as it is, so no new reel of the same kind is made. For a new one, delete the old reel first, then make clips again.
+- While the new clips are being made, the video files of the clips from before get a new name in their folder (for example `clip_00010-00020.clip-17.mp4`), so nothing can write over them. When it's done they get their names back, unless a new clip now has that name.
+- **Settings → Storage → Free up** is safe while clips are being made again, and after Clips Kitty was closed in the middle: it leaves every file Clips Kitty still needs for them. So is deleting one of the new clips.
+- Making clips again from a file you added from your PC keeps that file's copy in Clips Kitty safe. On some USB drives Clips Kitty can only check the copy before it starts, so if the copy can't be read later in the run, add the file again.
 
 ## Caption fonts and animations
 

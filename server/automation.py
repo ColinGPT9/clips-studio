@@ -31,7 +31,7 @@ from typing import Literal
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
-from core import queue
+from core import in_use, queue
 from core.state import StateDB
 
 ENABLED_KEY = "automation_enabled"
@@ -984,6 +984,14 @@ class ChannelWatcher(threading.Thread):
 
     def publish(self, d: StateDB, item, watch) -> dict:
         """Send a finished video's clips out with its watch's settings."""
+        # Every clip of the video held from before they are read until the
+        # choice is saved and the posts are sent (core/in_use.py): Make clips
+        # again keeps them meanwhile, and can't start while it's sending.
+        ids = [r[0] for r in d.conn.execute("SELECT id FROM clips WHERE video_id = ?", (item["video_id"],))]
+        with in_use.holding(ids):
+            return self._publish(d, item, watch)
+
+    def _publish(self, d: StateDB, item, watch) -> dict:
         settings = publish_settings(watch)
         # clips_for_video is ordered by score, so "the best N" is the first N.
         clips = list(d.clips_for_video(item["video_id"]))

@@ -13,6 +13,10 @@ import time
 _lock = threading.Lock()
 _cancelled: set[str] = set()
 _active: str | None = None  # the video the worker is processing right now
+# How many times each video has been cancelled since the app started. clear()
+# leaves it: core/pipeline.py clears the flag as a run starts, so a Cancel
+# pressed before then would otherwise leave no trace (core/remake.py).
+_requested: dict[str, int] = {}
 
 
 def set_active(video_id: str | None) -> None:
@@ -36,6 +40,15 @@ class CancelledError(Exception):
 def request_cancel(video_id: str) -> None:
     with _lock:
         _cancelled.add(video_id)
+        _requested[video_id] = _requested.get(video_id, 0) + 1
+
+
+def times_requested(video_id: str | None) -> int:
+    """How many times this video has been cancelled since the app started.
+    Unlike is_cancelled(), clear() never resets it, so comparing it with an
+    earlier reading tells whether a Cancel came in between."""
+    with _lock:
+        return _requested.get(video_id, 0) if video_id else 0
 
 
 def is_cancelled(video_id: str) -> bool:

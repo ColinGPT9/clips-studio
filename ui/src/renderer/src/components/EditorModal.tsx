@@ -260,7 +260,7 @@ export default function EditorView({
             <video
               key={previewSrc ?? `clip-${clip.id}`}
               ref={videoRef}
-              src={previewSrc ? `${API_BASE}${previewSrc}` : api.mediaUrl(clip.id)}
+              src={previewSrc ? `${API_BASE}${previewSrc}` : api.mediaUrl(clip.id, clip.media_version)}
               controls
               autoPlay
               className="absolute inset-0 w-full h-full object-contain rounded-xl bg-base"

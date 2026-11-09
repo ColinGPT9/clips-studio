@@ -23,6 +23,25 @@ were often broken in a way that only showed up on somebody else's machine.
   clips.
   Custom exports are made in the background, beside the processing queue rather than
   behind it, with a progress bar, Cancel, and the file's size and resolution when done.
+- **Make clips again** (#190). Clips made with settings you didn't want, such as 60+
+  second clips, can be made again from the Clip Editor with other settings, without
+  adding the video again. Clips you edited, published, scheduled, exported or starred,
+  translated or exported in other languages, or sent to a campaign are kept exactly as
+  they were, video file included, as are clips still being published or exported, 16:9
+  Longform clips and match reels; a new title, description or hashtags you gave a clip in
+  another version of Clips Kitty counts too, an edit you applied counts even if making it
+  failed, and an export counts even after you take the star off or wipe a creator's
+  learned memory. Clips made before this update, or in another
+  version, are kept too, unless the new settings find exactly the same moment again: then
+  that clip is made again with them and keeps its title. The others are replaced only
+  once every new clip is made, and one made again shows its new video straight away.
+  If it fails, can't make one of the new clips, or you cancel it before it starts
+  replacing, the clips from before stay exactly as they were. If Clips Kitty is closed
+  while it works, every clip it was keeping has its own video back the next time it
+  starts. It waits while one of the video's clips is being published or exported.
+  When it's done, the Clip Editor and the queue say what changed, or that no new clips
+  were found. A video made into one whole clip, like a watched channel's Twitch clips,
+  shows that as a Whole video switch you can untick to let the AI pick moments instead.
 - **WoopSocial: make a smaller copy when a clip is over 100 MB** (off unless you tick
   it). A clip WoopSocial would refuse is sent as a copy under about 95 MB, which is
   deleted once it's sent.
@@ -96,6 +115,13 @@ Kitty after you change it.
 
 ### Fixed
 
+- **A clip's cuts and mutes stay on the same moments when you change its start or
+  end** in its details or with the AI chat. They used to move by as much as the start
+  did, so a cut word could come back and a moment you kept could be cut. A clip you make
+  longer now plays the part you added.
+- **Deleting a clip no longer deletes another clip's video.** When Process again finds a
+  moment that starts and ends in the same seconds as an older clip, the two share one
+  file; deleting either one used to delete it, and the other clip had nothing to play.
 - **A forced encoder setting now applies everywhere.** Setting `video.encoder` in
   settings.yaml (`cpu`, `nvenc`, `amf`, `qsv`) used to reach only two of the places that
   encode video, and the rest followed it only after one of those two had run. It now

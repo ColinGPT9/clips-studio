@@ -14,6 +14,7 @@ in the clip's ORIGINAL timeline):
   }
 """
 
+import copy
 from dataclasses import dataclass, field
 
 MIN_SEGMENT = 0.25  # keep-ranges shorter than this are dropped (unwatchable)
@@ -134,6 +135,93 @@ class EditList:
                 return None
             offset += b - a
         return None
+
+
+def _moved(raw, by: float) -> tuple[float, float] | None:
+    """One saved [start, end] pair moved by `by` seconds, or None when it
+    isn't a pair of numbers."""
+    try:
+        return float(raw[0]) + by, float(raw[1]) + by
+    except (TypeError, ValueError, IndexError, KeyError):
+        return None
+
+
+def _within(a: float, b: float, duration: float) -> list[float] | None:
+    """[a, b] cut to the clip's [0, duration], or None when less than a
+    hundredth of it is left (what _clean_ranges drops)."""
+    a, b = max(0.0, a), min(duration, b)
+    return [round(a, 3), round(b, 3)] if b - a > 0.01 else None
+
+
+def shift_edit(edit, old_start: float, old_end: float, new_start: float, new_end: float) -> dict | None:
+    """A saved edit (render_opts["edit"]) carried to the clip after its start
+    or end moved, so every cut and mute stays on the same moment of the video.
+
+    The edit's times count from the clip's start, so a clip that now starts
+    `old_start - new_start` seconds earlier moves each of them that much
+    later: new = old + (old_start - new_start).
+
+    - keep: what the clip gains plays, since whoever widened it wants to see
+      what they widened it to. A start moved earlier adds the new head
+      [0, old_start - new_start]; an end moved later adds the stretch from the
+      old end to the new one. What the clip loses is cut away. Ranges that
+      touch are merged, and pieces shorter than the render plays
+      (MIN_SEGMENT) go. With no piece left, keep goes and the whole new clip
+      plays (the caller says so in the job log). No keep is the whole clip,
+      before and after.
+    - mutes: moved, cut to the new clip, and dropped when nothing is left.
+    - muted_words (which words the editor shows muted): moved, and dropped
+      when the word is no longer in the clip. A word half in it keeps its own
+      times, so the editor still finds it.
+    - Everything else (volume, mute_all, fades, speed, hook, music, and keys
+      this doesn't know) is left as it is, and so is a keep, mutes or
+      muted_words that isn't a list: the render reads those as it always did.
+
+    The input is never changed. The same window gives back an equal copy;
+    anything but a dict gives None."""
+    if not isinstance(edit, dict):
+        return None
+    out = copy.deepcopy(edit)
+    old_start, old_end = float(old_start), float(old_end)
+    new_start, new_end = float(new_start), float(new_end)
+    if abs(old_start - new_start) < 1e-9 and abs(old_end - new_end) < 1e-9:
+        return out
+    by = old_start - new_start
+    duration = new_end - new_start
+
+    if edit.get("keep") and isinstance(edit["keep"], (list, tuple)):
+        ranges = [r for r in (_moved(raw, by) for raw in edit["keep"]) if r is not None]
+        if new_start < old_start:
+            ranges.append((0.0, by))                                   # the head it gained
+        if new_end > old_end:
+            ranges.append((old_end - new_start, duration))             # the tail it gained
+        keep = [[round(a, 3), round(b, 3)] for a, b in _clean_ranges(ranges, duration)
+                if b - a >= MIN_SEGMENT]
+        if keep:
+            out["keep"] = keep
+        else:
+            del out["keep"]                                            # the whole new clip plays
+
+    if "mutes" in edit and isinstance(edit["mutes"], (list, tuple)):
+        mutes = []
+        for raw in edit["mutes"]:
+            moved = _moved(raw, by)
+            inside = _within(*moved, duration) if moved is not None else None
+            if inside is not None:
+                mutes.append(inside)
+        out["mutes"] = mutes
+
+    if "muted_words" in edit and isinstance(edit["muted_words"], (list, tuple)):
+        words = []
+        for word in edit["muted_words"]:
+            if not isinstance(word, dict):
+                continue
+            moved = _moved((word.get("start"), word.get("end")), by)
+            if moved is None or _within(*moved, duration) is None:
+                continue
+            words.append({**word, "start": round(moved[0], 3), "end": round(moved[1], 3)})
+        out["muted_words"] = words
+    return out
 
 
 def made_seconds(edit, window: float) -> float:

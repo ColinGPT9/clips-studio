@@ -132,7 +132,7 @@ export default function ClipEditor({
     <div className="card space-y-4">
       <video
         key={clip.id}
-        src={api.mediaUrl(clip.id)}
+        src={api.mediaUrl(clip.id, clip.media_version)}
         controls
         aria-label={`Preview of clip: ${clip.title || clip.hook || 'untitled'}. Captions are burned into the video.`}
         className="w-full rounded-lg bg-base max-h-96"

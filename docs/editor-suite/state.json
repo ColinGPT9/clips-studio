@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "Clips Kitty editor suite",
-  "updated": "2026-11-07",
+  "updated": "2026-11-08",
   "about": "Machine-readable tracker for the editor suite. STATUS.md is the readable view of this file; when they disagree, this file wins. Acceptance criteria are copied from the plan's Proof column; step 0 also carries the checks from the plan's section on keeping plain auto-clipping identical. depends_on is read from the plan's text (which earlier step's output a step uses): the plan gives the run order, not a dependency list.",
   "now": "1",
   "stop_after_phase": 2,
@@ -657,25 +657,337 @@
       "depends_on": [
         "0"
       ],
-      "status": "todo",
+      "status": "in_progress",
       "user_visible": true,
       "acceptance": [
         "Edited, published and project clips survive a re-run",
         "A widened clip keeps its cuts in place"
       ],
       "files": [
-        "server/jobs.py:784-982",
-        "video_editor/timeline.py",
-        "ui/src/renderer/src/pages/ClipStudio.tsx",
-        "ui/src/renderer/src/lib/api.ts",
-        "core/state.py"
+        "video_editor/timeline.py (shift_edit)",
+        "server/jobs.py (_rerender_clip carries render_opts.edit when the start or end moves, marks the new row edited_at and gives it no fingerprint (as_made); the worker finishes a Make clips again the app was closed in the middle of (core/remake.py recover) before its first job, and hands a job with replace_untouched to core/remake.py, with the video's Cancel count from before its fresh start, its link and START_WAIT, and checks for a Cancel before and after the run; clips_in_use; the translate job's export stage marks each clip it exports in other languages first)",
+        "core/remake.py (new: the last run's options, the source, which clips are kept, the old clips' files put out of the run's way as the job starts (only once none of the video's clips is in use: busy_clips, START_WAIT) and settled once it is over, never deleting a file something may be reading; the run's writes on old rows held back, and their files held; the video's own copy kept under a second name while a local:<id> run works; the replacement after the run, each clip judged again in a write transaction as it is deleted or made again in place, a clip given the run's file only if it is there; nothing replaced when a render failed; a Cancel counted whenever it was pressed until the first clip from before changes; note_language_export; file_in_use; QC fix round 5: the journal (app_state remake_journal:<video_id>) of the files' moves and the video's own copy, each step saved with its row change, rows pointed back before a file follows, a row on a put-aside name with no file there pointed back at its first name, no file deleted under a first name that the run didn't write, recover(); the fingerprint read: none is older, one that no longer matches is edited; a translated export's own job row keeps its clips)",
+        "core/cancel.py (times_requested: a count of each video's Cancels, which clear() leaves)",
+        "core/in_use.py (new: the clips a request is working with right now, held until what it did is recorded; the files a Make clips again run holds, which nothing deletes meanwhile)",
+        "core/state.py (clips.edited_at; app_state clips_unmarked_through, the last clip from before edits were marked; clips.as_made, the fingerprint of the words and window a run gives a clip, saved by add_clip: as_made())",
+        "server/api.py (GET and POST /videos/{video_id}/remake, RemakeIn, blocked busy and its 409; PATCH /clips/{id} marks edited_at; DELETE /clips/{id} leaves a file another clip still points to or a run holds; the editor lane's clips in use; Original export, lane export queueing, the AI chat, PATCH /clips/{id}, saving captions, a render, a preview, a saved translation, queueing a translation, a glossary ruling and a remembered Gaming layout hold their clips; clip JSON's media_version; clip JSON leaves out as_made)",
+        "server/woopsocial_api.py, server/woopsocial_service.py, server/uploadpost_api.py, server/youtube_api.py (each publish, one clip or a batch, a YouTube publish plan carried out, a thumbnail choice and making thumbnail candidates hold their clips until what they did is recorded)",
+        "core/queue.py (enqueue_once drops replace_untouched: a job queued by itself, a watch's or a streaming tool's, never replaces clips)",
+        "tests/test_automation.py (a watch's saved options can't make its jobs replace clips)",
+        "tests/test_shift_edit.py (new)",
+        "tests/test_rerender_edit_follows.py (new)",
+        "tests/test_remake.py (new)",
+        "tests/test_remake_worker.py (new)",
+        "tests/test_remake_routes.py (new)",
+        "tests/test_remake_in_use.py (new: publishes, exports, a thumbnail choice and the AI chat under way when a run finishes; every route that reads a clip and then writes for it holds it)",
+        "tests/test_remake_files.py (new: the old clips' files while a run works and after it, with plain files and with real renders under tests/render_harness.py; a Cancel the pipeline's own fresh start cleared, with the real process_video)",
+        "docs/editor-suite/api/step2-remake.md (new: the API contract for the UI)",
+        ".github/workflows/ci.yml (the step-2 tests join the Plugin platform job, which has FastAPI, OpenCV and yt-dlp)",
+        "ui/src/renderer/src/lib/remake.ts and lib/types.ts (the older reason: its words, made before this update or in another version, and a line in the count's tooltip saying why those clips are kept)",
+        "docs/editor-suite/USER-GUIDE.md",
+        "docs/developers/api-reference.md (regenerated)",
+        "docs/API.md (clips' edited_at and media_version)",
+        "CHANGELOG.md",
+        "ui/src/renderer/src/pages/ClipStudio.tsx (the Make clips again… action for the open video: off, with the reason in its tooltip, while the video waits or is made in the queue, when its source is gone, while one of its clips is in use, or the queue is full; read again when the video changes, on every queue event, when a publish or an export starts or ends, when either Publish dialog closes and when Export all ends, and every 4 seconds while it is off as busy)",
+        "ui/src/renderer/src/components/RemakeDialog.tsx (new: the dialog: the video's last settings in the Queue page's own panel, the \"N will be replaced, M kept\" count with why in its tooltip, Make clips again and Cancel; starts a stopped queue, as Add videos does)",
+        "ui/src/renderer/src/components/queue/QueueItemSettings.tsx (optional saveLabel, savingLabel, onCancel and noLongform for the dialog; the Queue page and watched channels pass none, so they are unchanged; its buttons no longer squeeze when an error shows beside them)",
+        "ui/src/renderer/src/lib/remake.ts (new: the options the dialog starts from and posts, why the action is off (busy too), the count's tooltip; runs under Node in the tests)",
+        "ui/src/renderer/src/lib/api.ts (remakePreview, remakeVideo; mediaUrl takes the clip's media_version)",
+        "ui/src/renderer/src/lib/types.ts (RemakeReason, RemakeOptions, RemakePreview with blocked busy; Clip.edited_at, Clip.media_version)",
+        "tests/test_ui_remake.py (new)",
+        "tests/test_ui_translatable_attributes.py (the dialog joins its list)",
+        "core/housekeeping.py (Storage's survey and clean-up leave the files core/in_use.py holds, a clip file whose other Make clips again name a clip row points at, and the .remaking second name of a video's own copy)",
+        "server/discord_api.py, server/campaigns_api.py (sending a post's link to Discord and attaching clips to a campaign hold their clips)",
+        "server/automation.py (a watched channel's publish holds the video's clips from before it reads them until its posts are sent)",
+        "ui/src/renderer/src/components/ClipCard.tsx, ClipEditor.tsx, EditorModal.tsx (the clip's video URL carries its media_version, so a clip made again in place shows its new video)",
+        "tests/test_remake_safety.py (new: QC fix round 3, on CI's light install: held files and Storage's clean-up, judging again before a clip is made again in place, a render that failed, a Cancel while finish() works, the job's start while a clip is in use, the video's own copy, a clip exported in other languages; QC fix round 5: the journal, fixes (a)-(d) one by one, the start-up recovery)",
+        "tests/test_remake_crash.py (new: QC fix round 5, on CI's light install: a child process killed after each of a run's renames, copies, links, deletes, render writes and commits, and after each of the recovery's own steps; then Storage's clean-up, the start-up recovery, the next Make clips again and the clean-up again keep every clip's video)",
+        "tests/remake_crash_child.py (new: the child process tests/test_remake_crash.py kills, and the new process that starts after it)",
+        "core/state.py, server/api.py, server/youtube_api.py, server/jobs.py, core/remake.py (QC fix round 6: StateDB.mark_edited, called by every route that queues a render as it queues it; clips.first_exported_at and StateDB.mark_exported, called by every export, carried by a re-render and left out of clip JSON; the migration that adds it copies clip_feedback exports and writes clip_language_export:<id> from translate export jobs that have run; a render job in any state counts as edited; LANGUAGE_EXPORT now lives in core/state.py)",
+        "tests/test_remake_lasting_marks.py (new: QC fix round 6, the real routes with the real worker: a failed Apply, caption fix and AI edit, then the learning erased or the creator deleted, the clip kept and its Retry applied; the same with the Queue cleared; an Original copy, Export all and an editor-lane export, then the star off and the learning erased, the clip kept; a render before a YouTube publish marks its clip)",
+        "Black-box fix round 1 (S3, 2-D32): ui/src/renderer/src/components/queue/QueueItemSettings.tsx (offerWhole: a Whole video switch when the settings have whole, with interlocks), components/RemakeDialog.tsx (passes offerWhole), components/queue/QueueItem.tsx and pages/ClipStudio.tsx (the finished run's result line), lib/remake.ts (remakeResultText), lib/types.ts (RemakeResult; QueueJob.result, StudioEvent.result), core/remake.py (the log line's new and found-again counts; a clip with no fingerprint made again in place is counted kept; summary()), core/state.py (jobs.result), core/queue.py (a queue row's parsed result), server/jobs.py (_note_remake; the done event's result), tests/test_remake.py, tests/test_remake_worker.py, tests/test_ui_remake.py, docs/editor-suite/api/step2-remake.md (What the job says it did; the Whole video switch), docs/editor-suite/USER-GUIDE.md, CHANGELOG.md"
       ],
       "notes": [
         "The plan lists it with the engine-only steps a cloud run may take, only as a draft PR on Colin's go",
-        "Open: the proof names project clips, which only exist from step 5"
+        "Out of scope here: project clips arrive in step 5, and how a remake treats them is decided with them. The proof names them, so that part stays open until then",
+        "Engine side built 2026-11-06: shift_edit, _rerender_clip carrying the edit (an edit sent with a new range too), the Make clips again routes and replacement (core/remake.py), clips.edited_at. The UI builds against docs/editor-suite/api/step2-remake.md",
+        "Choices made building it: the routes are protected as POST /jobs is (Host check, a JSON body required), with no session header, so the browser shim can use them; a remake refuses Longform (400) and GET leaves it out of the prefill; the original job's webhook and `then` aren't carried; a linked video whose link is lost but whose download is here is queued as local:<id>; a run that made some clips while others failed to render still replaced (the spec's rule: it finished and made at least one 9:16 clip) until 2-D15 replaced that choice: since then a run in which any render failed replaces nothing and makes nothing again in place",
+        "edited_at marks title, description and hashtag changes (and every re-render) from this version on. Text changed in an earlier version leaves no mark, so since the QC fix round every clip made before the update (app_state clips_unmarked_through) is kept as older, unless the run makes its window again: then it is made again in place and keeps its title, description and hashtags",
+        "Open, for Colin (QC fix round 2026-11-07): keeping the clips made before this update follows the spec's 'when in doubt, keep the clip', but it means a video processed before the update keeps most of its old clips beside the new ones, and the person deletes the unwanted ones by hand. The dialog's count shows them under 'made before this update', with a tooltip line saying why. Replacing them instead is one line (core/remake.py _reasons, the older check) and brings back the risk of deleting a clip retitled before the update",
+        "Found in existing code (not changed by step 2): a run names clip files by whole seconds, so a forced re-run (Process again) that finds a new window with the same whole-second start and end writes over an older clip's file, which then shows the new clip. Make clips again puts the old files out of the run's way (QC fix round 2), and DELETE /clips/{id} now leaves a file another clip still points to; Process again itself is unchanged",
+        "Engine side finished 2026-11-07 (resumed after the two pauses): checked against the spec and kept; shift_edit leaves a keep that isn't a list as it is (a number in it made it raise; mutes and muted_words already were); a Make clips again job's run is set up before the job's checks, so a job stopped by one (no AI model) says in its log that nothing was replaced; the API contract and the guide say what happens to a kept clip the run finds again, and list the known limits",
+        "Since QC fix round 2 (2026-11-07) a kept clip keeps its own file and row even when the run finds its window again: the run still renders that window (with the person's saved edits, D33) and the render is dropped, so the time is spent for nothing. Skipping that render means changing which windows core/pipeline.py renders, the plain path, so it is left as it is",
+        "QC fix round 2026-11-07 (defects 2-D1 to 2-D5): the API doc lists the Discord-link intent check; publishes (WoopSocial and Upload-Post, one clip or a batch, and YouTube), Original exports, exports queued on the lane, thumbnail choices and the AI chat hold their clips in core/in_use.py until what they did is recorded, and each clip is judged again inside BEGIN IMMEDIATE and in_use.settled() just before it is deleted; a chosen thumbnail (thumbnails/clip_<id>_chosen.jpg) keeps a clip as edited; clips made before the update are kept as older; the worker checks for a Cancel once more before replacing anything, so a late Cancel ends the job cancelled with nothing deleted. A failure partway through the deleting now says how many went",
+        "Not carried on a moved clip, as before (outside render_opts): saved translations (clip_translations.lines) count from the clip's start",
+        "QC fix round 2 2026-11-07 (defects 2-D6 to 2-D9): as a Make clips again job starts, each old clip's file is renamed beside itself (clip_00010-00070.clip-17.mp4) and its rows point there, or copied there when something may be reading it (a request holding it, the lane, a publish job under way) or Windows won't rename it; the run's writes on old rows are held back; once the run is over, an unused clip made again takes the run's file and its old one goes, every other clip gets its own file back under its first name (unless a new clip took that name, something reads it, or it is held open), and what the run left that no clip plays goes. A story reel from before keeps its file and chapters, so the run's reel of the same kind is dropped (the guide says to delete the old reel first for a new one). A Cancel is counted (core/cancel.py times_requested) and the run's database asks again for one its fresh start cleared. DELETE /clips/{id} leaves a shared file. Left as it is: core/pipeline.py's own clear of the flag and _cached_or_download carrying on after a Cancel, for plain runs; a crash in the instant between a rename and its row being saved leaves the row on its first name (the next Make clips again finds the file again)",
+        "UI built 2026-11-07 against docs/editor-suite/api/step2-remake.md. Choices: the dialog reuses QueueItemSettings, as the contract suggests, merging its patch over the last run's options so what the panel doesn't show (hashtags, plugins, the split, whole video, focus) goes back as it was; with no run left to read, it starts from the Generate bar's settings (AddVideos seedOptions) without Longform; the action is also off while the queue is full (the contract's blocked value), and a failed read leaves it on so its dialog can say what went wrong; Make clips again starts a stopped queue, as Add videos' Generate does. Add videos and its Process again are untouched",
+        "Checked by hand 2026-11-07 in the black-box sandbox (headless Edge): the action and its tooltips on real_600s (7 replaced, 1 kept: the published clip) and on synth_gone_10s (off, file gone); the dialog's switches prefilled (60s+ on, no Longform switch), Cancel, Escape, axe clean inside the dialog; one real run on synth_20s (Captions unticked): the POST kept whole video, the stopped queue started, the action was off with its reason while it ran, the log said 1 made again with the new settings, the list was read again; the sandbox queue was stopped again after. Answered in the browser, so nothing reached the engine: a 409 shows the engine's sentence, a video found waiting when the dialog opens shows the reason, no last run starts from the Generate bar's settings, a failed read keeps the action on, and an editor open on a clip the run deletes closes back to the list. real_600s was never made again",
+        "QC fix round 3 2026-11-08 (defects 2-D10 to 2-D19; the owner's third and last fix round). Choices: a clip exported in other languages is marked by an app_state key, clip_language_export:<clip_id>, written by the translate job's export stage before it writes the files: finished translate jobs can't be counted (Clear completed deletes job rows, core/queue.py clear), exported_at would make Export all skip the clip (an Original export it never had) and turn its star on, and clip_feedback feeds creator learning. A Make clips again doesn't start while one of the video's clips is held by a request, exported on the lane or being published: the routes refuse (blocked busy, 409), and the job, as it starts, checks again inside one in_use.settled() with every rename, waiting up to START_WAIT (120 s, a Cancel stops it) and then failing with nothing changed and a plain line (Retry runs it again); so a file is copied aside only when Windows won't rename it (a player holds it open, and only a player can be reading it). The run's held-back renders, and the files of the clips from before under both names, are held in core/in_use.py until it is over, which Storage's clean-up, DELETE /clips/{id}, remove_clips and finish()'s own deleting all respect; finish() gives a clip the run's file only if it is there. Each clip is judged again inside BEGIN IMMEDIATE and in_use.settled() right before it is deleted or made again in place, and settling deletes nothing that may be being read. A render that failed is told by core/pipeline.py's own outcome (its `clips`, recorded through the run's database before it renders) against the clips it registered: nothing is replaced or made again in place, and the clips it made are added. A Cancel is looked for inside the lock before the first change, and at the end of finish() when nothing changed; after the first change it is too late. A local:<id> run keeps a hard link to the video's copy (<id>.remaking.<ext>) and puts it back if the run deleted it; without hard links it reads the copy first. A clip made again in place keeps its id and file name, so clip JSON carries media_version (the file's time and size) and the app puts it on the clip's /media URL. Every route found that reads a clip and then writes for it holds it (PATCH /clips/{id}, captions, render, preview, saved translation, POST /translate, glossary, Gaming layout, thumbnail candidates, Discord send, campaign attach, a watched channel's publish). Two round-2 scratch tests (test_round2_cancel.py: the plain pipeline's own clear of a Cancel and its AV1 re-download) fail on the untouched core/pipeline.py, as they did before this round, and core/remake.py works around both (2-D9)",
+        "QC fix round 4 2026-11-08 (defects 2-D20 to 2-D23; a small follow-up the owner approved as the last one). POST /publish/plan/execute holds every clip of the plan from before it reads the first until the last publish job is saved. Checked again by reading, for routes, MCP tools, automation and campaign paths that publish, export or write for several clips one after another: POST /woopsocial/batch and the worker's and a watch's publishing (woopsocial_service.publish_clips, holds_clips), POST /uploadpost/batch, POST /export/batch (Original and the lane), POST /translate, POST /campaigns/submissions and a watch's publish hold all their clips from before their first read; POST /publish/plan and POST /woopsocial/batch/plan only read; attach_for_watch, campaign submissions, Discord intents, the YouTube publish worker and the post refreshes act only on clips that already have a record, which keeps them; every MCP tool goes through one of these routes; stream digests use Twitch clip ids, not the library's. Only POST /videos/{video_id}/remake queues a job with replace_untouched: POST /jobs, POST /jobs/batch, POST /videos/local and PATCH /jobs have no such field (ignored), and core/queue.py enqueue_once (a watch's or a streaming tool's job) drops it; PATCH /jobs keeps a waiting remake's own flag",
+        "QC fix round 5 2026-11-08 (defects 2-D24 to 2-D28; approved by the owner). Choices: the journal is an app_state key per video, written in the same commit as each row change (so it always says where each row points) and finished by recover() the way stopped() settles a run, from where each row points and which file exists; the worker calls it in Worker.run before recover_interrupted_jobs and its first job, and a Make clips again calls it for its own video, so a journal is never overwritten unfinished. The fingerprint is written by StateDB.add_clip from the values it inserts: every clip a run makes goes through core/pipeline.py _register_clip, which inserts it with its generated words (shown with the real process_video), and core/pipeline.py stays untouched; the one insert that carries a person's words, _rerender_clip's new row, blanks it (and is edited anyway). Writing it from server/jobs.py after process_video returns, as suggested, would have left the clips of every run before the end (and every test's) fingerprint-less, so kept as older. clips_unmarked_through is no longer needed (every clip it counts has no fingerprint); it is left as it was, since removing it changes no decision and the reviewers' suites read it. Storage's survey follows the task's rule for other names (a row on the other name), so a stale put-aside file a busy settle left, whose clip plays its first name, is no longer the clean-up's: the video's next Make clips again replaces it (tests/test_remake_safety.py test_settling_keeps_an_old_file_something_started_reading changed with it). A finished translate job of stage export now keeps the clips it names, alongside note_language_export: it is what another version leaves, until Clear completed deletes it. The reviewers' round 3 probe test_probe_a_title_changed_by_an_older_version_after_the_upgrade_has_no_mark asserts the old behaviour (the retitled clip deleted) and now fails, as 2-D26 intends",
+        "QC fix round 6 2026-11-08 (defects 2-D29 to 2-D31; on the owner's go). Every mark of a use that a normal action can erase while the clip stays was checked (step2-remake.md, What can erase a mark while the clip stays). Choices: a render a person asks for marks the clip edited as it is queued, so a render that fails or is cancelled keeps it (its job holds their edit, for Retry), and so does a waiting render they removed; a real export marks a new column, first_exported_at, rather than an app_state key, so the mark goes with the row and a re-render carries it; marks that only the person's own undo erases get none (a star set by hand and taken off, Show again on a hidden suggestion, a discarded translation), nor do traces of a use that sent or exported nothing (a translated export that stopped before it wrote anything, a publish refused outright, a watch's choice when the watch is deleted). Unchanged: clip_feedback stays the creator's learning, and the Creators page's wording is the same. The reviewers' round 6 tests that assert the deletions (test_r6_failed_render.py's three erase tests, test_r6_required.py's export test) now fail at 'kept: no defect', as intended",
+        "Data-safety round 7 2026-11-08: QC found no defects. The data-safety review found one normal-use case: a hidden plugin suggestion is dropped by a plain Process again (plugins/edit_marks.carry keeps only used decisions; core/pipeline.py stays untouched), and the next Make clips again then replaces the clip. Colin accepted it as a known limit (step2-remake.md, Known limits): the clip was exactly as its run made it, and it needs a plugin that suggests edits",
+        "Black-box round 1, 2026-11-08: S1, S2, S2b, S4, S5 and S6 passed; S3 failed (2-D32, fixed). The expectation was right in substance: the run used a setting the dialog didn't show. The fix shows it rather than dropping it, since a watched channel's Twitch clips are made whole and making one again (say, with captions off) should give the same one clip; turned off, synth_20s made no clips and said so. Tester observations outside the failed scenario, left for their own round: the clip list's progress stuck at 'Finding the best moments' after a remake while the editor is open (S6d, 3 of 3), left-over .clip-<id> copies and old renders on disk (the tester measured about 650 MB in the sandbox and guessed Windows file locks from open players), cards showing the window rather than the length after cuts, and the Queue page reading 'Starting… 0%' after a reload until the next progress event. Not reproduced or changed in this fix round"
       ],
       "results": [],
-      "defects": []
+      "defects": [
+        {
+          "id": "2-D1",
+          "date": "2026-11-07",
+          "found_by": "QC",
+          "summary": "The API doc's Kept because list left out the check for a publish on its way to Discord (its intent in app_state under discord_post_link:, saved before the upload). Fixed: the submitted row lists it",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D2",
+          "date": "2026-11-07",
+          "found_by": "QC",
+          "summary": "A clip being published (WoopSocial or Upload-Post, one clip or a batch) or copied by an Original export when a remake finished was deleted, since those record their use only once the upload or copy is done; in a batch, every clip not yet sent went too. Fixed: those requests (and a YouTube publish, a lane export being queued, a thumbnail choice and the AI chat) hold their clips in core/in_use.py from before they read them until what they did is recorded, a batch all of its clips from the start, and each clip is judged again inside BEGIN IMMEDIATE and in_use.settled() as it is deleted (tests/test_remake_in_use.py, tests/test_remake.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D3",
+          "date": "2026-11-07",
+          "found_by": "QC",
+          "summary": "A clip whose thumbnail a person chose (kept only as thumbnails/clip_<id>_chosen.jpg) counted as unused and was deleted, leaving the image behind. Fixed: the file keeps the clip as edited, chosen before the update too",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D4",
+          "date": "2026-11-07",
+          "found_by": "QC",
+          "summary": "Clips retitled before the update, or trimmed before it with their learning wiped, had no mark and were deleted. Fixed: the migration saves the last clip id from before (app_state clips_unmarked_through), and those clips are kept as older unless the run makes their window again (then they are made again in place, title kept). Trade-off left for Colin (notes)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D5",
+          "date": "2026-11-07",
+          "found_by": "QC",
+          "summary": "A Cancel pressed after the run's last check (during the creator-learning join, the story reels or the last status writes) was ignored: the job ended done and the old clips were deleted. Fixed: the worker calls cancel.check before Run.finish(), so the job ends cancelled and nothing is deleted; plain runs are unchanged (tests/test_remake_worker.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D6",
+          "date": "2026-11-07",
+          "found_by": "QC",
+          "summary": "The guide said an open editor closes when its clip is replaced, but a clip made again in place keeps its id and its editor stays open. Fixed: only a deleted clip's editor closes; one made again stays open",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D7",
+          "date": "2026-11-07",
+          "found_by": "QC",
+          "summary": "A kept clip (published, scheduled, retitled, starred, translated, in a campaign, chosen by a watch, or cut by hand) whose window the run found again had its file written over by the run's render, which its row then pointed at with its old render options; it stayed so when the run then failed. Fixed: the old files are put out of the run's way as the job starts, the run's writes on old rows are held back, and only finish() gives the run's file to an unused clip it made again; every other clip gets its own file back, after a stop too (tests/test_remake_files.py, with real renders under tests/render_harness.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D8",
+          "date": "2026-11-07",
+          "found_by": "QC",
+          "summary": "A new window with the same whole seconds as a kept clip (10.4-20.6 s against 10.0-20.0 s) was written over the kept clip's file, and deleting that new near-duplicate with DELETE /clips/{id} deleted the file the kept clip still played. Fixed: the kept clip's file is out of the run's way (2-D7) and stays under its .clip-<id> name when a new clip takes its first one; DELETE /clips/{id} leaves a file another clip still points to (tests/test_remake_files.py, tests/test_remake_routes.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D9",
+          "date": "2026-11-07",
+          "found_by": "QC",
+          "summary": "A Cancel pressed early in a Make clips again job (the model check, finding or converting the source, an AV1 copy downloaded again) was cleared by core/pipeline.py's own fresh start: the run finished, the job ended done and the old clips were deleted. Fixed: core/cancel.py counts every Cancel (times_requested, which clear() leaves); the worker reads the count before its fresh start and the job ends cancelled, nothing replaced, when it moved; the run's database asks again for a cleared Cancel, so the real process_video stops at its next check (tests/test_remake_files.py, tests/test_remake_worker.py). The pipeline's own clear and _cached_or_download carrying on are unchanged for plain runs",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D10",
+          "date": "2026-11-07",
+          "found_by": "QC",
+          "summary": "Settings > Storage > Free up while Make clips again ran deleted the run's render of a moment it found again (no row points at it until the run is over), and finish() then gave the unused clip that missing file and deleted its own: the clip had no video. Fixed: the run holds those renders, and the files of the clips from before, in core/in_use.py, which core/housekeeping.py's survey and clean-up leave; finish() gives a clip the run's file only if it is there, and the job log says when it wasn't (tests/test_remake_safety.py, tests/test_remake_routes.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D11",
+          "date": "2026-11-07",
+          "found_by": "Data safety review",
+          "summary": "DELETE /clips/{id} of a new clip with the same whole seconds as an old clip's moment found again deleted the run's held-back render they shared (no other row pointed at it), with the same result as 2-D10. Fixed: file_in_use and remove_clips count the files a run holds, as DELETE /clips/{id} does (tests/test_remake_safety.py, tests/test_remake_routes.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D12",
+          "date": "2026-11-07",
+          "found_by": "Data safety review",
+          "summary": "A clip exported in other languages (POST /translate, stage export, its default) left no mark, so Make clips again deleted it; the app's tab could also discard the only mark (its translation) while the exported videos stayed in the person's folder. Fixed: the export stage marks the clip first, in an app_state key (clip_language_export:<clip_id>) that keeps it as exported and that nothing else reads (tests/test_remake_safety.py, tests/test_remake_worker.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D13",
+          "date": "2026-11-07",
+          "found_by": "Data safety review",
+          "summary": "An unused clip the run found again was made again in place on finish()'s first judgment, outside the lock, so a retitle, a post or a publish that started in between didn't keep it, and settling then deleted its old file even while a publish was reading it. Fixed: each clip is judged again inside BEGIN IMMEDIATE and in_use.settled() right before it is made again in place, as before it is deleted, and settling never deletes a file something may be reading (tests/test_remake_safety.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D14",
+          "date": "2026-11-07",
+          "found_by": "Data safety review",
+          "summary": "Routes that read a clip and then write for it didn't hold it, so a remake could delete the clip or make it again in between (a new title lost, a render or translation queued for a clip that was gone). Fixed: PATCH /clips/{id}, saving captions, POST /clips/{id}/render, a preview, a saved translation, POST /translate, a glossary ruling, a remembered Gaming layout, thumbnail candidates, a Discord send, a campaign attach and a watched channel's publish hold their clips (core/in_use.py) (tests/test_remake_in_use.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D15",
+          "date": "2026-11-07",
+          "found_by": "Data safety review",
+          "summary": "A run in which some renders failed still replaced the old clips nobody used (the spec's 'made at least one'). Fixed, the safer reading of 'only after the new run succeeds': when the run registered fewer 9:16 clips than core/pipeline.py said it was about to render, nothing is deleted or made again in place, the clips it made are added, and the job log says why (tests/test_remake_safety.py, tests/test_remake_worker.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D16",
+          "date": "2026-11-07",
+          "found_by": "Data safety review",
+          "summary": "A Cancel pressed while finish() worked was not seen: the replacing went on and the job ended done. Fixed: finish() looks for it inside the lock before its first change (and at its end when it changed nothing), changes nothing and ends the job cancelled; the guide and the API doc say exactly when a Cancel still counts (tests/test_remake_safety.py, tests/test_remake_worker.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D17",
+          "date": "2026-11-07",
+          "found_by": "Data safety review",
+          "summary": "A file copied aside because something was reading it kept its first name, which the run could then write over while it was read. Fixed: Make clips again doesn't start while one of the video's clips is held, on the editor lane or being published: GET says blocked busy, POST answers 409, and the job checks again as it starts, inside one in_use.settled() with every rename, waiting up to 120 s and then ending with nothing changed (tests/test_remake_safety.py, tests/test_remake_routes.py, tests/test_remake_worker.py, tests/test_ui_remake.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D18",
+          "date": "2026-11-07",
+          "found_by": "Data safety review",
+          "summary": "A Make clips again of a linked video whose link is lost, queued as local:<id>, ran the pipeline's local branch, which deletes a copy FFprobe can't read within 60 s; nothing could be downloaded again. Fixed: such a run keeps a hard link to the copy while it works and puts it back if it went; without hard links it reads the copy first and stops with the copy left (tests/test_remake_safety.py, tests/test_remake_worker.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D19",
+          "date": "2026-11-07",
+          "found_by": "QC",
+          "summary": "A clip made again in place keeps its id, and /media/<id> carried nothing that changed with its file, so an open card or editor could keep showing the old video. Fixed: clip JSON carries media_version (the file's time and size) and the card, the details panel and the editor put it on the /media URL (tests/test_remake_routes.py, tests/test_ui_remake.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D20",
+          "date": "2026-11-08",
+          "found_by": "Data safety review",
+          "summary": "A YouTube publish plan carried out (POST /publish/plan/execute: the assistant's Confirm button, the MCP tool publish_plan_execute) held only the clip it was on, so a remake finishing meanwhile deleted a later clip of the plan that had no record yet, and the plan skipped it as 'no such clip'. Fixed: the route holds every clip of the plan from before it reads the first until the last publish job is saved; the API doc's busy row names it (tests/test_remake_in_use.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D21",
+          "date": "2026-11-08",
+          "found_by": "Data safety review",
+          "summary": "replace_untouched could reach a job by another door than the remake route: core/queue.py enqueue_once spread whatever a watch's saved options held into the job (the app's own watch routes check options as PATCH /jobs does and drop it, but a row written by hand or by another version kept it). Fixed: enqueue_once drops it, and a test shows POST /jobs, POST /jobs/batch, PATCH /jobs and the request models of POST /videos/local ignore it, while PATCH keeps a waiting remake's own flag (tests/test_remake_routes.py, tests/test_automation.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D22",
+          "date": "2026-11-08",
+          "found_by": "QC",
+          "summary": "The CHANGELOG said clips made before this update are kept exactly as they were, video file included, and the dialog's count tooltip said they are kept, leaving out the case where the new settings find exactly the same moment again and the clip is made again with them, keeping its title (as the guide and the API doc say). Fixed: both say so (tests/test_ui_remake.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D23",
+          "date": "2026-11-08",
+          "found_by": "QC",
+          "summary": "A step-2 note under 'Choices made building it' still said a run in which some renders failed replaces the unused clips, which 2-D15 changed. Fixed: the note says 2-D15 replaced that choice",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D24",
+          "date": "2026-11-08",
+          "found_by": "Data safety review",
+          "summary": "The app closed (taskkill /F, a power cut, Windows shutting down) while a Make clips again put the old clips' files back could cost a kept clip its video: settling renamed the file before committing its row, so a kill in between left the row on its .clip-<id> name with the file under its first name; the next Make clips again then deleted that file (the already-aside branch took the missing .clip-<id> name as the clip's, and _put_back deleted whatever was under the first name), and so did Storage > Clean up, as it did for a kill between a rename and its commit as files were put aside. Fixed for every kill point: a journal per video (app_state remake_journal:<video_id>) saved before the first file moves, each file's step saved in the commit of the row change it goes with; settling commits the rows first and the file follows (put back where it is when it can't move); recover() finishes a journal the way stopped() settles a run, called by the worker before its first job and by a Make clips again for its own video; the video's own copy is in the journal too. Proved by tests/test_remake_crash.py, which kills a child process after each of the run's 32 (and the failed run's 28) renames, copies, links, deletes, render writes and commits, and after each of the recovery's own steps, then checks every clip from before after Storage's clean-up, the start-up recovery, the next Make clips again and the clean-up again; the reviewers' repro_settle_crash.py prints survived for all three scenarios",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D25",
+          "date": "2026-11-08",
+          "found_by": "Data safety review",
+          "summary": "The class of 2-D24, the reviewer's fixes (a)-(d): (a) a row on a .clip-<id> name with no file there, while its first name holds the file and no other clip plays it, is pointed back at it and put aside as any file (core/remake.py Run._planned); (b) settling deletes a file under a first name only when this run handed it to one of its clips (Run.wrote), never one it didn't write; (c) the rows go back first, in one commit with the journal's 'back', then the file follows, and a file that can't move has its rows pointed at it again; (d) Storage's survey never counts a clip file as one no clip plays when a clip row points at its other name (first name or .clip-<id>), and leaves <video id>.remaking.<ext> of a video in the library. Each has a test in tests/test_remake_safety.py that fails without it (mutation check)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D26",
+          "date": "2026-11-08",
+          "found_by": "Data safety review",
+          "summary": "A clip retitled in an older Clips Kitty after a step-2 engine had opened the same data folder looked untouched and Make clips again deleted it with the person's title: clips_unmarked_through is written once, and older builds never set edited_at. Fixed: StateDB.add_clip saves a fingerprint of the title, description, hashtags, start and end a run gives a clip (clips.as_made, core/state.py as_made). A row with none (made before this update, by another version, or a re-render's new row, which _rerender_clip blanks) is 'older'; a row whose words or window no longer match it is 'edited', whichever version changed them. Proved through the real process_video (tests/test_remake_files.py): its clips count as nobody used them, and a title, description or hashtags written as the released app's PATCH writes them keep the clip; the reviewers' test_e_downgrade.py passes. clips_unmarked_through is no longer needed (every clip it counts has no fingerprint) and is left as it was. Also covered for older versions: a translated export, by its translate job's row while the Queue page keeps it",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D27",
+          "date": "2026-11-08",
+          "found_by": "QC",
+          "summary": "The Library's Make clips again could stay off with a stale 'busy' reason after the publish or export that caused it had ended: most holds (WoopSocial and Upload-Post publishes, a watched channel's, an Original export, a preview) send no event when they end. Fixed: while the open video's state is busy, ClipStudio reads GET /videos/{id}/remake every 4 seconds, stopping when the state or the video changes, and reads it at once when either Publish dialog closes and when Export all ends (tests/test_ui_remake.py)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D28",
+          "date": "2026-11-08",
+          "found_by": "QC",
+          "summary": "USER-GUIDE.md said making clips again from a file added from the PC can't lose that file's copy, even if the copy can't be read in time, while the API doc's known limits say a drive with no hard links only reads the copy first. Fixed: the guide says the copy is kept safe, and that on some USB drives Clips Kitty can only check it before it starts, so if it can't be read later in the run, add the file again",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D29",
+          "date": "2026-11-08",
+          "found_by": "Data safety review",
+          "summary": "A clip whose Apply, caption fix or AI edit failed to render was deleted by Make clips again once the creator's learning was erased (Creators page: wipe learned memory, or delete the creator): the routes logged the use only as a clip_feedback row, the worker marks only the new row of a render that works, and a failed render job didn't count. The person's edit (cuts, or typed caption lines that live nowhere else) was left only in the failed job, whose Retry then failed with 'No clip with id'. Fixed: every route that queues a render marks the clip edited as it queues it (StateDB.mark_edited: POST /clips/{id}/render, PUT /clips/{id}/captions, POST /clips/{id}/ai-edit, and POST /clips/{id}/publish with render_first; the MCP server has no render tool), and a render job that names the clip counts as edited in any state, not only waiting or running. edited_at is read only by core/remake.py and is in clip JSON, which no screen shows. tests/test_remake_lasting_marks.py: the clip is kept after the learning is erased, the creator deleted or the Queue cleared too, and Retry applies the edit; the reviewers' test_r6_failed_render.py now fails its three erase tests at 'kept: no defect' and passes its control",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D30",
+          "date": "2026-11-08",
+          "found_by": "Data safety review",
+          "summary": "An exported clip whose star was taken off (the star is exported_at, which Export all reads) was deleted by Make clips again once the creator's learning was erased: the export was then recorded only by a clip_feedback row. Fixed: a new column, clips.first_exported_at, set by every real export (StateDB.mark_exported: an Original copy of one clip or a batch, which Export all and the MCP tool export_clip use, and an editor-lane export once its file is made), which the star and erasing learning leave alone; a re-render carries it, clip JSON leaves it out, and the migration that adds it copies it once from clip_feedback 'exported' rows (the earliest). tests/test_remake_lasting_marks.py and tests/test_remake.py; the reviewers' test_r6_required.py export test now fails at 'kept: no defect'",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D31",
+          "date": "2026-11-08",
+          "found_by": "Engineering (the class review asked for in QC fix round 6)",
+          "summary": "Of every mark of a use that a normal action can erase while the clip stays, one more stood for a real use with nothing lasting behind it: an export in other languages made before this update is recorded only by its translate job's row (note_language_export is new in step 2), which the Queue page's Clear deletes; such a clip, made before the update and left with only 'older', would be made again in place when the run found its window again. Fixed: the migration that adds first_exported_at writes clip_language_export:<id> once from every translate job of the export stage that has run, as core/remake.py reads them (tests/test_remake.py). The full table, and why the rest need no mark, is in step2-remake.md under 'What can erase a mark while the clip stays'",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "2-D32",
+          "date": "2026-11-08",
+          "found_by": "Black-box tester (round 1, scenario S3)",
+          "summary": "Make clips again on a video made as one whole clip (the sandbox's no-speech synth_20s; in the app, a watched channel's Twitch clips) carried the last run's `whole` without showing it: the dialog had no such switch, so the run made the whole clip again instead of letting the AI pick (none, with no speech), and turning 60s+ on would have been refused with a message about whole clips nobody could see. Its job log also contradicted itself and the dialog: the pipeline's 'Done (0 clips)' counts new clips only, the remake line said 'made 1 clip(s)', and a clip made before this update that the run made again in place was logged as replaced 'nobody had used' where the dialog had counted it kept. And nothing on screen said what the run did: with the clips from before still there, a run that found no new clips looked like nothing had run. Fixed: the dialog shows Whole video (one clip), on, when the last run used it (QueueItemSettings offerWhole, passed only by RemakeDialog), to keep or turn off, with the engine's refusals as interlocks; the log line says how many of the run's clips are new and counts such a clip kept (with its own line); a finished remake keeps what it did in jobs.result (core/remake.py summary), which GET /queue and the job's done event carry, and the Queue page and the Library say it in one line (lib/remake.ts remakeResultText), 'No new clips this time, so your clips are kept as they were.' when nothing changed. Reproduced in the sandbox before the fix (job 22's log) and checked after it through the UI",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        }
+      ]
     },
     {
       "id": "3",

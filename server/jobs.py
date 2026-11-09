@@ -65,6 +65,12 @@ class Worker(threading.Thread):
         # to /ws when the events went out, such as a dock opened mid-run.
         self._progress: dict[int, dict] = {}
         self._progress_lock = threading.Lock()
+        # The clips an export on the editor lane is making, or is about to:
+        # Make clips again keeps them. The app sets it (server/api.py); the
+        # lane's jobs live only in its memory. The clips a request is
+        # publishing, copying or otherwise working with (core/in_use.py) are
+        # kept too: core/remake.py adds them itself.
+        self.clips_in_use = lambda: ()
 
     def notify(self) -> None:
         """Called by the API when a job is enqueued, or when the queue is
@@ -88,6 +94,13 @@ class Worker(threading.Thread):
 
     def run(self) -> None:
         db = StateDB(self.db_path)  # sqlite: one connection per thread
+        # A Make clips again the app was closed in the middle of: every clip
+        # from before gets its own file back where its row says, before any
+        # job runs (core/remake.py). Nothing to do, and nothing done, after
+        # any other run.
+        from core import remake
+
+        remake.recover(db, Path(self.config["paths"]["data_dir"]), busy=self.clips_in_use)
         requeued = db.recover_interrupted_jobs()
         if requeued:
             print(f"Re-queued {requeued} interrupted job(s)")
@@ -165,6 +178,10 @@ class Worker(threading.Thread):
                 if vid and not job["video_id"]:
                     db.set_job(job["id"], video_id=vid)
                 cancel.set_active(vid)  # mark which video is genuinely running
+                # How many Cancels the video had before this job: a Make clips
+                # again counts any after it (core/remake.py), which the
+                # pipeline's own fresh start can't clear.
+                cancels_before = cancel.times_requested(vid)
                 # Start every run from a clean slate. A cancel flag is sticky
                 # (deleting a video, or an actual cancel, calls request_cancel
                 # and nothing clears it), so a stale flag would make THIS fresh
@@ -177,9 +194,17 @@ class Worker(threading.Thread):
                 # queued video's download starts beside it at once. A process
                 # job starts it only once it has passed its checks (below).
                 self.prefetch.maybe_start(db)
+            remake = None  # a Make clips again job's run (below)
             try:
                 if job["type"] == "process":
                     from core.pipeline import process_video
+
+                    # Make clips again (core/remake.py): only a job that asks
+                    # for it, and before any check, so a job that stops at one
+                    # says too that nothing was replaced. It puts the old
+                    # clips' files out of the run's way. Every other job is
+                    # given the worker's own database, as always.
+                    remake = self._remake(db, vid, payload, cancels_before)
 
                     # ALWAYS a private copy. The worker holds one config dict
                     # for the life of the process, so any mutation below would
@@ -287,17 +312,33 @@ class Worker(threading.Thread):
                         row = db.get_branding(int(payload["watermark_profile_id"]))
                         if row:
                             cfg["clips"]["watermark"] = json.loads(row["config"])
+                    run_db = db if remake is None else remake.db
+                    if remake is not None:
+                        # A Cancel pressed while the checks above ran.
+                        remake.check_cancelled()
                     if (payload.get("longform") or {}).get("shorts"):
                         # "Also make 9:16 Shorts": both formats in one job.
-                        self._both_formats(db, job["id"], vid, payload, cfg)
+                        self._both_formats(run_db, job["id"], vid, payload, cfg)
                     elif payload.get("longform"):
                         # Separate longform system (1920x1080 horizontal),
                         # built on the same stages — Shorts path untouched.
                         from longform.process import process_longform
 
-                        process_longform(payload["url"], cfg, db, payload["longform"])
+                        process_longform(payload["url"], cfg, run_db, payload["longform"])
                     else:
-                        process_video(payload["url"], cfg, db, force=payload.get("force", False))
+                        process_video(payload["url"], cfg, run_db, force=payload.get("force", False))
+                    if remake is not None:
+                        # Reached only when the run finished: a failure or a
+                        # cancel raised past it, and a run the app closed
+                        # halfway starts again from the queue. A Cancel the
+                        # run never acted on still counts: one pressed after
+                        # its last clip (while the creator's learning or the
+                        # story reels finish), and one its own fresh start
+                        # cleared (pressed before its download step was
+                        # done). The job ends cancelled and nothing is
+                        # replaced.
+                        remake.check_cancelled()
+                        self._note_remake(db, job["id"], remake.finish())
                 elif job["type"] == "render":
                     self._rerender_clip(db, payload)
                 elif job["type"] == "translate":
@@ -308,6 +349,8 @@ class Worker(threading.Thread):
                 self._run_follow_up(db, job, payload)
                 self._announce(db, job, "done")
             except CancelledError:
+                if remake is not None:
+                    remake.stopped("was cancelled")
                 db.finish_job(job["id"], "cancelled", "Cancelled by user")
                 self._announce(db, job, "cancelled")
                 print(f"Job {job['id']} cancelled by user")
@@ -317,6 +360,8 @@ class Worker(threading.Thread):
                 # batch left running overnight must not stop at the first bad
                 # URL and waste the remaining hours.
                 traceback.print_exc()
+                if remake is not None:
+                    remake.stopped("failed")
                 # Stored and shown, so anything key-shaped is taken out first.
                 # A cloud provider's error is already written without the key;
                 # this is the net for anything else that might echo one.
@@ -335,6 +380,34 @@ class Worker(threading.Thread):
                 cancel.set_active(None)
                 feedback.close_job_log()
                 self._prune_logs()
+
+    def _remake(self, db: StateDB, vid: str | None, payload: dict, cancels: int = 0):
+        """A Make clips again job's run (core/remake.py), or None for every
+        other job: one without `replace_untouched`, Process again included.
+        `cancels` is how many times the video had been cancelled before the
+        job started. It first waits, a little, for the video's clips to be
+        free (a publish or an export of one under way), and ends with nothing
+        changed if they aren't."""
+        if not payload.get("replace_untouched") or not vid:
+            return None
+        from core import remake
+
+        return remake.Run(db, vid, Path(self.config["paths"]["data_dir"]), busy=self.clips_in_use,
+                          cancels=cancels, url=str(payload.get("url") or ""), wait=remake.START_WAIT)
+
+    @staticmethod
+    def _note_remake(db: StateDB, job_id: int, out: dict) -> None:
+        """What a Make clips again did, on its job's row (jobs.result): the
+        Queue page shows it under the job, and the job's "done" event carries
+        it to the Library (_announce). A run that made no clips says so
+        there, where its clips from before would otherwise look as if
+        nothing happened. Never raises: the run is done either way."""
+        from core.remake import summary
+
+        try:
+            db.set_job(job_id, result=json.dumps(summary(out)))
+        except Exception as e:
+            print(f"      (Make clips again: what it did couldn't be noted on its job: {e})")
 
     def _record_progress(self, job_id: int, event: dict) -> None:
         stage = _STAGES.get(event.get("stage") or "")
@@ -417,6 +490,13 @@ class Worker(threading.Thread):
             event["clips"] = db.conn.execute(
                 "SELECT COUNT(*) FROM clips WHERE video_id = ?", (video_id,)
             ).fetchone()[0]
+        # What a Make clips again did (_note_remake): the Library says it.
+        # Other jobs have none, and their event is as it always was.
+        if status == "done" and row is not None and "result" in row.keys() and row["result"]:
+            try:
+                event["result"] = json.loads(row["result"])
+            except (TypeError, ValueError):
+                pass
         if error:
             event["error"] = error
         broadcaster.publish(event)
@@ -552,6 +632,12 @@ class Worker(threading.Thread):
                 }
                 for r in db.translations_for(int(clip_id))
             }
+            # Marked before its files are written, which go only into the
+            # person's folder: Make clips again keeps a clip exported in
+            # other languages (core/remake.py). Nothing else reads the mark.
+            from core.remake import note_language_export
+
+            note_language_export(db, clip, languages)
             written += publish.publish(
                 lines, languages, folder, stem, llm,
                 terms=terms,
@@ -832,6 +918,19 @@ class Worker(threading.Thread):
         # A clip saved with the removed Highlights post style is made, and
         # saved, without it.
         render_opts = _drop_post_style(render_opts)
+        old_window = (float(clip["start_s"]), float(clip["end_s"]))
+        if isinstance(render_opts.get("edit"), dict) and (start, end) != old_window:
+            # The timeline editor's cuts and mutes count from the clip's start
+            # too, in the clip as saved: an edit sent with the new start or
+            # end was made on that clip as well. Carried, so each stays on the
+            # same moment of the video, and what the clip gained plays.
+            from video_editor.timeline import shift_edit
+
+            had_cuts = bool(render_opts["edit"].get("keep"))
+            render_opts["edit"] = shift_edit(render_opts["edit"], *old_window, start, end)
+            if had_cuts and not render_opts["edit"].get("keep"):
+                print("      None of this clip's kept parts are inside its new start and end, "
+                      "so the whole clip plays")
         if render_opts.get("caption_lines"):
             # Saved caption text is timed for the clip as it was saved: carried
             # to the clip as it is now, and the seconds it gained captioned (#120).
@@ -900,6 +999,8 @@ class Worker(threading.Thread):
             "description": clip["description"],
             "hashtags": clip["hashtags"],
             "status": clip["status"],
+            # That the clip was exported, for Make clips again (StateDB.mark_exported).
+            "first_exported_at": clip["first_exported_at"],
         }
         old_path = Path(clip["path"]) if clip["path"] else None
 
@@ -955,8 +1056,18 @@ class Worker(threading.Thread):
             (video_id, round(start, 2), round(end, 2)),
         ).fetchone()
         if new_row:
+            from core.state import _now
+
             restore = {k: v for k, v in keep.items() if v}
             restore["render_opts"] = _json.dumps(render_opts)
+            # Every render job is one a person asked for (Apply, a caption
+            # fix, a new start or end, the AI chat, a render before
+            # publishing): Make clips again keeps this clip (core/remake.py).
+            restore["edited_at"] = _now()
+            # Its row was inserted with the clip's words as they were, which
+            # may be a person's: it keeps no fingerprint of what a run made
+            # (core/state.py as_made).
+            restore["as_made"] = ""
             db.set_clip(new_row["id"], **restore)
             db.reattach_clip_rows(new_row["id"], detached)
             # Its posts on other platforms follow it too, so "Where it went"

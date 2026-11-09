@@ -1,8 +1,8 @@
 # Editor suite status
 
-Now: step 0 (guardrails) done, waiting to merge. Step 1 (export presets) built and checked, waiting for Colin's click-through and his word to merge.
+Now: step 0 (guardrails) done, waiting to merge. Steps 1 (export presets) and 2 (make clips again) built and checked, waiting for Colin's click-through and his word to merge. Step 3 (caption fonts and animations) is next.
 
-A readable view of [`state.json`](state.json), updated 2026-11-07. When the two disagree, `state.json` wins. Step statuses are todo, in progress, blocked and done.
+A readable view of [`state.json`](state.json), updated 2026-11-09. When the two disagree, `state.json` wins. Step statuses are todo, in progress, blocked and done.
 
 ## Phases
 
@@ -33,7 +33,7 @@ In run order. Size S, M or L is small, medium or large. "Users see it" marks the
 |---|---|---|---|---|---|---|
 | 0 | S | Guardrails | — | — | no | done |
 | 1 | M | Export presets, encoder fix and editor lane | #203, #177 (sizes) | 0 | yes | in progress |
-| 2 | S | Make clips again; edits follow a widened clip | #190 | 0 | yes | todo |
+| 2 | S | Make clips again; edits follow a widened clip | #190 | 0 | yes | checks done; click-through next |
 | 3 | M | Caption fonts and animated presets | #174 (fonts and captions) | 0 | yes | todo |
 | 4 | S | Creator description; CC0 sound and music library | #174 (creator notes), #155 (library) | 0 | yes | todo |
 | V1 | M | Voice service (Voicebox) | — | 0 | yes | todo |
@@ -89,5 +89,29 @@ Full records are in `state.json`.
   - Estimates: a changed frame rate is under-estimated (1.31x at 30 fps); bars, blur and calm clips are over-estimated; H.264 Balanced came out 9-17% over on 4 real clips.
   - Hardware encoders and AV1 were checked as arguments only.
   - The WoopSocial copy of a clip over about 55 minutes is over 95 MB.
+
+**Step 2 (make clips again; cuts follow a moved start or end), 2026-11-06 to 2026-11-09: checks done; Colin's click-through is next.**
+- **Built:** "Make clips again…" in the Library, prefilled from the video's last run. Clips anyone used are kept; the rest are replaced only after the new run succeeds and made clips. Cuts, mutes and muted words stay on the same moment of the video when a clip's start or end moves (`shift_edit`). `core/pipeline.py` is unchanged.
+- **QC and an adversarial data-safety review took 6 fix rounds** (rounds 3, 5 and 6 on Colin's go). They closed every route found to delete a clip someone used:
+  - clean-up during a run;
+  - exports in other languages;
+  - races and the publish plan;
+  - the app being killed partway (a journal plus start-up recovery);
+  - edits made in another version (a fingerprint of the generated words);
+  - marks that erasing a creator's learning removed.
+  The defects are 2-D1 to 2-D32.
+- **Accepted known limit (Colin, 2026-11-08):** a hidden plugin suggestion stops keeping its clip after a plain Process again.
+- **Black-box:** S1, S2, S2b, S4, S5 and S6 passed. In S2, the edited and exported clips were kept byte for byte, 7 untouched long clips were replaced and 15 new clips were added; S2b's older clips were all kept. S3 failed on a hidden whole-video setting and passed after a fix: a visible "Whole video" switch, an honest log line and an on-screen result (2-D32).
+- **Performance:** passed. Plain renders are byte-identical to the golden record and no slower.
+- **UX:** two keyboard majors (focus return and focus trap) were fixed. Six minors are left for the click-through.
+- **For Colin's click-through:**
+  - clips made before this update are kept, so the dialog mostly says "0 will be replaced";
+  - "Make clips again" means different things in Add videos and the Library;
+  - the queue chip says "Reprocess";
+  - the "(one clip)" hint beside the Whole video switch.
+- **Open (seen by the tester, not changed):**
+  - After a remake, the files of removed clips and the `.clip-<id>` copies made while a player held a file can stay on disk (about 650 MB across two remakes in the sandbox), and Storage clean-up doesn't reclaim the copies.
+  - The clip list can keep a stuck "Finding the best moments" bar after a remake while the clip editor is open, until a reload.
+  - Clip cards show the window, not the length after cuts.
 
 **Found in existing code while building step 1 (not changed):** FastAPI answers 500 instead of 422 for a request holding a number that parses to inf or nan (app-wide, also in the released app). The Original export copy answers 500 for a clip id SQLite can't hold. A NUL character in an export folder name is cut at the NUL on Windows.

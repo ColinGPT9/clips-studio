@@ -34,14 +34,24 @@ import { t } from '../../lib/i18n'
  *  Rate & understand and Suggest edits, like Pipeline, are chosen when a
  *  video is added; here they can only be kept or turned off. A watched
  *  channel (`channel`) has its options replaced on every save, so the kept
- *  choices are sent back each time. */
+ *  choices are sent back each time.
+ *
+ *  The Library's Make clips again dialog uses it too, for a video's last
+ *  settings: its Save queues the video (`saveLabel`), beside a Cancel, and
+ *  with no Longform switch. When that video was made as one whole clip, the
+ *  dialog shows a Whole video switch (`offerWhole`), to keep or turn off. */
 export default function QueueItemSettings({
   job,
   onSaved,
   save: saveTo,
   heading = 'Settings for this video only',
   autoSave = false,
-  channel
+  channel,
+  saveLabel = 'Save settings',
+  savingLabel = 'Saving…',
+  onCancel,
+  noLongform = false,
+  offerWhole = false
 }: {
   job: { id: number; settings: JobOptions }
   onSaved: () => void
@@ -56,8 +66,30 @@ export default function QueueItemSettings({
   /** A watched channel's publishing, and whether its preset makes Longform
    *  clips. Absent for a queued video. */
   channel?: { mode: 'off' | 'ask' | 'auto'; max_posts: number; presetLongform: boolean }
+  /** The Save button's words, and its words while it works, in English
+   *  (shown through t()), for a panel whose Save does more than save. */
+  saveLabel?: string
+  savingLabel?: string
+  /** A Cancel button beside Save, for the panel in a dialog. */
+  onCancel?: () => void
+  /** No Longform switch: Make clips again makes the 9:16 clips again. */
+  noLongform?: boolean
+  /** A Whole video switch when these settings make the whole video one clip
+   *  (a watched channel's Twitch clips are made so), to keep or turn off:
+   *  Make clips again, so a setting the run would use is never hidden. */
+  offerWhole?: boolean
 }): JSX.Element {
   const s = job.settings ?? {}
+  // Whole video: kept or turned off, as Pipeline is. With it on, the AI picks
+  // no moments, so the switches that pick them go off when it's kept on, and
+  // it goes off when one of them is turned on (the engine refuses the two
+  // together). Only read with `offerWhole`, which only the dialog passes, and
+  // never with autoSave: it isn't in the autosave key below.
+  const wholeShown = offerWhole && Boolean(s.whole)
+  const [whole, setWhole] = useState(Boolean(s.whole))
+  const wholeOff = (): void => {
+    if (wholeShown) setWhole(false)
+  }
   const [captions, setCaptions] = useState(s.captions !== false)
   const [longClips, setLongClips] = useState(Boolean(s.long_clips))
   const [podcast, setPodcast] = useState(Boolean(s.podcast))
@@ -103,6 +135,10 @@ export default function QueueItemSettings({
       // "unchanged" on the server, so switching a toggle off has to say so.
       const clear: string[] = []
       const patch: Partial<JobOptions> & { clear?: string[] } = { captions }
+      if (wholeShown) {
+        if (whole) patch.whole = true
+        else clear.push('whole')
+      }
       if (longClips) patch.long_clips = true
       else clear.push('long_clips')
       if (podcast) patch.podcast = true
@@ -208,29 +244,56 @@ export default function QueueItemSettings({
     hint: string,
     checked: boolean,
     onChange: (v: boolean) => void,
-    title: string
-  ): JSX.Element => (
-    <label className="flex items-center gap-2 cursor-pointer text-sm" title={title}>
-      <input
-        type="checkbox"
-        className="size-4 accent-[#38BDF8]"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      {t(label)} {hint && <span className="text-muted">{t(hint)}</span>}
-    </label>
-  )
+    title: string,
+    hidden = false
+  ): JSX.Element | null =>
+    hidden ? null : (
+      <label className="flex items-center gap-2 cursor-pointer text-sm" title={title}>
+        <input
+          type="checkbox"
+          className="size-4 accent-[#38BDF8]"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+        {t(label)} {hint && <span className="text-muted">{t(hint)}</span>}
+      </label>
+    )
 
   return (
     <div className="mt-3 pt-3 border-t border-raised/60 space-y-3">
       <p className="label">{t(heading)}</p>
       <div className="flex gap-x-5 gap-y-2 flex-wrap">
+        {wholeShown &&
+          toggle(
+            'Whole video',
+            '(one clip)',
+            whole,
+            (on) => {
+              setWhole(on)
+              if (on) {
+                // The AI picks no moments: what picks them goes off.
+                setLongClips(false)
+                setLongform(false)
+                setSport(null)
+                setPipeline(null)
+                setStepsKept(false)
+                setEditKept(false)
+              }
+            },
+            // Through t() here: toggle() shows its title as given.
+            t(
+              'Last time the whole video became one clip, with no moments picked by the AI. Leave it on to make that clip again with these settings, or turn it off to let the AI pick the best moments. 60s+, Sports, a pipeline and Marketplace plugins can’t be used with it, so turning one of them on turns this off.'
+            )
+          )}
         {toggle('Captions', '', captions, setCaptions, 'Burn captions into this video’s clips')}
         {toggle(
           '60s+',
           '(TikTok monetization)',
           longClips,
-          setLongClips,
+          (on) => {
+            setLongClips(on)
+            if (on) wholeOff()
+          },
           'TikTok monetization requires videos over 1 minute. On: clips run 61-180s.'
         )}
         {toggle(
@@ -245,9 +308,11 @@ export default function QueueItemSettings({
               setPipeline(null)
               setStepsKept(false)
               setEditKept(false)
+              wholeOff()
             }
           },
-          'Makes 16:9 clips for YouTube and X. Leave it off for 9:16 Shorts, from any video.'
+          'Makes 16:9 clips for YouTube and X. Leave it off for 9:16 Shorts, from any video.',
+          noLongform
         )}
         {toggle(
           'Vertical Live',
@@ -308,6 +373,7 @@ export default function QueueItemSettings({
                 setGaming(false)
                 setGamingScoring(false)
                 setPipeline(null)
+                wholeOff()
               }
             },
             'A match or a game (Soccer, Basketball): its moments from the crowd, the commentary and the scoreboard, one clip per moment, and a 9:16 crop that follows the play.'
@@ -323,6 +389,7 @@ export default function QueueItemSettings({
                 setSport(null)
                 setLongform(false)
                 setGamingScoring(false)
+                wholeOff()
               }
             },
             'A pipeline from the Marketplace picks this video’s moments. Sports, Gaming scoring and Longform pick them their own way, so turning one of them on turns the pipeline off.'
@@ -339,7 +406,10 @@ export default function QueueItemSettings({
               stepsKept,
               (on) => {
                 setStepsKept(on)
-                if (on) setLongform(false) // the engine refuses the two together
+                if (on) {
+                  setLongform(false) // the engine refuses the two together
+                  wholeOff() // and these with a whole-video clip
+                }
               },
               channel
                 ? 'Marketplace plugins rate this channel’s moments or say what happens in them, as chosen for this channel. Here they can only be kept or turned off. Longform picks its moments its own way, so turning it on turns these off.'
@@ -358,7 +428,10 @@ export default function QueueItemSettings({
               editKept,
               (on) => {
                 setEditKept(on)
-                if (on) setLongform(false) // the engine refuses the two together
+                if (on) {
+                  setLongform(false) // the engine refuses the two together
+                  wholeOff() // and these with a whole-video clip
+                }
               },
               channel
                 ? 'Marketplace plugins suggest edits for this channel’s clips, as chosen for this channel. Suggestions wait for you in the editor. Here they can only be kept or turned off. Longform makes its clips its own way, so turning it on turns these off.'
@@ -425,6 +498,7 @@ export default function QueueItemSettings({
                 setGaming(false)
                 setGamingScoring(false)
                 setPipeline(null)
+                wholeOff()
               } else {
                 setSport(null)
                 setGamingScoring(e.target.value === 'gaming')
@@ -494,8 +568,13 @@ export default function QueueItemSettings({
             {busy ? t('Saving…') : t('Changes save as you make them.')}
           </span>
         ) : (
-          <button className="btn-accent" onClick={save} disabled={busy}>
-            {busy ? t('Saving…') : t('Save settings')}
+          <button className="btn-accent shrink-0" onClick={save} disabled={busy}>
+            {busy ? t(savingLabel) : t(saveLabel)}
+          </button>
+        )}
+        {onCancel && (
+          <button className="btn-ghost shrink-0" onClick={onCancel} disabled={busy}>
+            {t('Cancel')}
           </button>
         )}
         {saved && <span className="text-sm text-accent">{t('Saved')}</span>}

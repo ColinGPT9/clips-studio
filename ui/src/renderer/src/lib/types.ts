@@ -454,6 +454,13 @@ export interface Clip {
   created_at: string
   /** When the clip was exported, '' if never. Exporting sets it, and so does its star. */
   exported_at: string
+  /** When a person last changed it, '' if never: its title, description or
+   *  hashtags, or a re-render they asked for. Make clips again keeps it. */
+  edited_at: string
+  /** Changes whenever its video file does ('' with none): passed to
+   *  api.mediaUrl, so a player shows the file as it is now (a clip Make clips
+   *  again made again in place keeps its id). */
+  media_version?: string
 }
 
 export interface Job {
@@ -578,6 +585,8 @@ export interface QueueJob {
   created_at: string
   updated_at: string
   log_path: string
+  /** What a finished Make clips again did; absent for every other job. */
+  result?: RemakeResult
 }
 
 export interface QueueEstimate {
@@ -600,6 +609,70 @@ export interface QueueSnapshot {
   capacity: number
   /** The cap on waiting + running videos (core/queue.py MAX_ACTIVE). */
   max_active: number
+}
+
+/** Why Make clips again keeps a clip (core/remake.py REASONS), in that order. */
+export type RemakeReason =
+  | 'longform'
+  | 'story_reel'
+  | 'edited'
+  | 'published'
+  | 'scheduled'
+  | 'exported'
+  | 'translated'
+  | 'submitted'
+  | 'chosen'
+  | 'busy'
+  | 'older'
+  | 'unsure'
+
+/** What Make clips again takes: a process job's options, less the link,
+ *  force (the run is forced) and Longform (it makes the 9:16 clips again). */
+export type RemakeOptions = Omit<JobOptions, 'force' | 'longform'> & { hashtags?: string[] }
+
+/** GET /videos/{video_id}/remake: what the Library's Make clips again starts
+ *  from (docs/editor-suite/api/step2-remake.md). */
+export interface RemakePreview {
+  video_id: string
+  /** The last 9:16 run's options; {} when no run is left to read them from. */
+  options: RemakeOptions
+  from_job: number | null
+  source: { kind: 'file' | 'link'; downloaded: boolean; link: string; usable: boolean }
+  counts: {
+    total: number
+    replaced: number
+    kept: number
+    /** Each kept clip once, under its first reason. */
+    kept_because: Partial<Record<RemakeReason, number>>
+  }
+  clips: { id: number; start_s: number; end_s: number; replace: boolean; reasons: RemakeReason[] }[]
+  /** A process job for this video that is waiting or running. */
+  queued_job: { job_id: number; status: 'queued' | 'running' } | null
+  /** Why it can't be used right now; null when it can. 'busy': one of its
+   *  clips is being published, exported or edited. */
+  blocked: 'running' | 'queued' | 'source_gone' | 'busy' | 'queue_full' | null
+}
+
+/** What a finished Make clips again did (core/remake.py summary): on its
+ *  queue row (QueueJob.result) and its "done" event (StudioEvent.result). */
+export interface RemakeResult {
+  /** The 9:16 clips the run made, and how many of them are new clips. */
+  made?: number
+  new?: number
+  /** Clips from before made again in place with the new settings. */
+  again?: number
+  /** Clips from before deleted. */
+  removed: number
+  /** As the dialog counted them: a clip from before this update that was
+   *  made again counts as kept. */
+  replaced?: number
+  kept?: number
+  /** Clips from before left as they were; absent when replacing stopped partway. */
+  unchanged?: number
+  /** Clips the run couldn't make, when any: then nothing was replaced. */
+  renders_failed?: number
+  /** Replacing stopped partway: the clips from before not yet replaced are kept. */
+  error?: boolean
 }
 
 export interface InstalledModel {
@@ -996,6 +1069,8 @@ export interface StudioEvent {
   job_id?: number
   /** Present on 'job' events: lets the queue ignore re-renders. */
   job_type?: 'process' | 'render' | 'translate'
+  /** 'job' events of a Make clips again that finished: what it did. */
+  result?: RemakeResult
   /** Publish events only. */
   publish_job?: number
   clip_id?: number

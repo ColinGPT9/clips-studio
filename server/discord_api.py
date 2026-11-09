@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 from campaigns import discord_http, discord_oauth, links, post_links, service
 from campaigns.discord_http import DiscordError
+from core import in_use
 from plugins import session
 from server.ai_api import _sign_in_page
 from server.events import broadcaster
@@ -172,6 +173,12 @@ def install(app, *, db, data_dir, session_secret: str, http=None, publish_worker
 
     @app.post("/discord/clips/{clip_id}/send", dependencies=guarded)
     def discord_send_published(clip_id: int, body: SendPublishedIn):
+        # Held while it reads the clip and saves the submission
+        # (core/in_use.py): Make clips again keeps the clip meanwhile.
+        with in_use.holding([clip_id]):
+            return _send_published(clip_id, body)
+
+    def _send_published(clip_id: int, body: SendPublishedIn):
         d = db()
         try:
             destination = d.get_destination(body.destination_id)

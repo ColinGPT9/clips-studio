@@ -4,6 +4,7 @@ import type { QueueJob } from '../../lib/types'
 import type { JobProgress } from '../../lib/jobProgress'
 import { etaSeconds, formatEta } from '../../lib/jobProgress'
 import { describeOptions, jobLabel, ranFor, sourceOf } from '../../lib/queue'
+import { remakeResultText } from '../../lib/remake'
 import QueueItemSettings from './QueueItemSettings'
 import { t } from '../../lib/i18n'
 import { useLocalAI } from '../../lib/useAIStatus'
@@ -142,6 +143,13 @@ export default function QueueItem({
             <p className="text-sm text-muted mt-0.5">
               {job.status === 'done' ? t('Finished in') : t('Ran for')} {took}
               {job.attempts > 1 && ` · ${job.attempts} ${t('attempts')}`}
+            </p>
+          )}
+          {/* What a Make clips again did: its clips from before would
+              otherwise look as if nothing had run. */}
+          {job.status === 'done' && job.result && (
+            <p className="text-sm text-muted mt-0.5">
+              {t('Make clips again:')} {remakeResultText(job.result, t)}
             </p>
           )}
 
