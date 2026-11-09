@@ -19,6 +19,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
 from campaigns import post_links
+from core import in_use
 from publish.errors import PublishError
 from server import posts
 from server import uploadpost_service as service
@@ -236,6 +237,12 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
         their synchronous mode is cut off at 59 seconds, so the poll happens
         through /uploadpost/refresh.
         """
+        # Held until its post is recorded, which is only once the upload is
+        # done: Make clips again can't delete the clip meanwhile.
+        with in_use.holding([clip_id]):
+            return _publish_clip(clip_id, body)
+
+    def _publish_clip(clip_id: int, body: PublishIn):
         from publish.uploadpost import (
             UploadPostPublisher,
             build_fields,
@@ -359,6 +366,13 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
         spreads them using Upload-Post's own scheduler, so the spacing is
         their job rather than a timer inside a desktop app that may be shut.
         """
+        # Every clip of the batch is held from before the first upload until
+        # the last is recorded: Make clips again can't delete one still to
+        # be sent.
+        with in_use.holding(body.clip_ids):
+            return _publish_batch(body)
+
+    def _publish_batch(body: BatchIn):
         from datetime import datetime, timedelta
         from datetime import timezone as tz
 

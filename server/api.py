@@ -24,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from core import queue
+from core import in_use, queue
 from core.binaries import ffmpeg, ffprobe
 from core.paths import discard, picked_file, safe_name
 from core.state import StateDB
@@ -113,6 +113,37 @@ class JobPatch(BaseModel):
     # Options to drop back to the app-wide default. Needed because null means
     # "unchanged" above, so there would otherwise be no way to turn one off.
     clear: list[str] = []
+
+
+class RemakeIn(BaseModel):
+    """Make clips again (POST /videos/{video_id}/remake): JobIn's options that
+    a person sets, the ones core/remake.py OPTIONS carries over from the
+    video's last run. No link or force: the video's own link (or its file) is
+    used, and the run is forced. `longform` is here only to be refused, since
+    this makes the 9:16 clips again: left out, it would be dropped unsaid."""
+
+    whole: bool | None = None
+    max_clips: int | None = None
+    caption_style: dict | None = None
+    captions: bool | None = None
+    long_clips: bool | None = None
+    filter: str | None = None
+    min_score: int | None = None
+    focus: str | None = None
+    sport: dict | str | None = None
+    watermark_profile_id: int | None = None
+    podcast: bool | None = None
+    vertical_live: bool | None = None
+    gaming: bool | None = None
+    gaming_scoring: bool | None = None
+    gaming_layout: dict | None = None
+    gaming_remember: bool | None = None
+    hashtags: list[str] | None = None
+    pipeline: dict | str | None = None
+    rate: list | dict | str | None = None
+    understand: list | dict | str | None = None
+    edit: list | dict | str | None = None
+    longform: dict | None = None
 
 
 class BatchItemIn(BaseModel):
@@ -758,6 +789,14 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     editor_lane = EditorLane(data_dir)
     app.state.editor_lane = editor_lane
+
+    def _lane_clips() -> set[int]:
+        """Clips an export on the lane is making or about to: Make clips
+        again keeps them (core/remake.py)."""
+        return {j["clip_id"] for j in editor_lane.jobs()
+                if j["status"] in ("queued", "running") and j.get("clip_id") is not None}
+
+    worker.clips_in_use = _lane_clips
 
     @app.on_event("startup")
     async def _startup():
@@ -1646,9 +1685,15 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         """Delete ONE clip — its file, its editor preview, and its rows —
         so the creator can cull clips they won't post and reclaim the space.
         The video and every other clip are untouched."""
+        from core.remake import file_in_use
+
         d = db()
         try:
             path = d.delete_clip(clip_id)
+            # Two clips can share one file: a run names a clip's file by its
+            # whole seconds, so a window with the same whole-second start and
+            # end was written over an older clip's. The other one keeps it.
+            shared = path is not None and file_in_use(d, path)
         finally:
             d.close()
         if path is None:
@@ -1656,7 +1701,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         freed = 0
         clip_file = Path(path)
         # Only delete inside our own data dir — never follow a stray path out.
-        if clip_file.exists() and data_dir in clip_file.resolve().parents:
+        if not shared and clip_file.exists() and data_dir in clip_file.resolve().parents:
             size = clip_file.stat().st_size
             if _unlink_best_effort(clip_file, data_dir):
                 freed = size
@@ -1713,8 +1758,112 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         finally:
             d.close()
 
+    # ---- make clips again (#190, core/remake.py) ---------------------------
+    #
+    # The Library's "Make clips again…": the video's clips made again with
+    # new settings, from its download or its link, with no need to add it
+    # again. Contract: docs/editor-suite/api/step2-remake.md.
+
+    _GONE = {
+        "file": "This video's file isn't in Clips Kitty any more, so its clips can't be made again. "
+                "Add the file again.",
+        "link": "Clips Kitty no longer has this video's download or a link to it, so its clips can't "
+                "be made again. Add the video again.",
+    }
+
+    def _video_row(d: StateDB, video_id: str):
+        row = d.conn.execute("SELECT video_id FROM videos WHERE video_id = ?", (video_id,)).fetchone()
+        if row is None:
+            raise HTTPException(404, "no such video")
+        return row
+
+    @app.get("/videos/{video_id}/remake")
+    def remake_preview(video_id: str):
+        """What a Make clips again of this video starts from: the last run's
+        options, whether its source can be used, how many of its clips would
+        be replaced and kept (and why), and whether it can be queued now."""
+        from core import remake
+
+        d = db()
+        try:
+            _video_row(d, video_id)
+            options, from_job = remake.last_options(d, video_id)
+            src = remake.source(d, video_id, data_dir / "downloads")
+            lane = _lane_clips()
+            judged = remake.classify(d, video_id, busy=lane, data_dir=data_dir)
+            live = d.job_for_video(video_id, queue.LIVE)
+            busy = remake.busy_clips(d, video_id, lane)
+            full = queue.capacity(d) <= 0
+        finally:
+            d.close()
+        if live is not None:
+            blocked = "running" if live["status"] == "running" else "queued"
+        elif not src["usable"]:
+            blocked = "source_gone"
+        elif busy:
+            blocked = "busy"
+        elif full:
+            blocked = "queue_full"
+        else:
+            blocked = None
+        return {
+            "video_id": video_id,
+            "options": options,
+            "from_job": from_job,
+            "source": {k: src[k] for k in ("kind", "downloaded", "link", "usable")},
+            "counts": remake.counts(judged),
+            "clips": judged,
+            "queued_job": {"job_id": live["id"], "status": live["status"]} if live is not None else None,
+            "blocked": blocked,
+        }
+
+    @app.post("/videos/{video_id}/remake")
+    def remake_video(video_id: str, body: RemakeIn):
+        """Queue the video's clips to be made again with these options. A
+        process job like any other (forced, as Process again is), plus
+        `replace_untouched`: once it has made its clips, the old ones nobody
+        used are replaced. Checked as POST /jobs checks its options."""
+        from core import remake
+
+        if body.longform:
+            raise HTTPException(400, "Make clips again makes the 9:16 clips again, so Longform can't be on "
+                                     "here. Turn Longform off, or add the video again for 16:9 clips.")
+        d = db()
+        try:
+            _video_row(d, video_id)
+            src = remake.source(d, video_id, data_dir / "downloads")
+            if not src["usable"]:
+                raise HTTPException(400, _GONE[src["kind"]])
+            payload = _process_options(body, {"url": src["url"], "force": True}, data_dir=data_dir)
+            payload["replace_untouched"] = True
+            if queue.duplicate_of(d, video_id) is not None:
+                raise HTTPException(409, "This video is already waiting or being made. Let that finish "
+                                         "first, or remove it from the queue.")
+            # Not while a clip of it is being published or exported: its file
+            # moves as the run starts (core/remake.py busy_clips).
+            if remake.busy_clips(d, video_id, _lane_clips()):
+                raise HTTPException(409, remake.BUSY)
+            if queue.capacity(d) <= 0:
+                raise HTTPException(
+                    409,
+                    f"the queue is full ({queue.MAX_ACTIVE} videos) — let one finish or remove one first",
+                )
+            job_id = d.add_job("process", json.dumps(payload), video_id=video_id)
+        finally:
+            d.close()
+        worker.notify()
+        broadcaster.publish({"type": "queue"})
+        return {"job_id": job_id, "video_id": video_id}
+
     @app.patch("/clips/{clip_id}")
     def patch_clip(clip_id: int, body: ClipPatch):
+        # Held from before it reads the clip until its change is saved:
+        # Make clips again can't delete it or make it again meanwhile
+        # (core/in_use.py), so a new title is never lost.
+        with in_use.holding([clip_id]):
+            return _patch_clip(clip_id, body)
+
+    def _patch_clip(clip_id: int, body: ClipPatch):
         d = db()
         try:
             row = d.get_clip(clip_id)
@@ -1738,6 +1887,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 fields["exported_at"] = _now()
             if body.suggestion is not None:
                 fields["scores"] = _suggestion_state(row, body.suggestion)
+            # A person changed the clip's words: Make clips again keeps it
+            # (core/remake.py). The same words saved again change nothing.
+            if (("title" in fields and fields["title"] != (row["title"] or ""))
+                    or ("description" in fields and fields["description"] != (row["description"] or ""))
+                    or (body.hashtags is not None and body.hashtags != _hashtag_list(row["hashtags"]))):
+                fields["edited_at"] = _now()
             if fields:
                 d.set_clip(clip_id, **fields)
             return _clip_json(d.get_clip(clip_id))
@@ -1796,6 +1951,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     @app.put("/clips/{clip_id}/captions")
     def put_captions(clip_id: int, body: CaptionsIn):
         """Save corrected caption text and queue a re-render burning it in."""
+        # Held until its render job is queued (core/in_use.py).
+        with in_use.holding([clip_id]):
+            return _put_captions(clip_id, body)
+
+    def _put_captions(clip_id: int, body: CaptionsIn):
         d = db()
         try:
             row = d.get_clip(clip_id)
@@ -1808,6 +1968,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             ]
             payload = {"clip_id": clip_id, "render_opts": {"caption_lines": lines}}
             job_id = d.add_job("render", json.dumps(payload))
+            # The typed lines are only in the job until its render works:
+            # Make clips again keeps the clip meanwhile, and after (StateDB.mark_edited).
+            d.mark_edited(clip_id)
             _log_feedback(d, row, "captions_edited")
         finally:
             d.close()
@@ -1857,6 +2020,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     @app.post("/clips/{clip_id}/ai-edit")
     def ai_edit(clip_id: int, body: AiEditIn):
         """Chat-driven editing: plain language in, validated edit + re-render out."""
+        # Held while the AI works out the edit, until its render job is
+        # queued: Make clips again can't delete the clip meanwhile.
+        with in_use.holding([clip_id]):
+            return _ai_edit(clip_id, body)
+
+    def _ai_edit(clip_id: int, body: AiEditIn):
         from analysis.clip_edit import interpret_edit
         from core.pipeline import _with_usable_model
         from llm.registry import create_backend
@@ -1903,6 +2072,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 if result["render_opts"]:
                     payload["render_opts"] = result["render_opts"]
                 job_id = d.add_job("render", json.dumps(payload))
+                d.mark_edited(clip_id)   # Make clips again keeps it, the render failing too
                 _log_feedback(
                     d, row,
                     "timestamps_adjusted"
@@ -1918,6 +2088,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     @app.post("/clips/{clip_id}/render")
     def rerender_clip(clip_id: int, body: RenderIn):
+        # Held until its render job is queued (core/in_use.py).
+        with in_use.holding([clip_id]):
+            return _rerender_clip(clip_id, body)
+
+    def _rerender_clip(clip_id: int, body: RenderIn):
         d = db()
         try:
             row = d.get_clip(clip_id)
@@ -1933,6 +2108,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             if body.suggestions is not None:
                 payload["suggestions"] = used_suggestions(body.suggestions)
             job_id = d.add_job("render", json.dumps(payload))
+            d.mark_edited(clip_id)   # Make clips again keeps it, the render failing too
             _log_feedback(
                 d, row,
                 "timestamps_adjusted"
@@ -1951,6 +2127,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         captions, hook, music, speed), so the preview's framing and zoom are
         exactly what Apply will produce. Slower than a rough draft, but
         what you see is what you export."""
+        # Held while its draft is made (core/in_use.py): a person is working
+        # on this clip, so Make clips again keeps it meanwhile.
+        with in_use.holding([clip_id]):
+            return _preview_clip(clip_id, body)
+
+    def _preview_clip(clip_id: int, body: PreviewIn):
         d = db()
         try:
             row = d.get_clip(clip_id)
@@ -2203,6 +2385,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     def put_creator_gaming_layout(clip_id: int, body: CreatorGamingLayoutIn):
         """Remember this layout for the clip's creator, so their next videos
         with Gaming / Reaction on start from it (null forgets it)."""
+        # Held while it reads the clip and saves (core/in_use.py).
+        with in_use.holding([clip_id]):
+            return _put_creator_gaming_layout(clip_id, body)
+
+    def _put_creator_gaming_layout(clip_id: int, body: CreatorGamingLayoutIn):
         from core.modes import clean_gaming
 
         layout = None
@@ -2374,9 +2561,16 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         stage = body.stage if body.stage in ("translate", "export") else "export"
         if stage == "export" and not body.folder:
             raise HTTPException(400, "choose an export folder")
+        # Held until the job naming them is queued (core/in_use.py).
+        with in_use.holding(body.clip_ids[:50]):
+            job_id = _queue_translation(body, langs, stage)
+        worker.notify()
+        return {"job_id": job_id, "languages": langs, "clips": len(body.clip_ids)}
+
+    def _queue_translation(body: TranslateIn, langs: list[str], stage: str) -> int:
         d = db()
         try:
-            job_id = d.add_job("translate", json.dumps({
+            return d.add_job("translate", json.dumps({
                 "clip_ids": body.clip_ids[:50],
                 "languages": langs,
                 "stage": stage,
@@ -2391,8 +2585,6 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             }))
         finally:
             d.close()
-        worker.notify()
-        return {"job_id": job_id, "languages": langs, "clips": len(body.clip_ids)}
 
     @app.get("/clips/{clip_id}/translations")
     def clip_translations(clip_id: int):
@@ -2427,6 +2619,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
         if not is_supported(language):
             raise HTTPException(400, f"unsupported language {language!r}")
+        # Held from before it reads the clip until the text is saved
+        # (core/in_use.py): Make clips again keeps it meanwhile.
+        with in_use.holding([clip_id]):
+            return _save_clip_translation(clip_id, language, body)
+
+    def _save_clip_translation(clip_id: int, language: str, body: TranslationPatch):
         d = db()
         try:
             if d.get_clip(clip_id) is None:
@@ -2484,6 +2682,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             raise HTTPException(400, "empty term")
         if body.rule not in ("protect", "ignore", "auto"):
             raise HTTPException(400, "rule must be protect, ignore or auto")
+        # Held while it reads the clip and saves (core/in_use.py).
+        with in_use.holding([clip_id]):
+            return _rule_clip_term(clip_id, body, term)
+
+    def _rule_clip_term(clip_id: int, body: TermIn, term: str):
         d = db()
         try:
             clip = d.get_clip(clip_id)
@@ -2581,13 +2784,13 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     def _exported(job: dict) -> None:
         """A lane export finished: mark the clip exported, as the copy does."""
-        from core.state import _now
-
         d = db()
         try:
             row = d.get_clip(job["clip_id"]) if job.get("clip_id") is not None else None
             if row is not None:
-                d.set_clip(row["id"], exported_at=_now())  # Export all skips it from now on
+                # Export all skips it from now on, and Make clips again keeps it,
+                # the star cleared or the learning erased since (StateDB.mark_exported).
+                d.mark_exported(row["id"])
                 _log_feedback(d, row, "exported")
         finally:
             d.close()
@@ -2599,21 +2802,24 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             folder.mkdir(parents=True, exist_ok=True)
         except OSError as e:
             raise HTTPException(400, f"Clips Kitty can't save into that folder: {e}") from e
-        d = db()
         jobs, skipped = [], []
-        try:
-            for cid in clip_ids:
-                # An id beyond any row is skipped like a missing clip: SQLite
-                # can't even take one outside 64 bits (OverflowError, a 500).
-                row = d.get_clip(cid) if 0 < cid < 2**63 else None
-                if row is None or not row["path"] or not Path(row["path"]).exists():
-                    skipped.append(cid)
-                    continue
-                name = _slugify(row["title"] or row["hook"] or Path(row["path"]).stem)
-                jobs.append(editor_lane.submit_export(source=row["path"], folder=folder, name=name,
-                                                      preset=preset, clip_id=cid, on_done=_exported))
-        finally:
-            d.close()
+        # Held from before they're read until each is on the lane, whose jobs
+        # Make clips again sees from then on (core/in_use.py).
+        with in_use.holding(clip_ids):
+            d = db()
+            try:
+                for cid in clip_ids:
+                    # An id beyond any row is skipped like a missing clip: SQLite
+                    # can't even take one outside 64 bits (OverflowError, a 500).
+                    row = d.get_clip(cid) if 0 < cid < 2**63 else None
+                    if row is None or not row["path"] or not Path(row["path"]).exists():
+                        skipped.append(cid)
+                        continue
+                    name = _slugify(row["title"] or row["hook"] or Path(row["path"]).stem)
+                    jobs.append(editor_lane.submit_export(source=row["path"], folder=folder, name=name,
+                                                          preset=preset, clip_id=cid, on_done=_exported))
+            finally:
+                d.close()
         return {"exported": [], "jobs": jobs, "skipped": skipped}
 
     @app.get("/export/presets")
@@ -2689,24 +2895,27 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         return job
 
     def _export(clip_ids: list[int], folder: Path) -> list[str]:
-        from core.state import _now
-
         folder.mkdir(parents=True, exist_ok=True)
-        d = db()
         exported = []
-        try:
-            for cid in clip_ids:
-                row = d.get_clip(cid)
-                if row is None or not row["path"] or not Path(row["path"]).exists():
-                    continue
-                name = _slugify(row["title"] or row["hook"] or Path(row["path"]).stem)
-                target = _unique_path(folder, name)
-                shutil.copy2(row["path"], target)
-                exported.append(str(target))
-                d.set_clip(cid, exported_at=_now())  # Export all skips it from now on
-                _log_feedback(d, row, "exported")  # exports = strongest "keep" signal
-        finally:
-            d.close()
+        # Held from before they're read until each copy is marked exported:
+        # Make clips again can't delete one mid-copy (core/in_use.py).
+        with in_use.holding(clip_ids):
+            d = db()
+            try:
+                for cid in clip_ids:
+                    row = d.get_clip(cid)
+                    if row is None or not row["path"] or not Path(row["path"]).exists():
+                        continue
+                    name = _slugify(row["title"] or row["hook"] or Path(row["path"]).stem)
+                    target = _unique_path(folder, name)
+                    shutil.copy2(row["path"], target)
+                    exported.append(str(target))
+                    # Export all skips it from now on, and Make clips again keeps it,
+                    # the star cleared or the learning erased since (StateDB.mark_exported).
+                    d.mark_exported(cid)
+                    _log_feedback(d, row, "exported")  # exports = strongest "keep" signal
+            finally:
+                d.close()
         return exported
 
     # ---- watermark & branding ------------------------------------------------
@@ -3640,12 +3849,42 @@ def _suggestion_state(row, value) -> str:
     return json.dumps({**scores, "plugin_edits": entries})
 
 
+def _hashtag_list(raw) -> list:
+    """A clip's saved hashtags as a list; [] when there are none or they
+    can't be read."""
+    try:
+        tags = json.loads(raw) if raw else []
+    except (TypeError, ValueError):
+        return []
+    return tags if isinstance(tags, list) else []
+
+
 def _clip_json(row) -> dict:
     d = dict(row)
+    # Make clips again's own records of what a run made (core/state.py as_made)
+    # and of the clip's first export (StateDB.mark_exported), not something a
+    # screen shows: the star is exported_at.
+    d.pop("as_made", None)
+    d.pop("first_exported_at", None)
     d["hashtags"] = json.loads(d["hashtags"]) if d.get("hashtags") else []
     d["scores"] = json.loads(d["scores"]) if d.get("scores") else {}
     d["render_opts"] = json.loads(d["render_opts"]) if d.get("render_opts") else {}
+    d["media_version"] = _media_version(d.get("path"))
     return d
+
+
+def _media_version(path) -> str:
+    """Changes whenever the clip's file does (when it was written, and its
+    size), "" with no file. The app puts it on the clip's /media/<id> URL,
+    so a player shows the file as it is now: a clip Make clips again made
+    again in place keeps its id and its file name."""
+    if not path:
+        return ""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return ""
+    return f"{st.st_mtime_ns:x}-{st.st_size:x}"
 
 
 def _slugify(text: str) -> str:

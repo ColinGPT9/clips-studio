@@ -82,7 +82,7 @@ export default function ClipCard({
         <div ref={boxRef} className="aspect-[9/16] bg-base relative">
           {show ? (
             <video
-              src={api.mediaUrl(clip.id)}
+              src={api.mediaUrl(clip.id, clip.media_version)}
               preload="metadata"
               muted
               className={`w-full h-full ${badge ? 'object-contain' : 'object-cover'}`}

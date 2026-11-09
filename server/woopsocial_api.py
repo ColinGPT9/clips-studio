@@ -19,6 +19,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
 from campaigns import post_links
+from core import in_use
 from publish.errors import PublishError
 from publish.woopsocial import FROM_PLATFORM
 from server import posts
@@ -220,6 +221,12 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
 
     @app.post("/woopsocial/clips/{clip_id}/publish")
     def publish_clip(clip_id: int, body: PublishIn):
+        # Held until its post is recorded, which is only once the upload is
+        # done: Make clips again can't delete the clip meanwhile.
+        with in_use.holding([clip_id]):
+            return _publish_clip(clip_id, body)
+
+    def _publish_clip(clip_id: int, body: PublishIn):
         from publish.uploadpost import validate_schedule
         from publish.woopsocial import WoopSocialPublisher
 

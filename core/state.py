@@ -6,6 +6,7 @@ BEFORE the next stage runs, so a crash at any point resumes cleanly and
 nothing is ever reprocessed or double-uploaded.
 """
 
+import hashlib
 import json
 import sqlite3
 from contextlib import contextmanager
@@ -541,6 +542,42 @@ def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+# app_state: the last clip id from before clips.edited_at was kept. A title,
+# description or hashtags a person changed on that clip, or on any before it,
+# left no mark, so Make clips again (core/remake.py) keeps those clips. Every
+# one of them also has no clips.as_made (below), which keeps it on its own.
+UNMARKED_CLIPS = "clips_unmarked_through"
+
+# app_state: a clip exported in other languages, keyed by the clip's id: the
+# translate job's export stage (server/jobs.py) writes it through
+# core/remake.py note_language_export, and the migration below for the
+# exports made before that. Nothing else records such an export: its videos
+# are only in the person's folder. Only Make clips again reads it.
+LANGUAGE_EXPORT = "clip_language_export:"
+
+
+def as_made(title, description, hashtags, start, end) -> str:
+    """A clip's fingerprint: its title, description, hashtags, start and end,
+    hashed. StateDB.add_clip saves it on each row it inserts (clips.as_made),
+    from the values the run that made the clip gave it. Make clips again
+    (core/remake.py) compares it with the row as it is now: a row that no
+    longer matches was changed, by whichever version of Clips Kitty changed
+    it, and a row with none was made before this was kept, or by a version
+    that doesn't keep it. Hashtags count as the list they hold, however it
+    was written."""
+    try:
+        tags = json.loads(hashtags) if hashtags else []
+    except (TypeError, ValueError):
+        tags = str(hashtags)
+    try:
+        window = [round(float(start), 2), round(float(end), 2)]
+    except (TypeError, ValueError):
+        window = [str(start), str(end)]
+    made = json.dumps([str(title or ""), str(description or ""), tags, window],
+                      ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(made.encode("utf-8")).hexdigest()[:32]
+
+
 class StateDB:
     def __init__(self, db_path: Path):
         db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -559,6 +596,46 @@ class StateDB:
                        "exported_at"):
             if column not in existing:
                 self.conn.execute(f"ALTER TABLE clips ADD COLUMN {column} TEXT DEFAULT ''")
+        marking = "edited_at" not in existing
+        if marking:
+            # When a person last changed the clip: its title, description or
+            # hashtags (PATCH /clips/{id}), or the clip itself (a re-render
+            # they asked for). Make clips again (core/remake.py) keeps such a
+            # clip. Blank for clips nobody changed, and for a title,
+            # description or hashtags changed before this was kept; nothing
+            # that makes clips reads it.
+            self.conn.execute("ALTER TABLE clips ADD COLUMN edited_at TEXT DEFAULT ''")
+            # Re-renders a person asked for were only logged as a learning
+            # signal before (captions_edited, timestamps_adjusted,
+            # rerendered): carried over once, as exported_at was, so wiping
+            # a creator's learning later can't make such a clip read as one
+            # nobody changed.
+            self.conn.execute(
+                "UPDATE clips SET edited_at = ("
+                " SELECT MAX(f.created_at) FROM clip_feedback f"
+                " WHERE f.clip_id = clips.id AND f.action != 'exported')"
+                " WHERE EXISTS (SELECT 1 FROM clip_feedback f"
+                " WHERE f.clip_id = clips.id AND f.action != 'exported')"
+            )
+        if "as_made" not in existing:
+            # The fingerprint of what the run that made a clip gave it
+            # (as_made(), saved by add_clip). Blank on every clip there is
+            # now, and on any an older version adds later: Make clips again
+            # can't tell whether a person changed those, so it keeps them.
+            self.conn.execute("ALTER TABLE clips ADD COLUMN as_made TEXT DEFAULT ''")
+        if marking or self.conn.execute(
+            "SELECT 1 FROM app_state WHERE key = ?", (UNMARKED_CLIPS,)
+        ).fetchone() is None:
+            # The clips there are now were made before edits were marked: no
+            # mark can say a person didn't change their words. Every clip so
+            # far is counted too when the column is there without this (the
+            # app stopped between the two): when in doubt, a clip is kept.
+            self.conn.execute(
+                "INSERT INTO app_state (key, value) "
+                "VALUES (?, (SELECT CAST(COALESCE(MAX(id), 0) AS TEXT) FROM clips)) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (UNMARKED_CLIPS,),
+            )
         if "exported_at" not in existing:
             # Exports were only logged as a learning signal before the mark
             # existed. Carry that history over once, so a clip exported last
@@ -570,6 +647,13 @@ class StateDB:
                 " WHERE EXISTS (SELECT 1 FROM clip_feedback f"
                 " WHERE f.clip_id = clips.id AND f.action = 'exported')"
             )
+        if "first_exported_at" not in existing:
+            # When the clip was first really exported (mark_exported): kept for
+            # Make clips again (core/remake.py), which keeps such a clip. Not
+            # exported_at, which the star clears, nor clip_feedback, which
+            # erasing a creator's learning deletes. Not in the clip's JSON.
+            self.conn.execute("ALTER TABLE clips ADD COLUMN first_exported_at TEXT DEFAULT ''")
+            self._mark_exports_from_before()
         video_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(videos)")}
         if "channel_name" not in video_cols:
             self.conn.execute("ALTER TABLE videos ADD COLUMN channel_name TEXT DEFAULT ''")
@@ -612,6 +696,10 @@ class StateDB:
             ("finished_at", "TEXT NOT NULL DEFAULT ''"),
             ("attempts", "INTEGER NOT NULL DEFAULT 0"),
             ("log_path", "TEXT NOT NULL DEFAULT ''"),
+            # What a finished Make clips again did, as JSON (core/remake.py
+            # summary), for the Queue page and the Library to say. Empty for
+            # every other job.
+            ("result", "TEXT NOT NULL DEFAULT ''"),
         ):
             if column not in job_cols:
                 self.conn.execute(f"ALTER TABLE jobs ADD COLUMN {column} {decl}")
@@ -790,6 +878,72 @@ class StateDB:
             self.conn.execute(
                 "INSERT INTO app_state (key, value) VALUES ('watches_imported', '1')"
             )
+
+    def _mark_exports_from_before(self) -> None:
+        """Once, as clips.first_exported_at is added: the exports made before
+        it, each given its lasting mark. A copy or an editor-lane export was
+        logged as a clip_feedback 'exported' row (and exported_at, which the
+        star clears); an export in other languages only as its translate
+        job's row, which the Queue page's Clear buttons delete (one that has
+        run, as core/remake.py reads them: stage "export", its default, and
+        not waiting or running)."""
+        self.conn.execute(
+            "UPDATE clips SET first_exported_at = ("
+            " SELECT MIN(f.created_at) FROM clip_feedback f"
+            " WHERE f.clip_id = clips.id AND f.action = 'exported')"
+            " WHERE EXISTS (SELECT 1 FROM clip_feedback f"
+            " WHERE f.clip_id = clips.id AND f.action = 'exported')"
+        )
+        clips = {int(r[0]): str(r[1] or "") for r in self.conn.execute("SELECT id, video_id FROM clips")}
+        for row in self.conn.execute(
+            "SELECT payload, updated_at FROM jobs WHERE type = 'translate' "
+            "AND status NOT IN ('queued', 'running')"
+        ).fetchall():
+            try:
+                payload = json.loads(row["payload"] or "{}")
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(payload, dict) or payload.get("stage", "export") == "translate":
+                continue
+            named = payload.get("clip_ids")
+            languages = payload.get("languages")
+            for clip_id in named if isinstance(named, list) else []:
+                try:
+                    clip_id = int(clip_id)
+                except (TypeError, ValueError):
+                    continue
+                if clip_id not in clips:
+                    continue
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO app_state (key, value) VALUES (?, ?)",
+                    (f"{LANGUAGE_EXPORT}{clip_id}", json.dumps({
+                        "clip_id": clip_id, "video_id": clips[clip_id],
+                        "languages": sorted(map(str, languages)) if isinstance(languages, list) else [],
+                        "at": str(row["updated_at"] or ""),
+                    })),
+                )
+
+    def mark_edited(self, clip_id: int) -> None:
+        """A person asked for a render of the clip: marked as its job is
+        queued (server/api.py, server/youtube_api.py), so Make clips again
+        keeps it (core/remake.py) when the render fails, and when the
+        learning row logged beside it (clip_feedback) is erased since. The
+        failed job holds their edit, for Retry. A render that works marks
+        its new row too (server/jobs.py)."""
+        self.set_clip(int(clip_id), edited_at=_now())
+
+    def mark_exported(self, clip_id: int) -> None:
+        """A clip was really exported (copied out, or made by an export on the
+        editor lane): exported_at, the star, which Export all skips and a
+        person can clear, and first_exported_at, which nothing clears: Make
+        clips again keeps the clip (core/remake.py)."""
+        now = _now()
+        self.conn.execute(
+            "UPDATE clips SET exported_at = ?, first_exported_at = CASE "
+            "WHEN COALESCE(first_exported_at, '') = '' THEN ? ELSE first_exported_at END WHERE id = ?",
+            (now, now, int(clip_id)),
+        )
+        self.conn.commit()
 
     def recover_stuck_videos(self) -> int:
         """Videos left mid-pipeline by a crash/force-close (downloaded,
@@ -1208,14 +1362,19 @@ class StateDB:
         render_opts: str = "",
     ) -> int | None:
         """Insert a clip; returns its id, or None if this exact clip already
-        exists (the UNIQUE constraint is the last line of duplicate defense)."""
+        exists (the UNIQUE constraint is the last line of duplicate defense).
+        The row keeps the fingerprint of its words and window as given
+        (as_made): a run's own, since a run is what inserts clips."""
+        start, end = round(start, 2), round(end, 2)
         try:
             cur = self.conn.execute(
                 """INSERT INTO clips (video_id, start_s, end_s, score, hook, path, status,
-                                      title, description, hashtags, scores, render_opts, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (video_id, round(start, 2), round(end, 2), score, hook, path, status,
-                 title, description, hashtags, scores, render_opts, _now()),
+                                      title, description, hashtags, scores, render_opts, created_at,
+                                      as_made)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (video_id, start, end, score, hook, path, status,
+                 title, description, hashtags, scores, render_opts, _now(),
+                 as_made(title, description, hashtags, start, end)),
             )
             self.conn.commit()
             return cur.lastrowid

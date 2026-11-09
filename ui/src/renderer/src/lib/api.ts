@@ -27,6 +27,8 @@ import type {
   Preflight,
   PublishPlanItem,
   QueueSnapshot,
+  RemakeOptions,
+  RemakePreview,
   RenderOpts,
   Settings,
   SpeakerTurn,
@@ -282,6 +284,19 @@ export const api = {
     request<{ deleted: string }>(`/videos/${videoId}`, { method: 'DELETE' }),
   deleteClip: (clipId: number) =>
     request<{ deleted: number; bytes_freed: number }>(`/clips/${clipId}`, { method: 'DELETE' }),
+  /** Make clips again (#190): the video's last settings, whether it can be
+   *  made again now, and how many of its clips would be replaced and kept
+   *  (docs/editor-suite/api/step2-remake.md). Reads only. */
+  remakePreview: (videoId: string) =>
+    request<RemakePreview>(`/videos/${encodeURIComponent(videoId)}/remake`),
+  /** Queue the video's clips to be made again with these options: all of
+   *  them, not a patch, since a key left out means the setting's own value.
+   *  Only queues, as createJob does. */
+  remakeVideo: (videoId: string, options: RemakeOptions) =>
+    request<{ job_id: number; video_id: string }>(`/videos/${encodeURIComponent(videoId)}/remake`, {
+      method: 'POST',
+      body: JSON.stringify(options)
+    }),
 
   videos: () => request<Video[]>('/videos'),
   clips: (videoId: string) => request<Clip[]>(`/videos/${videoId}/clips`),
@@ -410,7 +425,13 @@ export const api = {
       headers: await sessionHeaders(),
       body: JSON.stringify({ export: preset })
     }),
-  mediaUrl: (clipId: number) => `${API_BASE}/media/${clipId}`,
+  /** A clip's video. Pass its media_version: the URL then changes when the
+   *  file does, and a player loads the new one (a clip made again in place
+   *  keeps its id). The engine ignores it. */
+  mediaUrl: (clipId: number, version?: string) =>
+    version
+      ? `${API_BASE}/media/${clipId}?v=${encodeURIComponent(version)}`
+      : `${API_BASE}/media/${clipId}`,
   clipWords: (clipId: number) => request<{ words: Word[] }>(`/clips/${clipId}/words`),
   previewClip: (
     clipId: number,

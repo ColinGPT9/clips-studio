@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from campaigns import post_links
+from core import in_use
 from core.paths import within
 from publish.errors import PublishError
 from server import youtube_service as service
@@ -401,6 +402,12 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
 
     @app.post("/clips/{clip_id}/publish")
     def publish_clip(clip_id: int, body: PublishIn):
+        # Held until its publish job is saved: Make clips again can't delete
+        # the clip between reading it here and that.
+        with in_use.holding([clip_id]):
+            return _publish_clip(clip_id, body)
+
+    def _publish_clip(clip_id: int, body: PublishIn):
         from publish.schedule import validate_publish_at
 
         d = db()
@@ -463,6 +470,7 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
 
                     payload["suggestions"] = used_suggestions(body.render_first.suggestions)
                 after_job_id = d.add_job("render", json.dumps(payload))
+                d.mark_edited(clip_id)   # Make clips again keeps it, the render failing too
             elif not (clip["path"] and Path(clip["path"]).exists()):
                 raise HTTPException(
                     400, "This clip has no rendered file yet. Apply your edits first."
@@ -648,6 +656,14 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
         Each clip goes through the same path a single publish from the editor
         takes, so one failure leaves the others alone.
         """
+        # Every clip of the plan is held from before the first is read until
+        # the last publish job is saved (core/in_use.py): Make clips again
+        # can't delete one still to be published. publish_clip's own hold of
+        # each one nests inside this.
+        with in_use.holding([item.clip_id for item in body.items]):
+            return _publish_plan_execute(body)
+
+    def _publish_plan_execute(body: PlanExecuteIn):
         if not body.items:
             raise HTTPException(400, "The plan is empty.")
 
@@ -706,6 +722,12 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
         clip with no readable frames, not an error: the fixed suggestions are
         still there.
         """
+        # Held while they are made from its file (core/in_use.py): Make clips
+        # again keeps the clip meanwhile.
+        with in_use.holding([clip_id]):
+            return _generate_thumbnails(clip_id, count)
+
+    def _generate_thumbnails(clip_id: int, count: int):
         d = db()
         try:
             _guard(d)
@@ -739,6 +761,12 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
     def choose_thumbnail(clip_id: int, body: ThumbnailIn):
         """Pick a thumbnail: a local image, a frame from the clip, or one of
         the generated candidates."""
+        # Held until the chosen file is written, which is what keeps the clip
+        # from Make clips again afterwards (core/remake.py).
+        with in_use.holding([clip_id]):
+            return _choose_thumbnail(clip_id, body)
+
+    def _choose_thumbnail(clip_id: int, body: ThumbnailIn):
         d = db()
         try:
             _guard(d)

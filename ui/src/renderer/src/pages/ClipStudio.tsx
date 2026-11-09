@@ -9,17 +9,23 @@ import ClipEditor from '../components/ClipEditor'
 import EditorView from '../components/EditorModal'
 import ProcessingBar from '../components/ProcessingBar'
 import PublishAllDialog from '../components/PublishAllDialog'
+import RemakeDialog from '../components/RemakeDialog'
 import ScheduleView from '../components/ScheduleView'
 import ExportProgress from '../components/ExportProgress'
 import { api } from '../lib/api'
 import type { Provider } from '../lib/uploadpost'
 import { getExportFolder } from '../lib/exportFolder'
 import { isActive } from '../lib/exportJobs'
+import { remakeBlocked, remakeResultText } from '../lib/remake'
 import { useEvents } from '../lib/useEvents'
 import { useExportJobs } from '../lib/useExportJobs'
 import { useJobWatch } from '../lib/useJobWatch'
 import type { StudioTarget } from '../App'
-import type { Clip, ExportJob, StudioEvent, Video } from '../lib/types'
+import type { Clip, ExportJob, RemakePreview, StudioEvent, Video } from '../lib/types'
+
+// How often Make clips again is read again while one of the open video's
+// clips is in use (below).
+const REMAKE_BUSY_RECHECK_MS = 4000
 
 /** Browse and edit the clips of processed videos. New videos are started from
  *  the Dashboard; clicking a clip there navigates here with it selected. */
@@ -50,6 +56,17 @@ export default function ClipStudio({
   const [clipType, setClipType] = useState<'all' | 'shorts' | 'longform'>('all')
   const [exportingAll, setExportingAll] = useState(false)
   const [exportNotice, setExportNotice] = useState<string | null>(null)
+  // Make clips again (#190): whether the open video's clips can be made
+  // again right now, and the video whose dialog is open. Read when the video
+  // changes and whenever the queue does, since waiting or being made in it
+  // is what turns the action off. Only the latest read counts.
+  const [remake, setRemake] = useState<RemakePreview | null>(null)
+  const [remakeOpen, setRemakeOpen] = useState<string | null>(null)
+  const remakeRead = useRef(0)
+  // What the open video's Make clips again did, once it's done: with its
+  // clips from before still there, a run that made nothing new would
+  // otherwise look as if nothing had happened.
+  const [remakeNotice, setRemakeNotice] = useState<string | null>(null)
   const pendingClip = useRef<number | null>(null)
   // A re-rendered clip's old id and its new one (clip_replaced, below).
   const moved = useRef(new Map<number, number>())
@@ -112,6 +129,32 @@ export default function ClipStudio({
     }
   }
 
+  const refreshRemake = async (videoId: string): Promise<void> => {
+    const read = ++remakeRead.current
+    try {
+      const preview = await api.remakePreview(videoId)
+      if (read === remakeRead.current) setRemake(preview)
+    } catch {
+      // Not known: the action stays on, and its dialog says what went wrong.
+      if (read === remakeRead.current) setRemake(null)
+    }
+  }
+
+  useEffect(() => {
+    if (activeVideo) void refreshRemake(activeVideo)
+  }, [activeVideo])
+
+  // Off because one of the open video's clips is being published, exported
+  // or edited: most of those send no event when they end, so it's read again
+  // every few seconds until that changes or another video is opened.
+  const remakeBusy = remake !== null && remake.video_id === activeVideo && remake.blocked === 'busy'
+  useEffect(() => {
+    if (!remakeBusy || !activeVideo) return
+    const video = activeVideo
+    const timer = window.setInterval(() => void refreshRemake(video), REMAKE_BUSY_RECHECK_MS)
+    return () => window.clearInterval(timer)
+  }, [remakeBusy, activeVideo])
+
   useEffect(() => {
     // Either provider makes batch publishing available.
     Promise.allSettled([api.woopSocialStatus(), api.uploadPostStatus()]).then(
@@ -153,6 +196,7 @@ export default function ClipStudio({
     if (activeVideo) refreshClips(activeVideo)
     if (pendingClip.current === null) setSelectedClip(null)
     setExportNotice(null)
+    setRemakeNotice(null)
     exports.clearFinishedBatch()
   }, [activeVideo])
 
@@ -166,6 +210,17 @@ export default function ClipStudio({
       }
     }
     if (e.type === 'job' && e.status === 'done' && activeVideo) refreshClips(activeVideo)
+    if (e.type === 'job' && e.status === 'done' && e.result && e.video_id === activeVideo)
+      setRemakeNotice(`${t('Make clips again:')} ${remakeResultText(e.result, t)}`)
+    if (e.type === 'queue' && activeVideo) void refreshRemake(activeVideo)
+    // A publish or an export starting or ending: Make clips again is off
+    // while one of the video's clips is being sent or exported.
+    if (
+      activeVideo &&
+      ((e.type === 'publish' && (e.phase === 'prepare' || e.terminal !== undefined)) ||
+        (e.type === 'export' && e.export !== undefined && e.export.status !== 'running'))
+    )
+      void refreshRemake(activeVideo)
     // A re-render puts the clip back under a new id (server/jobs.py
     // _rerender_clip). The open editor and the selected card follow it:
     // looked for by the old one, the editor lost its clip as soon as the
@@ -203,6 +258,10 @@ export default function ClipStudio({
     () => clips.find((c) => c.id === editingClipId) ?? null,
     [clips, editingClipId]
   )
+  // Why Make clips again is off for the open video, or null when it's on
+  // (and while it's being read: its dialog reads again and says then).
+  const remakeWhy =
+    remake !== null && remake.video_id === activeVideo ? remakeBlocked(remake, t) : null
 
   const shownVideos = useMemo(() => {
     const q = videoSearch.trim().toLowerCase()
@@ -288,6 +347,8 @@ export default function ClipStudio({
       setExportNotice(`Export failed: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setExportingAll(false)
+      // The copies are done: Make clips again may be on again.
+      if (activeVideo) void refreshRemake(activeVideo)
     }
   }
 
@@ -436,8 +497,25 @@ export default function ClipStudio({
                 </button>
                 </>
               )}
+              {/* The whole video again, with other settings (#190). Off, with
+                  the reason in its tooltip, while the video waits or is made
+                  in the queue, when its source is gone, or the queue is full. */}
+              <button
+                className="btn-ghost !py-1 !px-3 text-xs"
+                onClick={() => activeVideo && setRemakeOpen(activeVideo)}
+                disabled={!activeVideo || remakeWhy !== null}
+                title={
+                  remakeWhy ??
+                  t(
+                    'Make this video’s clips again with other settings, without adding it again. Clips you edited, published or scheduled are kept; the others are replaced once the new clips are ready.'
+                  )
+                }
+              >
+                {t('Make clips again…')}
+              </button>
             </div>
             {exportNotice && <p className="text-sm text-accent">{exportNotice}</p>}
+            {remakeNotice && <p className="text-sm text-accent">{remakeNotice}</p>}
             {exports.batch && batchJobs.length > 0 && (
               <ExportProgress jobs={batchJobs} onCancel={exports.cancel} batch={exports.batch} />
             )}
@@ -494,6 +572,7 @@ export default function ClipStudio({
           onClose={() => {
             setPublishOne(null)
             if (activeVideo) refreshClips(activeVideo)
+            if (activeVideo) void refreshRemake(activeVideo)
           }}
         />
       )}
@@ -505,6 +584,20 @@ export default function ClipStudio({
           onClose={() => {
             setPublishing(false)
             if (activeVideo) refreshClips(activeVideo)
+            if (activeVideo) void refreshRemake(activeVideo)
+          }}
+        />
+      )}
+
+      {remakeOpen && (
+        <RemakeDialog
+          videoId={remakeOpen}
+          title={videos.find((v) => v.video_id === remakeOpen)?.title || remakeOpen}
+          onClose={() => setRemakeOpen(null)}
+          onQueued={() => {
+            setRemakeOpen(null)
+            setRemakeNotice(null) // the last run's, until this one is done
+            if (activeVideo) void refreshRemake(activeVideo)
           }}
         />
       )}

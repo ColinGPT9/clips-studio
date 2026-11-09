@@ -104,7 +104,12 @@ def enqueue_once(db, video_id: str, payload: dict, title: str = "") -> tuple[str
       "queued"    a new job was added
 
     Starting the queue is left to the caller, which knows whose go-ahead it has.
+
+    Never a job that replaces clips: only Make clips again's own route
+    (POST /videos/{video_id}/remake) queues one, so `replace_untouched` in
+    a payload handed in here (from a watch's saved options, say) is dropped.
     """
+    payload = {k: v for k, v in payload.items() if k != "replace_untouched"}
     if db.video_status(video_id) == "done":
         return "done", 0
     existing = duplicate_of(db, video_id)
@@ -358,6 +363,14 @@ def _item(row) -> dict:
     item["url"] = payload.pop("url", "")
     item["settings"] = payload
     item.pop("payload", None)
+    # What a finished Make clips again did (core/remake.py summary), read
+    # for the Queue page; every other job has none, and no such key.
+    result = item.pop("result", "")
+    if result:
+        try:
+            item["result"] = json.loads(result)
+        except (TypeError, ValueError):
+            pass
     return item
 
 

@@ -521,7 +521,13 @@ one:
 
 Job objects here are **richer than in `GET /jobs`**. They add `log_path`,
 `display_title`, `channel`, `url`, `source_seconds`, `video_status` and the
-`settings` snapshot.
+`settings` snapshot. A finished **Make clips again** (the app's own, queued by
+an internal route) also has `result`, what it did, such as
+`{"made": 3, "new": 3, "again": 0, "removed": 2, "replaced": 2, "kept": 1, "unchanged": 1}`;
+no other job has the key. Its `job` event with `"status": "done"` carries the
+same `result`, and `GET /jobs` shows the column as stored (JSON text, `""`
+for every other job). Details:
+[docs/editor-suite/api/step2-remake.md](editor-suite/api/step2-remake.md).
 
 `estimate.confident` is false below three samples, because a 3-hour stream and
 a 20-minute upload do not cost the same and two data points cannot tell you
@@ -808,6 +814,19 @@ Clip JSON from `GET /videos/{video_id}/clips` carries `exported_at`, an ISO
 timestamp or `""`. Set or clear it by hand with `PATCH /clips/{clip_id}` and
 `{"exported": true}` or `{"exported": false}`. Marking a clip that is already
 marked keeps its original time.
+
+Clip JSON also carries `edited_at`, an ISO timestamp or `""`: when a person
+last changed the clip's title, description or hashtags (`PATCH /clips/{clip_id}`
+with a different value), or asked for it to be rendered again (set as the
+render is queued, so one that fails leaves it set too). The app's **Make clips
+again** keeps such a clip; its routes are internal for now:
+[docs/editor-suite/api/step2-remake.md](editor-suite/api/step2-remake.md).
+
+And `media_version`, a short string that changes whenever the clip's file
+does (`""` when it has none). A clip's id can stay the same while its file is
+written again in place (Make clips again, an end card added later), so put
+it on the video URL to show the file as it is now:
+`/media/{clip_id}?v={media_version}`. The engine ignores the `v`.
 
 ## Publishing to YouTube
 
