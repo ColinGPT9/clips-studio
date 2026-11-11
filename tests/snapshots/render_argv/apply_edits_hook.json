@@ -1,0 +1,121 @@
+{
+  "about": "video_editor/overlay.py's hook title burned by the editor's pass on a horizontal clip.",
+  "cpu": {
+    "commands": [
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.plain.mp4",
+          "-filter_complex",
+          "[0:a]loudnorm=I=-14:TP=-1.5:LRA=11,aresample=async=1[aout];[0:v]subtitles=clip.ass[vout]",
+          "-map",
+          "[vout]",
+          "-map",
+          "[aout]",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "20",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-fps_mode",
+          "cfr",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<OUT>"
+        ],
+        "via": "run",
+        "cwd": "<TMP>",
+        "ass": {
+          "clip.ass": [
+            "[Script Info]",
+            "ScriptType: v4.00+",
+            "PlayResX: 1920",
+            "PlayResY: 1080",
+            "WrapStyle: 0",
+            "",
+            "[V4+ Styles]",
+            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+            "Style: Hook,Arial Black,54,&H00FFFFFF,&H00FFFFFF,&H00000000,&H7F000000,-1,0,0,0,100,100,0,0,1,5,3,8,60,60,107,1",
+            "",
+            "[Events]",
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+            "Dialogue: 1,0:00:00.00,0:00:03.00,Hook,,0,0,0,,Wait for the ending"
+          ]
+        }
+      }
+    ],
+    "files": [
+      "clip.ass",
+      "clip.mp4",
+      "clip.plain.mp4"
+    ]
+  },
+  "nvenc": {
+    "commands": [
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.plain.mp4",
+          "-filter_complex",
+          "[0:a]loudnorm=I=-14:TP=-1.5:LRA=11,aresample=async=1[aout];[0:v]subtitles=clip.ass[vout]",
+          "-map",
+          "[vout]",
+          "-map",
+          "[aout]",
+          "-c:v",
+          "h264_nvenc",
+          "-preset",
+          "p5",
+          "-rc",
+          "vbr",
+          "-cq",
+          "23",
+          "-b:v",
+          "0",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-fps_mode",
+          "cfr",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<OUT>"
+        ],
+        "via": "run",
+        "cwd": "<TMP>",
+        "ass": {
+          "clip.ass": [
+            "[Script Info]",
+            "ScriptType: v4.00+",
+            "PlayResX: 1920",
+            "PlayResY: 1080",
+            "WrapStyle: 0",
+            "",
+            "[V4+ Styles]",
+            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+            "Style: Hook,Arial Black,54,&H00FFFFFF,&H00FFFFFF,&H00000000,&H7F000000,-1,0,0,0,100,100,0,0,1,5,3,8,60,60,107,1",
+            "",
+            "[Events]",
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+            "Dialogue: 1,0:00:00.00,0:00:03.00,Hook,,0,0,0,,Wait for the ending"
+          ]
+        }
+      }
+    ],
+    "files": [
+      "clip.ass",
+      "clip.mp4",
+      "clip.plain.mp4"
+    ]
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "about": "A hook title over the first three seconds (render_opts.edit.hook), captions off: an ASS file of its own with the Hook style, burned by the vertical render after the editor's pass.",
+  "render_opts": {"edit": {"hook": {"text": "Wait for the ending", "seconds": 3}}}
+}

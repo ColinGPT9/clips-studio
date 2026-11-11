@@ -1,0 +1,119 @@
+{
+  "about": "video/cutter.py: the encode is refused. With a GPU encoder it is retried once on the CPU with the same command; with the CPU encoder the cut fails.",
+  "cpu": {
+    "commands": [
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-hwaccel",
+          "auto",
+          "-ss",
+          "10.00",
+          "-i",
+          "<SRC>",
+          "-t",
+          "10.40",
+          "-vsync",
+          "cfr",
+          "-af",
+          "aresample=async=1,loudnorm=I=-14:TP=-1.5:LRA=11",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "20",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<OUT>"
+        ],
+        "via": "run"
+      }
+    ],
+    "raised": "ffmpeg cut failed:",
+    "files": [
+      "source.mp4"
+    ]
+  },
+  "nvenc": {
+    "commands": [
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-hwaccel",
+          "auto",
+          "-ss",
+          "10.00",
+          "-i",
+          "<SRC>",
+          "-t",
+          "10.40",
+          "-vsync",
+          "cfr",
+          "-af",
+          "aresample=async=1,loudnorm=I=-14:TP=-1.5:LRA=11",
+          "-c:v",
+          "h264_nvenc",
+          "-preset",
+          "p5",
+          "-rc",
+          "vbr",
+          "-cq",
+          "23",
+          "-b:v",
+          "0",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<OUT>"
+        ],
+        "via": "run"
+      },
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-hwaccel",
+          "auto",
+          "-ss",
+          "10.00",
+          "-i",
+          "<SRC>",
+          "-t",
+          "10.40",
+          "-vsync",
+          "cfr",
+          "-af",
+          "aresample=async=1,loudnorm=I=-14:TP=-1.5:LRA=11",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "20",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<OUT>"
+        ],
+        "via": "run"
+      }
+    ],
+    "files": [
+      "clip.mp4",
+      "source.mp4"
+    ]
+  }
+}

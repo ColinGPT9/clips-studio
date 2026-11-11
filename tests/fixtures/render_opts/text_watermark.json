@@ -1,0 +1,4 @@
+{
+  "about": "The job's branding as text (clips.watermark, type text): an ASS event folded into the caption burn, no extra pass.",
+  "config": {"clips": {"watermark": {"type": "text", "text": "@YourChannel", "font": "Arial", "font_size": 42, "color": "#FFFFFF", "opacity": 0.85, "position": "bottom_right", "padding": 0.04}}}
+}
