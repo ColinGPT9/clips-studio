@@ -171,6 +171,7 @@ The 12 new fonts are made for languages written in the English alphabet. Some co
 - If one of the new fonts is ever missing from your copy of Clips Kitty, that clip's captions are made in Arial instead, and the clip is still made. The video's progress notes say which font was missing, and say so too if all the new fonts are missing.
 - If you render on a second PC (Settings → Advanced settings → Remote rendering), update Clips Kitty on that PC too. Until you do, that PC says it needs an update and takes no clips.
 - Exports (Settings → Export) keep the captions exactly as they are in your clip.
+- Captions clear in the quiet parts of a clip: a caption goes when its last word has been said, and after a pause of more than 0.8 seconds the next word starts a new caption, even if the one before had fewer words than you set. Captions you edited yourself keep their times.
 
 ## Creator notes for the AI, and free music and sound effects
 

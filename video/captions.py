@@ -133,6 +133,22 @@ def caption_font_for(language: str, chosen: str | None) -> str | None:
 # position -> (ASS numpad alignment, vertical margin)
 _POSITIONS = {"bottom": (2, 440), "middle": (5, 0), "top": (8, 140)}
 
+# Captions clear in the quiet parts of a clip (#228). A caption ends at a
+# pause: when nothing is said for longer than PAUSE_SECONDS, the next word
+# starts a new caption, however few words the last one has. And no word
+# counts as spoken for longer than LONGEST_WORD_SECONDS: a transcript now and
+# then stretches a short word's end across the silence after it, which would
+# hide the pause and hold the caption up. Measured on real speech (a median
+# word 0.18 s, 95 in 100 under 0.6 s): a breath between sentences stays under
+# the pause, and a word said slowly on purpose stays under the cap.
+# Lines a person saved keep their own times.
+PAUSE_SECONDS = 0.8
+LONGEST_WORD_SECONDS = 1.2
+# A transcript also times a word with no length now and then. Alone beside a
+# pause it has no caption to ride in, so it is on screen this long, in the
+# silence after it (less than the pause, so it is gone before the next word).
+ALONE_SECONDS = 0.4
+
 
 def build_caption_lines(
     segments: list[Segment],
@@ -152,25 +168,42 @@ def build_caption_lines(
     size = max(1, int(words_per_caption))
     lines = []
     heard = bool(_turns(turns))
-    for speaker, said in _by_speaker(words, turns, candidate.start, candidate.end):
-        groups = _grouped(said, size)
+    captions: list[tuple[int, list[dict]]] = []
+    for speaker, run in _by_speaker(words, turns, candidate.start, candidate.end):
+        groups = _grouped(run, size, candidate.start, candidate.end)
         if heard:
             groups = _standing(groups, size, candidate.start, candidate.end)
-        for group in groups:
-            start = max(0.0, group[0]["start"] - candidate.start)
-            last = group[-1]["end"]
-            if heard:
-                # A short word at the end can be timed inside the word before
-                # it: the caption stays up until that word has been said.
-                stands = [i for i, w in enumerate(group) if _stands(w, candidate.start, candidate.end)]
-                last = max(w["end"] for w in group[stands[-1] if stands else 0:])
-            end = min(candidate.duration, last - candidate.start)
-            if end <= start:
-                continue
-            line = {"start": round(start, 2), "end": round(end, 2), "text": " ".join(w["word"] for w in group)}
-            if speaker:
-                line["speaker"] = speaker
-            lines.append(line)
+        captions.extend((speaker, group) for group in groups)
+    said: list[dict] = []       # the clip's words as the editor is given them, when they are needed
+    for i, (speaker, group) in enumerate(captions):
+        start = max(0.0, group[0]["start"] - candidate.start)
+        closing = group[-1:]
+        if heard:
+            # A short word at the end can be timed inside the word before
+            # it: the caption stays up until that word has been said.
+            stands = [k for k, w in enumerate(group) if _stands(w, candidate.start, candidate.end)]
+            closing = group[stands[-1] if stands else 0:]
+        end = min(candidate.duration, max(w["end"] for w in closing) - candidate.start)
+        # Up until its last word has been said (_said: no word for longer
+        # than LONGEST_WORD_SECONDS), so it is gone in the silence after.
+        until = max(_said(w, candidate.start, candidate.end)[1] for w in closing)
+        after = captions[i + 1][1] if i + 1 < len(captions) else None
+        beside = _beside_a_pause(captions[i - 1][1] if i else None, group, after, candidate.start, candidate.end)
+        alone = _alone(group, after, candidate.start, candidate.end) if beside else 0.0
+        if alone:
+            end = until = alone
+        if end <= start:
+            continue
+        line = {"start": round(start, 2), "end": until, "text": " ".join(w["word"] for w in group)}
+        if heard and beside and not any(_stands(w, candidate.start, candidate.end) for w in group):
+            # A pause made it a caption of its own, and no word in it is long
+            # enough to say whose it is: by the clock, as the same line is
+            # marked when the editor sends it back.
+            said = said or clip_words(words, candidate.start, candidate.end)
+            line = tag_lines([line], turns, said)[0]
+        elif speaker:
+            line["speaker"] = speaker
+        lines.append(line)
     return lines
 
 
@@ -280,6 +313,50 @@ def in_clip(word: dict, start: float, end: float) -> tuple[float, float]:
     return round(max(0.0, word["start"] - start), 2), round(min(end - start, word["end"] - start), 2)
 
 
+def _said(word: dict, start: float, end: float) -> tuple[float, float]:
+    """When a word counts as spoken, in clip seconds: as in_clip has it, but
+    for no longer than LONGEST_WORD_SECONDS after it starts (in the clip: a
+    word the clip's start cuts through counts from there). Text without word
+    timings, spread evenly over its segment, is left as long as it was
+    spread: nothing was stretched there."""
+    said_from, said_to = in_clip(word, start, end)
+    if word.get("spread"):
+        return said_from, said_to
+    return said_from, min(said_to, round(said_from + LONGEST_WORD_SECONDS, 2))
+
+
+def _quiet(before: list[dict], after: list[dict], start: float, end: float) -> bool:
+    """Whether a pause sits between two captions' words: the first have been
+    said and the others start more than PAUSE_SECONDS later."""
+    until = max(_said(w, start, end)[1] for w in before)
+    return round(_said(after[0], start, end)[0] - until, 2) > PAUSE_SECONDS
+
+
+def _beside_a_pause(
+    before: list[dict] | None, group: list[dict], after: list[dict] | None, start: float, end: float
+) -> bool:
+    """Whether a caption's words have a pause before or after them. `before`
+    and `after` are the words of the captions either side of it."""
+    return (before is not None and _quiet(before, group, start, end)) or (
+        after is not None and _quiet(group, after, start, end))
+
+
+def _alone(group: list[dict], after: list[dict] | None, start: float, end: float) -> float:
+    """Until when a caption beside a pause is on screen when it has no room
+    of its own, in clip seconds; 0 for every other caption. Its words take
+    no longer than _TINY to say (a transcript times a word with no length
+    now and then): it gets ALONE_SECONDS, or as much of that as there is
+    before the next caption or the clip's end. Away from a pause such words
+    are as they always were (a caption of no length is not burned)."""
+    said_from = _said(group[0], start, end)[0]
+    if max(_said(w, start, end)[1] for w in group) - said_from > _TINY:
+        return 0.0
+    until = min(round(end - start, 2), round(said_from + ALONE_SECONDS, 2))
+    if after is not None:
+        until = min(until, _said(after[0], start, end)[0])
+    return until if until > said_from else 0.0
+
+
 def clip_words(words, start: float, end: float) -> list[dict]:
     """The words said in a clip as the editor's transcript shows them:
     [{"start", "end", "word"}] in clip seconds. `words` is every word of the
@@ -362,7 +439,31 @@ def _standing(groups: list[list[dict]], size: int, start: float, end: float) -> 
 
     A caption takes at most three words more than are set for one. A
     transcript can squeeze a whole burst of words into one instant; the rest
-    of those stay as they are without the option."""
+    of those stay as they are without the option.
+
+    Never across a pause, which would keep the caption up through it: each
+    stretch between two pauses is done by itself, and short words alone in
+    one are a caption together (_alone has it on screen in the silence)."""
+    stretches = [groups[:1]]
+    for before, group in zip(groups, groups[1:]):
+        if _quiet(before, group, start, end):
+            stretches.append([group])
+        else:
+            stretches[-1].append(group)
+    if len(stretches) < 2:
+        return _stood(groups, size, start, end)
+    out: list[list[dict]] = []
+    for stretch in stretches:
+        if any(_stands(w, start, end) for group in stretch for w in group):
+            out.extend(_stood(stretch, size, start, end))
+        else:
+            short = [w for group in stretch for w in group]
+            out.extend(short[i:i + size + 3] for i in range(0, len(short), size + 3))
+    return out
+
+
+def _stood(groups: list[list[dict]], size: int, start: float, end: float) -> list[list[dict]]:
+    """_standing for words with no pause between them."""
     limit = size + 3
     out: list[list[dict]] = []
     waiting: list[list[dict]] = []      # short groups in front of the first caption
@@ -491,13 +592,21 @@ def refit_caption_lines(
     tail = [w for w in words if w["start"] >= last - _EDGE]
     size = max(1, int(words_per_caption))
     added = []
-    for group in _grouped(head, size) + _grouped(tail, size):
-        start = max(0.0, group[0]["start"] - new_start)
-        end = min(duration, group[-1]["end"] - new_start)
-        if end > start:
-            added.append(
-                {"start": round(start, 2), "end": round(end, 2), "text": " ".join(w["word"] for w in group)}
-            )
+    made = [_grouped(head, size, new_start, new_end), _grouped(tail, size, new_start, new_end)]
+    for groups in made:
+        for i, group in enumerate(groups):
+            start = max(0.0, group[0]["start"] - new_start)
+            end = min(duration, group[-1]["end"] - new_start)
+            until = _said(group[-1], new_start, new_end)[1]
+            after = groups[i + 1] if i + 1 < len(groups) else None
+            beside = _beside_a_pause(groups[i - 1] if i else None, group, after, new_start, new_end)
+            alone = _alone(group, after, new_start, new_end) if beside else 0.0
+            if alone:
+                end = until = alone
+            if end > start:
+                added.append(
+                    {"start": round(start, 2), "end": until, "text": " ".join(w["word"] for w in group)}
+                )
     return sorted(added + kept, key=lambda l: l["start"])
 
 
@@ -989,7 +1098,12 @@ def _word_times(text: str, start: float, end: float, spoken: list[dict]) -> list
     tokens = text.split()
     if not tokens:
         return []
-    inside = [w for w in spoken if start - 0.01 <= (w["start"] + w["end"]) / 2 <= end + 0.01]
+    # A word's middle, counting it for no longer than a caption does (_said):
+    # one stretched across the silence after it is still in its own line.
+    inside = [
+        w for w in spoken
+        if start - 0.01 <= (w["start"] + min(w["end"], w["start"] + LONGEST_WORD_SECONDS)) / 2 <= end + 0.01
+    ]
     if len(inside) == len(tokens):
         return [(float(w["start"]), float(w["end"])) for w in inside]
 
@@ -1152,14 +1266,30 @@ def _spread_evenly(seg: Segment, start: float, end: float) -> list[dict]:
         return []
     step = (seg.end - seg.start) / len(tokens)
     return [
-        {"start": seg.start + i * step, "end": seg.start + (i + 1) * step, "word": tok}
+        {"start": seg.start + i * step, "end": seg.start + (i + 1) * step, "word": tok, "spread": True}
         for i, tok in enumerate(tokens)
         if seg.start + (i + 1) * step > start and seg.start + i * step < end
     ]
 
 
-def _grouped(words: list[dict], size: int) -> list[list[dict]]:
-    return [words[i : i + size] for i in range(0, len(words), size)]
+def _grouped(words: list[dict], size: int, start: float, end: float) -> list[list[dict]]:
+    """Words in captions of `size`, a new one after every pause: when the
+    words so far have been said (_said) and the next starts more than
+    PAUSE_SECONDS later. `start` and `end` are the clip's, in the words' own
+    time. A word of no length before a pause is left alone by it too: its
+    caption is on screen in the silence after it (_alone)."""
+    groups: list[list[dict]] = []
+    until = 0.0                 # how far the caption being filled has been said
+    for w in words:
+        said_from, said_to = _said(w, start, end)
+        paused = round(said_from - until, 2) > PAUSE_SECONDS
+        if groups and len(groups[-1]) < size and not paused:
+            groups[-1].append(w)
+            until = max(until, said_to)
+        else:
+            groups.append([w])
+            until = said_to
+    return groups
 
 
 def _ass_time(seconds: float) -> str:

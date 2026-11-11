@@ -922,12 +922,12 @@ export default function TimelineEditor({
           base = given
             ? tagLines(given, saidTurns, words)
             : words.length > 0 && fixing.covered
-              ? groupWords(words, n, saidTurns)
+              ? groupWords(words, n, saidTurns, duration)
               : tagLines(base, saidTurns, words)
         } else if (words.length > 0 && n !== storedStyle.words_per_caption) {
           // Regroup from the transcript when words-per-caption changed, the
           // same way the render does (captionBase kept the old grouping).
-          base = groupWords(words, n)
+          base = groupWords(words, n, [], duration)
         }
         captions = { lines: applyTextEdits(base, wordEdits, edit.muted_words), style: captionStyle }
       }
