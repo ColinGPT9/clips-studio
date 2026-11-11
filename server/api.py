@@ -873,6 +873,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     posts_api.install(app, db=db)
 
+    # The caption fonts that ship with the app, for the caption preview, and
+    # the caption presets (server/fonts_api.py). Read-only.
+    from server import fonts_api
+
+    fonts_api.install(app)
+
     # Settings → AI: local Ollama (the default) or a cloud model on the
     # user's own key. Its own module, the same way the publishers are.
     from server import ai_api

@@ -31,6 +31,7 @@ import numpy as np
 from core.binaries import ffmpeg
 from video.capture import video_capture
 from video.encoding import audio_filter_args, final_movflags, video_encoder_args
+from video.fonts import subtitles_filter
 
 CAM_H = 672    # webcam band height in the 1080x1920 split layout (35%)
 GAME_H = 1248  # gameplay band height (65%)
@@ -117,7 +118,7 @@ def _render_fit_blur(
     )
     filters = f"[0:v]split=2[a][b];[a]{bg}[bg];[b]{fg}[fg];[bg][fg]overlay=0:(H-h)/2,setsar=1[v]"
     if ass_path is not None:
-        filters += f";[v]subtitles={ass_path.name}[v2]"
+        filters += f";[v]{subtitles_filter(ass_path)}[v2]"
         vout = "[v2]"
     else:
         vout = "[v]"
@@ -304,7 +305,7 @@ def _render_tracked(
                 f"[bg][fg]overlay=0:{top},setsar=1[v]"
             )
             if ass_path is not None:
-                filters += f";[v]subtitles={ass_path.name}[v]"
+                filters += f";[v]{subtitles_filter(ass_path)}[v]"
             cmd = [
                 ffmpeg(), "-y",
                 *pipe_in,                         # cropped frames on stdin
@@ -333,7 +334,7 @@ def _render_tracked(
         if vf_extra:
             vf += f",{vf_extra}"
         if ass_path is not None:
-            vf += f",subtitles={ass_path.name}"
+            vf += f",{subtitles_filter(ass_path)}"
         cmd = [
             ffmpeg(), "-y",
             *pipe_in,                         # cropped frames on stdin
@@ -526,7 +527,7 @@ def _render_split(
     if vf_extra:
         filters += f";[v]{vf_extra}[v]"
     if ass_path is not None:
-        filters += f";[v]subtitles={ass_path.name}[v]"
+        filters += f";[v]{subtitles_filter(ass_path)}[v]"
 
     cmd = [
         ffmpeg(), "-y",

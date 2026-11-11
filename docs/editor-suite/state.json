@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "Clips Kitty editor suite",
-  "updated": "2026-11-08",
+  "updated": "2026-11-11",
   "about": "Machine-readable tracker for the editor suite. STATUS.md is the readable view of this file; when they disagree, this file wins. Acceptance criteria are copied from the plan's Proof column; step 0 also carries the checks from the plan's section on keeping plain auto-clipping identical. depends_on is read from the plan's text (which earlier step's output a step uses): the plan gives the run order, not a dependency list.",
   "now": "1",
   "stop_after_phase": 2,
@@ -1000,7 +1000,7 @@
       "depends_on": [
         "0"
       ],
-      "status": "todo",
+      "status": "in_progress",
       "user_visible": true,
       "acceptance": [
         "fontsdir appears only when a bundled font is used (snapshot)",
@@ -1008,19 +1008,250 @@
         "Frames show the animation"
       ],
       "files": [
-        "assets/fonts/ (new)",
-        "video/fonts.py (new)",
-        "config/caption_presets.json (new)",
-        "video/captions.py",
-        "ui/src/renderer/src/components/CaptionStyleControls.tsx",
-        "NOTICE"
+        "assets/fonts/ (new: 12 static TTFs from github.com/google/fonts ofl/ at commit 5bb28733, each with its OFL.txt; manifest.json with family, weight, file, sha256, bytes, scripts, licence, source_url and commit)",
+        "video/fonts.py (new, standard library only: the font registry read from the manifest, found in a checkout and in the packaged engine; is_bundled, files_for, scripts_for, weight_for, usable; stage() copies a bundled family's checked files into a fonts folder beside the ASS file; subtitles_filter() adds :fontsdir=fonts only then; release() removes them once no ASS file is left in the folder; listing() and file_named() for the routes)",
+        "video/captions.py (FONTS = WINDOWS_FONTS + the bundled families; caption_font_for keeps a bundled font only for a language whose writing system it covers (script_of); DEFAULT_STYLE gains animation 'none' and safe_zone 'off'; ANIMATIONS (pop, fade, bounce, karaoke, slide) as ASS override tags from each caption's start (_animated, _karaoke); SAFE_ZONES with the Gaming layout editor's numbers (_layout); a one-weight bundled face is not marked bold; a missing bundled font burns in Arial and the job log says so)",
+        "video/cropper.py, video/cutter.py, video_editor/export.py, gaming/compose.py, multilingual/burn.py (the eight burn places build their subtitles filter with video.fonts.subtitles_filter)",
+        "core/pipeline.py (release the staged fonts after a clip's ASS file is deleted)",
+        "config/caption_presets.json (new: Classic = DEFAULT_STYLE, Bold pop, Clean fade, Karaoke, Bounce, Slide up)",
+        "server/fonts_api.py (new: GET /fonts, GET /fonts/{file}, GET /caption-presets), server/api.py (installs them)",
+        "analysis/clip_edit.py and config/prompts/edit_clip.txt (the AI edit accepts bundled fonts, animation and safe_zone), server/mcp.py (CAPTION_FONTS with the bundled fonts; animation and safe_zone validated, refused in plain words, and in the queue_video schema)",
+        "ui/src/renderer/index.html (CSP font-src 'self' http://127.0.0.1:8765), ui/src/renderer/src/lib/types.ts (CaptionStyle.animation and safe_zone, BundledFont, CaptionPreset), CaptionStyleControls.tsx (DEFAULT_CAPTION_STYLE gains animation 'none' and safe_zone 'off' only; the controls are the UI half)",
+        "clips-studio.spec (bundles assets/fonts and config/caption_presets.json), .gitattributes (*.ttf binary)",
+        "NOTICE (a Fonts section: every family, its copyright line and the SIL Open Font License 1.1)",
+        "tests/test_caption_fonts.py, tests/test_caption_animations.py, tests/test_caption_presets.py, tests/test_fonts_routes.py, tests/test_caption_render_ffmpeg.py (new); tests/test_render_argv_snapshots.py (new cases cut_clip_bundled_font, caption_animations, caption_safe_zones, cropper_track_bundled_font; existing cases unchanged); .github/workflows/ci.yml (the FFmpeg render and route tests in the Plugin platform job)",
+        "docs/editor-suite/api/step3-captions.md (new), docs/editor-suite/USER-GUIDE.md, docs/API.md, docs/developers/api-reference.md (regenerated), CHANGELOG.md",
+        "ui/src/renderer/src/components/CaptionStyleControls.tsx (the controls: Presets chips, Classic first, that fill every control but the second-speaker choice; the font list in two groups, Windows fonts and Fonts that come with Clips Kitty, each name in its own face; Animation and Safe zone selects with tooltips; the highlight switch shown as included while Karaoke is on; the 9:16 example plays the animation, shades the chosen app's covered area and stands the caption where the burn puts it; every string through t())",
+        "ui/src/renderer/src/lib/captionLook.ts (new: loads GET /fonts once and registers each face with the FontFace API from the engine's URL, display swap; GET /caption-presets; captionFontWeight (a one-weight bundled face is drawn regular); captionLayout, a copy of video/captions.py _layout)",
+        "ui/src/renderer/src/lib/api.ts (bundledFonts, captionPresets)",
+        "ui/src/renderer/src/components/LiveTextOverlay.tsx (the Clip Editor's caption preview: bundled faces at their weight, karaoke fill, safe-zone margins)",
+        "ui/src/renderer/src/components/queue/AddVideos.tsx (a preset reaches Add Videos as one whole style: onPick)",
+        "ui/vite.config.mts (the browser dev server's CSP gains the same font-src as index.html)",
+        "tests/test_ui_caption_controls.py (new: the UI's animations, safe zones, Windows fonts, default style and preview margins equal the renderer's; every string through t(); the CSP gained only font-src)",
+        "video/alphabets.py (new, QC fix round 1: the letters of each script and language; letters_for, script_of, scripts_in)",
+        "video/fontfile.py (new, QC fix round 1: reads a TrueType file's names, weight, cmap, advance widths and glyph ink with struct)",
+        "video/caption_fit.py (new, QC fix round 1: where libass breaks a caption into lines, for pop and bounce; QC fix round 2: libass's wrap_lines_rebalance step by step (trailing spaces left out, s1/s2/s3 not updated after a move), close calls worked out both ways and None when they differ, characters it does not follow give None; widest_word() for the safe zones)",
+        "remote_render/protocol.py (PROTOCOL 2: an older render worker is told to update), tests/test_remote_render.py",
+        "tests/snapshots/render_argv/caption_animation_handoffs.json (new snapshot case: hand-offs across the highlight's events, written-out breaks, overlapping captions, slide in a safe zone)",
+        "tests/render_harness.py (QC fix round 1: also pins video/encoding.py's _mode and _refused, so an earlier test that ran configure() (test_export_presets_ffmpeg, test_export_route) cannot turn the gaming_layout snapshot's NVENC encoder into the CPU one in a full run)",
+        "tests/test_caption_animations.py, tests/test_caption_render_ffmpeg.py (QC fix round 2: libass's breaks, close calls, a word too wide for the safe area, the font-not-in-this-copy log line; burned frames: pop and bounce settle on the no-animation picture, CONGRATULATIONS stays clear of TikTok's column)",
+        "video/caption_fit.py, video/fontfile.py, video/captions.py (QC fix round 3: signs such as - $ % # @ + / * = and Chinese, Japanese and Korean characters are measured; a glyph's ink is every point of its outline, read from the glyf table (simple and composite glyphs), not the header box; Thai is measured for the safe zone with 4% on top; pop and bounce on a caption that cannot be measured fade in at full size (_HOLD_MS); _fade_times shortens fade's two fades to at most 60% of a short caption)",
+        "video/captions.py, video/caption_fit.py, tests/test_caption_animations.py, tests/test_caption_render_ffmpeg.py, docs/editor-suite/api/step3-captions.md (QC fix round 4: an animated or safe-zone caption is written with single ordinary spaces, _spaced and _zoned; widest_word splits only at U+0020; tests for doubled spaces, tabs, no-break and other Unicode spaces, zero-width characters and the untouched plain caption; burned frames)",
+        "tests/test_caption_animations.py, tests/test_caption_render_ffmpeg.py (QC fix round 3: signs measured, the hyphenated caption's breaks, the outline box, unmeasured captions held, short fades, captions without spaces in a safe zone; burned frames for each); tests/snapshots/render_argv/caption_animations.json (the 230 ms caption's fade is now \\fad(83,55))"
       ],
       "notes": [
         "#174: fonts and captions",
-        "The research's 12-font starter set is 10 OFL fonts plus 2 Apache-2.0 fonts (Luckiest Guy, Permanent Marker); see RESEARCH.md"
+        "The research's 12-font starter set is 10 OFL fonts plus 2 Apache-2.0 fonts (Luckiest Guy, Permanent Marker); see RESEARCH.md",
+        "Shipped set: 12 OFL-1.1 families with static files at the pinned commit (about 1.1 MB). Luckiest Guy and Permanent Marker (Apache-2.0) are out; Montserrat, Oswald, Rubik and Fredoka are variable-only there, so out.",
+        "UI half built 2026-11-09: preset chips, two font groups, Animation and Safe zone, the animated example with the safe-zone shading. The example's text stays 2.2x true scale for legibility and shrinks to fit the margins when a word would stick out.",
+        "Safe zones reuse gaming/layouts.json's measured numbers; today's bottom margin (440) already clears all three apps' bottom bars. The side margins are the right-hand column plus 9 px (outline and shadow); a bottom caption that slides in stands 40 px higher in a safe zone (QC fix round 1).",
+        "Remote rendering: PROTOCOL is 2 since QC fix round 1, so a worker on an older app is refused with 'worker update required' instead of burning step-3 captions in Arial.",
+        "QC fix round 1 (2026-11-09): 3-D1 to 3-D8 fixed; QC's reproduction scripts re-run from copies in scratch/step3/fix1/rerun (exp3, exp3b, exp5, exp6a, exp6b, exp9, exp12) and qc/probe_glyph.py.",
+        "QC fix round 2 (2026-11-09): 3-D9 to 3-D11 fixed. caption_fit's line breaks were checked against the bundled FFmpeg's libass by burning 18,720 captions (22 fonts): 0 different, 49 not guessed (close calls); the round-1 model got 14 of the first 3,600 wrong. QC's probe_layout.py and probe_layout_arial.py: no pop or bounce mismatch (slide's differences are the known sub-pixel settle and the higher TikTok margin); l_longword.py: all clear; d_safezones.py: 0 violations of 360 (was 24); g2_no_fonts_folder.py: every non-Classic preset logs why it burns in Arial; k_none_identical.py: 3,456 cases byte-identical. Scripts in scratch/step3/fix2.",
+        "QC fix round 3 (2026-11-09): 3-D12 to 3-D14 fixed. Burned sweeps with the bundled FFmpeg after the fix: Latin with signs and small letters, seeds 1 and 3, 4,680 captions each, 0 different; Chinese, Japanese and Korean, 1,440 captions, 0 different. QC's reproduction scripts re-run from copies in scratch/step3/fix3 (qc_n5, qc_n6, qc_n6b, qc_n7): all clear. The new burned tests for Chinese, Japanese and Thai need Windows' script fonts and skip without them; CI on Linux was not run from here. The round was interrupted on 2026-11-09 before this record was written; on 2026-11-11 the worktree was checked against the backup, nothing was reverted, and everything was run again: the four reproduction scripts (n6: cases 288, bad 0; n6b: 2 rows in every frame; n5: every caption from 79 to 300 ms peaks at 1.0; n7: every safe-zone case ends at 872 to 885 against 890), the caption, font, preset, route and snapshot tests (368 passed), the CI Plugin platform list (1925 passed, 8 skipped), the step 0 to 2 and related suites (968 passed), ruff and the golden check (4 cases identical).",
+        "QC fix round 4 (2026-11-11): 3-D15 and 3-D16 fixed (one root cause: the guards measured a whitespace-collapsed copy of the text). QC's reproduction scripts re-run from copies in scratch/step3/fix4 (p3_whitespace, p5_french_nbsp, p2_edges, k_none_identical: 3,456 identical, d_safezones: 0 violations). Step-3, snapshot, import guard and i18n tests: 490 passed; CI Plugin platform list: 1,940 run, 0 failed, 8 skipped; CI light full run: 27 failures, all in the known Windows-only files; ruff and the golden check (4 cases identical). No UI change, so no typecheck or build this round. Not fixed, as the review judged it below the bar: 1 px of shadow in the column at bounce's peak frame (Arial 84 and Bowlby One 120 on TikTok).",
+        "Round 5's four findings (3-D17 to 3-D20) were fixed by the orchestrator on 2026-11-11 after the owner said a further agent fix round was not worth it; tests in tests/test_caption_late_fixes.py, the caption tests, ruff, the golden check and the CI-light suite (the same 27 known failures) were run afterwards. No independent reviewer re-checked these four fixes.",
+        "Black-box, 2026-11-11: S1 to S7 all passed, no X scenarios. Performance: pass (plain clips byte-identical; largest change +4.9% on one case with the owner's Ollama model holding the card; caption styles within noise). UX: pass, minors only; the example now honours prefers-reduced-motion (fixed by the orchestrator)."
       ],
-      "results": [],
-      "defects": []
+      "results": [
+        {
+          "date": "2026-11-11",
+          "agent": "QC",
+          "check": "CI-light suite, typecheck, build, snapshots, golden renders, licences",
+          "outcome": "pass",
+          "evidence": "round 5: every gate held except 3-D17 (fixed afterwards); the same 27 local failures as main"
+        },
+        {
+          "date": "2026-11-11",
+          "agent": "Render review",
+          "check": "burned captions: fonts, animations, safe zones, fallbacks",
+          "outcome": "pass after fixes",
+          "evidence": "3-D1 to 3-D20 fixed; 3-D17 to 3-D20 fixed by the orchestrator and not re-reviewed"
+        },
+        {
+          "date": "2026-11-11",
+          "agent": "Black-box tester",
+          "check": "S1 to S7",
+          "outcome": "pass",
+          "evidence": "all seven scenarios passed; no faults filed"
+        },
+        {
+          "date": "2026-11-11",
+          "agent": "Performance",
+          "check": "plain pipeline within 10%, caption cost, size, startup",
+          "outcome": "pass",
+          "evidence": "golden identical; nothing slower than 4.9%; fonts 1.08 MiB"
+        },
+        {
+          "date": "2026-11-11",
+          "agent": "UX",
+          "check": "caption controls, keyboard, overflow, tooltips",
+          "outcome": "pass",
+          "evidence": "minors only; reduced motion fixed"
+        }
+      ],
+      "defects": [
+        {
+          "id": "3-D1",
+          "date": "2026-11-09",
+          "found_by": "QC (fix round 1 list)",
+          "summary": "The manifest's scripts were not checked against the fonts' character maps: Russo One claimed latin-ext (no Romanian Ț/ț, no Maltese Ċ/Ġ, no Esperanto letters) and Poppins ExtraBold latin-ext (no Ħ, no Esperanto letters), Russo One's cyrillic was used for Kazakh, Kyrgyz, Tajik, Mongolian, Bashkir and Tatar, and Welsh and Maori went as plain latin; libass then drew the missing letters in Arial in the middle of a word. Fixed: video/alphabets.py gives every script its full letter set and every language its own letters (both cases); video/fontfile.py reads a font's cmap with struct; caption_font_for keeps a bundled font only when its file has every letter the language needs (fonts.covers), cy and mi map to latin-ext and kk/ky/tg/mn/ba/tt to cyrillic-ext; manifest scripts were rebuilt from the cmaps (Russo One latin+cyrillic, Poppins latin, Barlow latin+vietnamese); tests/test_caption_fonts.py checks every claim against the cmap (and fontTools' where installed) and the language x font matrix",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D2",
+          "date": "2026-11-09",
+          "found_by": "QC (fix round 1 list)",
+          "summary": "With the word highlight on, pop, bounce and slide were only on a caption's first event, so a first word shorter than the animation cut it off (bounce never overshot). Fixed: _animated hands the animation on to every later event that starts inside its window, with the size or place reached at that moment and the rest of the \\t/\\move shifted by the event's offset; ASS tests and a real-FFmpeg frame test with a 60 ms first word",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D3",
+          "date": "2026-11-09",
+          "found_by": "Render review",
+          "summary": "Pop and bounce scale with \\fscx/\\fscy inside \\t and libass re-wraps every frame, so a caption near the wrap width changed its line count mid-animation (the Bounce preset on ordinary two-word captions). Fixed: video/caption_fit.py lays the caption out the way libass does (win-metric sizing, glyph ink, WrapStyle 0 greedy pass and rebalance; within about 1 px of libass on 9 fonts); when the breaks would differ between 80% and the peak, the 100% breaks are written as \\N with \\q2 in every event; bounce's peak is lowered so the widest line stays inside the margins; an unmeasurable font is written as before. QC's exp3 and exp3b now report 0 reflowing cases; a real-FFmpeg test counts text rows per frame",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D4",
+          "date": "2026-11-09",
+          "found_by": "Render review",
+          "summary": "Same class as 3-D2, seen in frames: slide jumped 29 px, pop from about 86% to 100%, fade from half to full opacity when the second word's event started. Fixed with 3-D2; fade now carries across events with \\fade(a1,a2,a3,t1,t2,t3,t4) (no \\t, so stacking still works), including a fade-out that spans a last word shorter than 80 ms. QC's exp9 now shows the highlighted and plain captions moving the same",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D5",
+          "date": "2026-11-09",
+          "found_by": "Render review",
+          "summary": "Pop, bounce and slide turned off libass's stacking of captions whose times overlap, so hand-edited overlapping captions burned on top of each other. Fixed: build_captions finds captions that overlap another in time and _animated writes no pop, bounce or slide on them (fade and karaoke stay). QC's exp12 now shows the same stacked box for every animation; a real-FFmpeg test checks two rows",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D6",
+          "date": "2026-11-09",
+          "found_by": "Render review",
+          "summary": "Russo One/Archivo Black/Bebas Neue kept for languages whose letters they lack (Romanian Ț, Kazakh Қ Ә Ұ Ғ, Azerbaijani Ə), drawn in Arial mid-word; no test read a cmap though the manifest said one did. Same class as 3-D1 and fixed with it. QC's exp6a now reports 0 cases; exp6b and probe_glyph show ro, kk, az and cy burning in Arial Bold throughout",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D7",
+          "date": "2026-11-09",
+          "found_by": "Render review",
+          "summary": "A render worker on the step-2 app still paired and claimed jobs (PROTOCOL 1) and burned step-3 caption styles in Arial with no animation and the old margins, without a word. Fixed: remote_render/protocol.py PROTOCOL = 2, so the gateway refuses an older worker's pairing and heartbeat with 409 and the worker shows 'worker update required'; tests/test_remote_render.py checks a protocol 1 worker is refused",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D8",
+          "date": "2026-11-09",
+          "found_by": "Render review",
+          "summary": "Slide started a bottom caption 40 px low, 13 px into TikTok's bottom bar, and the safe-zone side margins bounded the letters but not the 7 px outline and 2 px shadow (6 px into Reels' button column). Fixed: in a safe zone a bottom caption with slide stands 40 px higher (MarginV max(440, bar + 20 + 40): 480 TikTok, 460 Reels, 440 Shorts); side margins are the column plus 9 (199/214/199); the UI preview copy (lib/captionLook.ts) matches and tests/test_ui_caption_controls.py checks it. QC's exp5 PROBLEMS list is empty",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D9",
+          "date": "2026-11-09",
+          "found_by": "QC (fix round 2 list)",
+          "summary": "caption_fit's rebalance pass measured each line with its trailing spaces and updated its line starts after a move, unlike libass's wrap_lines_rebalance, so pop and bounce could settle on other line breaks than the same caption with no animation (Arial 120, TikTok, 'THIS IS WHERE THE WHOLE THING CHANGED': THIS IS / WHERE THE / WHOLE instead of THIS IS / WHERE / THE WHOLE). Fixed: lines() follows libass step by step (trailing spaces left out of every width, s1/s2/s3 left stale after a move, as libass leaves them); a decision within 0.25 px either way is worked out both ways and lines() returns None when they differ; a character other than Latin, Greek or Cyrillic letters, digits and plain punctuation (a hyphen, an emoji, another script) gives None. None means no \\N/\\q2 is written and libass wraps the caption as always. A sweep burning 18,720 captions against the bundled libass found 0 differences (49 not guessed); QC's probe_layout scripts show no pop or bounce mismatch; a CI-light test checks the libass breaks and the close call, and tests/test_caption_render_ffmpeg.py compares the settled pop and bounce frames with the no-animation frame",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D10",
+          "date": "2026-11-09",
+          "found_by": "Render review (round 2)",
+          "summary": "A safe zone kept captions clear only through the margins, and libass cannot break a word, so one word wider than the space between them ran under the app's button column (default Arial 84 with TikTok and CONGRATULATIONS by 37 px; Arial 140 with Reels and HAPPENED by 15 px; 24 of 360 sweep cases). Fixed: with a safe zone, _fit_scale measures each caption's widest word (caption_fit.widest_word) and, when it is wider than the space less 1 px, the caption is drawn at floor(100 x (space - 1) / word) % with \\fscx/\\fscy in every event (highlight, karaoke, fade, slide); pop and bounce grow to that size instead of 100%, and bounce's peak stays inside the margins. Without a safe zone, or with a font or character that cannot be measured, nothing changes (the API doc says so). QC's l_longword.py: all clear; d_safezones.py: 0 violations; tests: the tags in the ASS, and burned frames whose ink stays left of TikTok's column",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D11",
+          "date": "2026-11-09",
+          "found_by": "Render review (round 2)",
+          "summary": "With no bundled fonts folder or an unreadable manifest, a style naming a bundled font (every preset but Classic) burned in Arial with nothing in the job log: is_bundled() was False, so the 'missing or damaged' line never printed. Same class: any font name not in FONTS fell back silently. Fixed: build_captions prints 'The caption font X is not in this copy of the app, so the captions use Arial', adding '(the app's own caption fonts are missing)' when the fonts folder cannot be found, and sets the font to Arial; the ASS bytes are the ones Arial always gave (k_none_identical.py: 3,456 cases identical). QC's g2_no_fonts_folder.py now logs a line for every non-Classic preset; two CI-light tests",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D12",
+          "date": "2026-11-09",
+          "found_by": "Render review (round 3)",
+          "summary": "A caption with a hyphen, a dollar or a percent sign (TWENTY-FIVE, $500, 50%) was not measured (caption_fit.lines gave None for any character outside its punctuation list), so pop and bounce scaled it with no breaks written out and no limit on bounce's peak: BELIEVE WHAT TWENTY-FIVE drew one line and jumped to two, and Arial 120 in TikTok's zone reached 12 px into the column (105 of QC's 288 cases). Fixed: the bundled libass breaks a line only at a space (burned: a word of two halves joined by each ASCII sign, dashes, the ellipsis, a soft hyphen, a zero-width space, and Chinese, Japanese, Thai and Korean text gave one line every time), so those signs and Chinese, Japanese and Korean characters are measured like letters. A second burned sweep (two seeds of 4,680 Latin captions with signs and small letters in 10 fonts, 1,440 Chinese, Japanese and Korean) first found one caption the model broke differently, Lilita One 140 'wi-fi nobody where': libass measures a glyph by every point of its outline, and Lilita One's y has a control point 6 units right of the box in its header. fontfile.x_bounds now reads the outline's points (checked against fontTools for all 27 caption fonts: no glyph differs); the sweeps then gave 0 different. Same class, the caption that still cannot be measured (an emoji, Thai, Hindi, Arabic, a letter the font lacks, a close call, about 0.4%): pop and bounce no longer scale it, it fades in at full size over the same 120 ms, so its lines never change and it never overshoots. Only a font file the machine does not have keeps the plain tags (nothing to measure; keeps the ASS text the same on a machine without Windows' fonts). QC's n6_unmeasured_reflow.py: cases 288, bad 0; n6b_probe.py: the hyphen caption has 2 rows in every frame; tests in CI light and burned frames",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D13",
+          "date": "2026-11-09",
+          "found_by": "Render review (round 3)",
+          "summary": "Fade on a one-event caption was always \\fad(120,80). On a caption shorter than 200 ms the fade-out starts inside the fade-in and libass jumps from one to the other between two frames (a 140 ms caption went 92% then 24%); 120 ms or less never passed 59 to 77%. The word highlight's path pushed the fade-out after the fade-in, so the two disagreed. Fixed: _fade_times gives both paths the same two times, at most 60% of the caption together and kept 3:2 (140 ms: \\fad(50,34), 56 ms held at full colour); from 334 ms up it is \\fad(120,80) as before. The hold of an unmeasured pop or bounce uses the same rule. QC's n5_fade_short_sequence.py: every caption from 79 to 300 ms peaks at 1.0, the largest one-frame drop is the fade-out's own slope (0.15 to 0.47 at 100 fps), and the preset's last 119 ms caption reaches 1.0; the step-3 snapshot caption_animations changed in one caption (230 ms, now \\fad(83,55)); tests for 80 to 340 ms and burned frames at 100 fps",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D14",
+          "date": "2026-11-09",
+          "found_by": "Render review (round 3)",
+          "summary": "With a safe zone, Chinese, Japanese and Thai captions ran under the app's column: they have no spaces, so libass never wraps them, and widest_word measured only Latin, Greek and Cyrillic (a 12-character Chinese caption at the default 84 px reached x=926 against 890). Fixed: Chinese, Japanese and Korean are measured glyph by glyph from the script font's file, Thai as the sum of its glyphs plus 4% for shaping (burned widths were within 4 px of the plain sum), and _fit_scale shrinks the caption like a long English word. QC's n7_cjk_safezone.py: every safe-zone case ends left of the column (883 to 885 against 890). Hindi and Arabic are still not measured (libass shapes them; they have spaces, so they wrap): the API doc and the user guide now say a very long word there can reach under the buttons. With the safe zone off nothing changes, so a caption wider than the frame still runs off it, as before this step",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D15",
+          "date": "2026-11-11",
+          "found_by": "Render review (round 4)",
+          "summary": "With a safe zone, words joined by a no-break space (U+00A0, U+202F: pasted text, or French translated captions before ? ! : ;) burned under the app's buttons: _fit_scale measured a whitespace-collapsed copy (Python's split() treats those as spaces) while libass draws the text as written and never breaks there (Arial 84 TikTok 'CONGRATULATIONS EVERYBODY' reached both frame edges, 189 px over; Titan One 86 69 px; the Clean fade and Slide up presets 26 to 32 px on a very long French word). Only with the highlight off and no karaoke, which already rebuilt the text with plain spaces. Fixed as a class, measured text = written text: with an animation or a safe zone on, build_captions writes the caption with single ordinary spaces (_spaced: every run of any kind of space becomes one U+0020, ends trimmed, zero-width space, word joiner, byte-order mark and Mongolian vowel separator dropped; a caption left empty is not written), and the guards measure that text as it is; caption_fit.widest_word splits only at U+0020. With animation none and safe zone off the text is untouched (k_none_identical.py: 3,456 cases identical; a test checks odd gaps stay byte for byte). A French ? after a no-break space can now start its own line when the line is full, as it always could with the highlight or karaoke. QC's p3_whitespace.py part 2 and p5_french_nbsp.py: every case clear, 0 frames under the buttons",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D16",
+          "date": "2026-11-11",
+          "found_by": "Render review (round 4)",
+          "summary": "Same root cause as 3-D15: a hand-edited caption with a doubled space near the wrap width flashed from one line to two and back at bounce's 110% (Titan One 86 TikTok 'THIS GAME  JUST'), and with three spaces pop started on one line and settled on two; _scale_lines measured the caption with one space, libass drew two. With a no-break space bounce's peak also reached 7 px into the column. Fixed with 3-D15: the event holds the single-spaced text the guard measures; _scale_lines no longer collapses anything and holds (fades in at full size) any text not written that way. QC's p3_whitespace.py part 1: every case stable, the typo's event equals the clean one's; p2_edges.py part d: no row changes. p2_edges still prints 891 against 890 for Arial 84 TikTok bounce: that caption is now the same as its one-space version, and it is the 1 px of shadow at bounce's peak frame the render review listed as below the bar (left as it is)",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D17",
+          "date": "2026-11-11",
+          "found_by": "QC (round 5)",
+          "summary": "With animation none and safe zone off, the caption style's font size or bottom margin came out 1 px different from step 2 on some unusual frame heights (reachable through translated captions on an odd-sized clip): the rewrite scaled as round(value * height / 1920) instead of round(value * (height / 1920)). The old order is back; a test compares heights 100 to 4400.",
+          "routed_to": "Orchestrator (the owner's call: no further fix round)",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D18",
+          "date": "2026-11-11",
+          "found_by": "Render review (round 5)",
+          "summary": "Karaoke burned Arabic and Hebrew captions with the words in reverse order (libass lays the per-word runs out left to right). Karaoke is no longer written for right-to-left languages; those clips burn plain.",
+          "routed_to": "Orchestrator (the owner's call: no further fix round)",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D19",
+          "date": "2026-11-11",
+          "found_by": "Render review (round 5)",
+          "summary": "Karaoke on a clip that was cut or sped up filled words 0.3 to 0.5 s off: the lines were on the edited timeline but the word times were the unedited clip's. The pipeline now passes karaoke_untimed and the fill is spread over each line by word length (approximate, not word-exact).",
+          "routed_to": "Orchestrator (the owner's call: no further fix round)",
+          "status": "fixed"
+        },
+        {
+          "id": "3-D20",
+          "date": "2026-11-11",
+          "found_by": "Render review (round 5)",
+          "summary": "In a clip folder of about 211 to 229 characters the staged font's temporary copy needed a longer path than Windows allows, so the captions silently burned in Arial. The temporary copy now has a short name, and a folder that is still too long gets a plain job-log line.",
+          "routed_to": "Orchestrator (the owner's call: no further fix round)",
+          "status": "fixed"
+        }
+      ]
     },
     {
       "id": "4",

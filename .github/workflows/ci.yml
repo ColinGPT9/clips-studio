@@ -131,6 +131,7 @@ jobs:
           tests/test_export_presets_ffmpeg.py tests/test_export_route.py tests/test_woopsocial_smaller_copy.py
           tests/test_remake.py tests/test_remake_routes.py tests/test_remake_worker.py tests/test_rerender_edit_follows.py
           tests/test_remake_in_use.py tests/test_remake_files.py tests/test_remake_lasting_marks.py
+          tests/test_caption_render_ffmpeg.py tests/test_fonts_routes.py
 
   sdk-windows:
     name: SDK (Windows)

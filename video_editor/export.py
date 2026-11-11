@@ -12,6 +12,7 @@ from pathlib import Path
 
 from core.binaries import ffmpeg
 from video.encoding import LOUDNORM, final_movflags, video_encoder_args
+from video.fonts import subtitles_filter
 from video_editor.audio import master_filter, mute_filter
 from video_editor.cuts import concat_graph
 from video_editor.timeline import EditList
@@ -86,7 +87,7 @@ def apply_edits(
     if abs(edit.speed - 1.0) >= 0.01:
         video_chain.append(f"setpts=PTS/{edit.speed:.4f}")
     if ass_path is not None:
-        video_chain.append(f"subtitles={ass_path.name}")
+        video_chain.append(subtitles_filter(ass_path))
     if video_chain:
         src = video_out if video_out.startswith("[") else f"[{video_out}]"
         graph_parts.append(f"{src}{','.join(video_chain)}[vout]")

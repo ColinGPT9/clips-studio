@@ -186,6 +186,13 @@ datas += [
     # and video/mascot_art.py is imported rather than scripts/, which is not
     # packaged at all.
     (str(ROOT / "assets" / "outro"), "assets/outro"),
+    # The caption fonts that ship with the app: twelve static TTFs, each with
+    # its OFL.txt, and manifest.json with their sha256 (video/fonts.py finds
+    # the folder the same way as the end cards). The engine serves them to
+    # the caption preview too (GET /fonts), so electron-builder needs nothing.
+    (str(ROOT / "assets" / "fonts"), "assets/fonts"),
+    # The caption presets the caption controls offer (GET /caption-presets).
+    (str(ROOT / "config" / "caption_presets.json"), "config"),
     # Gaming / Reaction's layouts and platform safe zones, read beside
     # gaming/framing.py at runtime (the editor has its own checked copy).
     (str(ROOT / "gaming" / "layouts.json"), "gaming"),

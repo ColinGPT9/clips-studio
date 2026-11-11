@@ -1,0 +1,199 @@
+{
+  "about": "Caption fonts bundled with Clips Kitty (video/fonts.py). Each is an unmodified static TTF from github.com/google/fonts (ofl/) at one pinned commit, under the SIL Open Font License 1.1, with its OFL.txt beside it. family is the name libass matches (the TTF name table's family name, ID 1). scripts lists only the writing systems whose every letter is in the file's character map (video/alphabets.py SCRIPT_LETTERS); tests/test_caption_fonts.py reads each file's character map and checks the list is exactly that. Whether a clip keeps a bundled font goes by the letters of its language (video/captions.py caption_font_for), not by this list.",
+  "source": "https://github.com/google/fonts",
+  "commit": "5bb28733cec313b63fbd415b574b5ae35c8aa8b8",
+  "licence": "OFL-1.1",
+  "files": [
+    {
+      "family": "Anton",
+      "weight": 400,
+      "file": "anton/Anton-Regular.ttf",
+      "sha256": "a4ba3a92350ebb031da0cb47630ac49eb265082ca1bc0450442f4a83ab947cab",
+      "bytes": 170812,
+      "scripts": [
+        "latin",
+        "latin-ext",
+        "vietnamese"
+      ],
+      "licence": "OFL-1.1",
+      "licence_file": "anton/OFL.txt",
+      "copyright": "Copyright 2020 The Anton Project Authors (https://github.com/googlefonts/AntonFont.git)",
+      "source_url": "https://github.com/google/fonts/blob/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/anton/Anton-Regular.ttf",
+      "commit": "5bb28733cec313b63fbd415b574b5ae35c8aa8b8"
+    },
+    {
+      "family": "Archivo Black",
+      "weight": 400,
+      "file": "archivoblack/ArchivoBlack-Regular.ttf",
+      "sha256": "dd9a89a019b4849f66ab75455fe7bdf931311042cbb0f0f97acc061539703180",
+      "bytes": 90988,
+      "scripts": [
+        "latin",
+        "latin-ext"
+      ],
+      "licence": "OFL-1.1",
+      "licence_file": "archivoblack/OFL.txt",
+      "copyright": "Copyright 2017 The Archivo Black Project Authors (https://github.com/Omnibus-Type/ArchivoBlack)",
+      "source_url": "https://github.com/google/fonts/blob/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/archivoblack/ArchivoBlack-Regular.ttf",
+      "commit": "5bb28733cec313b63fbd415b574b5ae35c8aa8b8"
+    },
+    {
+      "family": "Bangers",
+      "weight": 400,
+      "file": "bangers/Bangers-Regular.ttf",
+      "sha256": "4160a7311de9342674cce9160cde9fcbb30f48190397d86ff1b70b455af65824",
+      "bytes": 93148,
+      "scripts": [
+        "latin",
+        "latin-ext",
+        "vietnamese"
+      ],
+      "licence": "OFL-1.1",
+      "licence_file": "bangers/OFL.txt",
+      "copyright": "Copyright 2010 The Bangers Project Authors (https://github.com/googlefonts/bangers)",
+      "source_url": "https://github.com/google/fonts/blob/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/bangers/Bangers-Regular.ttf",
+      "commit": "5bb28733cec313b63fbd415b574b5ae35c8aa8b8"
+    },
+    {
+      "family": "Barlow ExtraBold",
+      "weight": 800,
+      "file": "barlow/Barlow-ExtraBold.ttf",
+      "sha256": "5234d91030e1bb89525cbaccc4386892c3fe005a0582c705264ce3572d96a1a1",
+      "bytes": 110228,
+      "scripts": [
+        "latin",
+        "vietnamese"
+      ],
+      "licence": "OFL-1.1",
+      "licence_file": "barlow/OFL.txt",
+      "copyright": "Copyright 2017 The Barlow Project Authors (https://github.com/jpt/barlow)",
+      "source_url": "https://github.com/google/fonts/blob/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/barlow/Barlow-ExtraBold.ttf",
+      "commit": "5bb28733cec313b63fbd415b574b5ae35c8aa8b8"
+    },
+    {
+      "family": "Bebas Neue",
+      "weight": 400,
+      "file": "bebasneue/BebasNeue-Regular.ttf",
+      "sha256": "08e4623805102d819f58601e46e345648846075e363b2ceb23313c2d1c83ec73",
+      "bytes": 61400,
+      "scripts": [
+        "latin",
+        "latin-ext"
+      ],
+      "licence": "OFL-1.1",
+      "licence_file": "bebasneue/OFL.txt",
+      "copyright": "Copyright © 2010 by Dharma Type.",
+      "source_url": "https://github.com/google/fonts/blob/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/bebasneue/BebasNeue-Regular.ttf",
+      "commit": "5bb28733cec313b63fbd415b574b5ae35c8aa8b8"
+    },
+    {
+      "family": "Bowlby One",
+      "weight": 400,
+      "file": "bowlbyone/BowlbyOne-Regular.ttf",
+      "sha256": "c46a806d7b51fd4987e5f0be449fe40a944cb407e43290ce1cdeed029a8cdc1d",
+      "bytes": 59856,
+      "scripts": [
+        "latin"
+      ],
+      "licence": "OFL-1.1",
+      "licence_file": "bowlbyone/OFL.txt",
+      "copyright": "Copyright (c) 2011 by vernon adams (vern@newtypography.co.uk), with Reserved Font Names \"Bowlby\" \"Bowlby One\" and \"Bowlby One SC\"",
+      "source_url": "https://github.com/google/fonts/blob/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/bowlbyone/BowlbyOne-Regular.ttf",
+      "commit": "5bb28733cec313b63fbd415b574b5ae35c8aa8b8"
+    },
+    {
+      "family": "Kanit ExtraBold",
+      "weight": 800,
+      "file": "kanit/Kanit-ExtraBold.ttf",
+      "sha256": "70082870d1f5bb6ae9faa708572b2c36de3c076caae187edae753f709d0de984",
+      "bytes": 177836,
+      "scripts": [
+        "latin",
+        "latin-ext",
+        "vietnamese",
+        "thai"
+      ],
+      "licence": "OFL-1.1",
+      "licence_file": "kanit/OFL.txt",
+      "copyright": "Copyright 2020 The Kanit Project Authors (https://github.com/cadsondemak/kanit)",
+      "source_url": "https://github.com/google/fonts/blob/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/kanit/Kanit-ExtraBold.ttf",
+      "commit": "5bb28733cec313b63fbd415b574b5ae35c8aa8b8"
+    },
+    {
+      "family": "Lilita One",
+      "weight": 400,
+      "file": "lilitaone/LilitaOne-Regular.ttf",
+      "sha256": "f5b641c45c69d772ee4eda687bc9fda411d5cad6b0b45371491da4580cbc8d59",
+      "bytes": 28092,
+      "scripts": [
+        "latin"
+      ],
+      "licence": "OFL-1.1",
+      "licence_file": "lilitaone/OFL.txt",
+      "copyright": "Copyright (c) 2011 Juan Montoreano (juan@remolacha.biz), with Reserved Font Name Lilita",
+      "source_url": "https://github.com/google/fonts/blob/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/lilitaone/LilitaOne-Regular.ttf",
+      "commit": "5bb28733cec313b63fbd415b574b5ae35c8aa8b8"
+    },
+    {
+      "family": "Passion One Black",
+      "weight": 900,
+      "file": "passionone/PassionOne-Black.ttf",
+      "sha256": "c954dbac8835bf16f938f8d97fe1627d47aa122d60246169ff55cec772949e96",
+      "bytes": 24288,
+      "scripts": [
+        "latin"
+      ],
+      "licence": "OFL-1.1",
+      "licence_file": "passionone/OFL.txt",
+      "copyright": "Copyright (c) 2011 Fontstage (info@fontstage.com), with Reserved Font Names, 'Passion'",
+      "source_url": "https://github.com/google/fonts/blob/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/passionone/PassionOne-Black.ttf",
+      "commit": "5bb28733cec313b63fbd415b574b5ae35c8aa8b8"
+    },
+    {
+      "family": "Poppins ExtraBold",
+      "weight": 800,
+      "file": "poppins/Poppins-ExtraBold.ttf",
+      "sha256": "f2ab17c1a63a0ecc12c2461848fc8a469395e3cd2d641803e889c643d9f958e1",
+      "bytes": 154836,
+      "scripts": [
+        "latin"
+      ],
+      "licence": "OFL-1.1",
+      "licence_file": "poppins/OFL.txt",
+      "copyright": "Copyright 2020 The Poppins Project Authors (https://github.com/itfoundry/Poppins)",
+      "source_url": "https://github.com/google/fonts/blob/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/poppins/Poppins-ExtraBold.ttf",
+      "commit": "5bb28733cec313b63fbd415b574b5ae35c8aa8b8"
+    },
+    {
+      "family": "Russo One",
+      "weight": 400,
+      "file": "russoone/RussoOne-Regular.ttf",
+      "sha256": "bc0abcc660bd8b7ad3000ecb2898a27c58a29a50f7ec81652fa12e75148d09df",
+      "bytes": 39124,
+      "scripts": [
+        "latin",
+        "cyrillic"
+      ],
+      "licence": "OFL-1.1",
+      "licence_file": "russoone/OFL.txt",
+      "copyright": "Copyright (c) 2011-2012, Jovanny Lemonad (jovanny.ru), with Reserved Font Name \"Russo\"",
+      "source_url": "https://github.com/google/fonts/blob/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/russoone/RussoOne-Regular.ttf",
+      "commit": "5bb28733cec313b63fbd415b574b5ae35c8aa8b8"
+    },
+    {
+      "family": "Titan One",
+      "weight": 400,
+      "file": "titanone/TitanOne-Regular.ttf",
+      "sha256": "563ff6de179bbd44bcd7d2a6c448d6dc3bf935834237cf1250e506e65cd86ff1",
+      "bytes": 55712,
+      "scripts": [
+        "latin"
+      ],
+      "licence": "OFL-1.1",
+      "licence_file": "titanone/OFL.txt",
+      "copyright": "Copyright (c) 2011, Rodrigo Fuenzalida (www.rfuenzalida.com|hello@rfuenzalida.com), with Reserved Font Name Titan.",
+      "source_url": "https://github.com/google/fonts/blob/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/titanone/TitanOne-Regular.ttf",
+      "commit": "5bb28733cec313b63fbd415b574b5ae35c8aa8b8"
+    }
+  ]
+}

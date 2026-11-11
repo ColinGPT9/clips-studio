@@ -11,7 +11,11 @@ import json
 import platform
 import socket
 
-PROTOCOL = 1
+# 2: captions in a bundled font, animated, or kept out of an app's safe zone
+# (editor suite step 3). A worker on an older app would burn them in Arial
+# with no animation and the old margins without a word, so it is told to
+# update instead (the gateway refuses a different number with 409).
+PROTOCOL = 2
 
 # The config sections a render reads (core/pipeline._render_files and what it
 # calls: captions, tracking, the encoder, the end card). Nothing else leaves

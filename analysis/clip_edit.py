@@ -181,6 +181,14 @@ def _clean_caption_style(style: dict) -> dict:
         out["words_per_caption"] = int(max(1, min(6, float(style["words_per_caption"]))))
     if isinstance(style.get("uppercase"), bool):
         out["uppercase"] = style["uppercase"]
+    # How captions come on screen, and an app's buttons to keep clear of. A
+    # value the renderer does not know is dropped, as an unknown font is.
+    from video.captions import ANIMATIONS, SAFE_ZONE_CHOICES
+
+    for key, allowed in (("animation", ANIMATIONS), ("safe_zone", SAFE_ZONE_CHOICES)):
+        value = style.get(key)
+        if isinstance(value, str) and value.strip().lower() in allowed:
+            out[key] = value.strip().lower()
     return out
 
 

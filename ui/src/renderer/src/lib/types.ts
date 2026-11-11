@@ -287,6 +287,36 @@ export interface CaptionStyle {
   /** Another colour for whoever isn't the main speaker (#126). */
   second_speaker?: boolean
   second_speaker_color?: string
+  /** How each caption comes on screen (video/captions.py ANIMATIONS). "none"
+   *  is today's look. "karaoke" fills each word with highlight_color as it
+   *  is said, and takes the place of `highlight`. */
+  animation?: CaptionAnimation
+  /** Keep captions clear of an app's own buttons and text. "off" is today's
+   *  margins. */
+  safe_zone?: CaptionSafeZone
+}
+
+export type CaptionAnimation = 'none' | 'pop' | 'fade' | 'bounce' | 'karaoke' | 'slide'
+
+export type CaptionSafeZone = 'off' | 'tiktok' | 'reels' | 'shorts'
+
+/** One bundled caption font, from GET /fonts. `family` is the name to put in
+ *  CaptionStyle.font and in a CSS font-family; `urls` are engine paths to
+ *  prefix with the engine's address for @font-face. */
+export interface BundledFont {
+  family: string
+  weight: number | null
+  scripts: string[]
+  files: string[]
+  urls: string[]
+  licence: string
+}
+
+/** One named look from GET /caption-presets. */
+export interface CaptionPreset {
+  id: string
+  name: string
+  style: Required<CaptionStyle>
 }
 
 export type FilterName =

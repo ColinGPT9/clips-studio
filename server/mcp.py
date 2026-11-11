@@ -94,7 +94,25 @@ CAPTION_FONTS = [
     "Trebuchet MS", "Segoe UI", "Georgia", "Comic Sans MS", "Courier New",
 ]
 
+
+def _bundled_fonts() -> list[str]:
+    """The caption fonts that ship with the app (video/fonts.py reads their
+    list, standard library only). None when this copy has no fonts folder."""
+    try:
+        from video import fonts
+
+        return [f for f in fonts.families() if f not in CAPTION_FONTS]
+    except Exception:
+        return []
+
+
+CAPTION_FONTS += _bundled_fonts()
+
 CAPTION_POSITIONS = ("bottom", "middle", "top")
+
+# Kept in step with video/captions.py ANIMATIONS and SAFE_ZONE_CHOICES.
+CAPTION_ANIMATIONS = ("none", "pop", "fade", "bounce", "karaoke", "slide")
+CAPTION_SAFE_ZONES = ("off", "tiktok", "reels", "shorts")
 
 # People say "yellow", not "#FFE600". Refusing a colour name would make the
 # obvious phrasing the wrong one.
@@ -165,6 +183,25 @@ def _caption_style(raw: dict) -> dict:
     for flag in ("uppercase", "highlight"):
         if raw.get(flag) is not None:
             style[flag] = bool(raw[flag])
+
+    if raw.get("animation") is not None:
+        animation = str(raw["animation"]).strip().casefold()
+        if animation not in CAPTION_ANIMATIONS:
+            raise ValueError(
+                f"Caption animation {raw['animation']!r} is not one of: "
+                f"{', '.join(CAPTION_ANIMATIONS)}."
+            )
+        style["animation"] = animation
+
+    if raw.get("safe_zone") is not None:
+        zone = str(raw["safe_zone"]).strip().casefold()
+        zone = {"none": "off", "youtube": "shorts", "instagram": "reels"}.get(zone, zone)
+        if zone not in CAPTION_SAFE_ZONES:
+            raise ValueError(
+                f"Caption safe zone {raw['safe_zone']!r} is not one of: "
+                f"{', '.join(CAPTION_SAFE_ZONES)}."
+            )
+        style["safe_zone"] = zone
     return style
 
 
@@ -1088,6 +1125,21 @@ TOOLS: list[dict] = [
                         "highlight_color": {
                             "type": "string",
                             "description": "Hex, or a colour word. Default #FFE600.",
+                        },
+                        "animation": {
+                            "type": "string",
+                            "enum": list(CAPTION_ANIMATIONS),
+                            "description": (
+                                "How each caption appears. none is the default. karaoke fills "
+                                "each word with highlight_color as it is said, in place of highlight."
+                            ),
+                        },
+                        "safe_zone": {
+                            "type": "string",
+                            "enum": list(CAPTION_SAFE_ZONES),
+                            "description": (
+                                "Keep captions clear of that app's own buttons and text. off is the default."
+                            ),
                         },
                     },
                 },

@@ -618,18 +618,19 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
     ...DEFAULT_CAPTION_STYLE,
     ...(slot.options.caption_style ?? {})
   })
+  const putSlotStyle = (slot: Slot, style: Required<CaptionStyle>): void => {
+    // Remembered for the next video, which starts from it (#138).
+    try {
+      localStorage.setItem(PREF.caption_style, JSON.stringify(style))
+    } catch {
+      // Not remembered for next time; this video still gets it.
+    }
+    patchOptions(slot.key, { caption_style: style })
+  }
   const setSlotStyle =
     (slot: Slot) =>
-    <K extends keyof CaptionStyle>(k: K, v: CaptionStyle[K]): void => {
-      // Remembered for the next video, which starts from it (#138).
-      const style = { ...slotStyle(slot), [k]: v }
-      try {
-        localStorage.setItem(PREF.caption_style, JSON.stringify(style))
-      } catch {
-        // Not remembered for next time; this video still gets it.
-      }
-      patchOptions(slot.key, { caption_style: style })
-    }
+    <K extends keyof CaptionStyle>(k: K, v: CaptionStyle[K]): void =>
+      putSlotStyle(slot, { ...slotStyle(slot), [k]: v })
 
   /** REPLACE this video's options wholesale.
    *
@@ -1233,6 +1234,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
                   idPrefix={`slot-${slot.key}`}
                   style={slotStyle(slot)}
                   onChange={setSlotStyle(slot)}
+                  onPick={(style) => putSlotStyle(slot, style)}
                 />
               </div>
             )}

@@ -76,6 +76,7 @@ def burn(
     from core.models import ClipCandidate
     from video.captions import build_captions
     from video.encoding import final_movflags, video_encoder_args
+    from video.fonts import release, subtitles_filter
 
     canvas = _canvas_of(base_video)
     ass_path = out_path.with_suffix(f".{language}.ass")
@@ -89,7 +90,7 @@ def burn(
     cmd = [
         ffmpeg(), "-y", "-v", "error",
         "-i", str(base_video.resolve()),
-        "-vf", f"subtitles={built.name}",
+        "-vf", subtitles_filter(built),
         "-c:a", "copy",
         *video_encoder_args(config),
         # A language's own clip, posted as it is: first frame at 0 either way.
@@ -107,3 +108,4 @@ def burn(
         return out_path
     finally:
         discard(built)
+        release(built.parent)       # the staged bundled fonts, once no captions file needs them

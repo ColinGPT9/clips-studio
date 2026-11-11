@@ -423,6 +423,11 @@ class RenderHarness:
         mp = self.mp
         mp.setattr(sys.modules[__name__], "_ACTIVE", self)
         mp.setattr(encoding, "_selected", self.selection())
+        # The settings' encoder mode as the engine starts with it: a test that
+        # ran configure() earlier in the same process (the export tests) must
+        # not turn the pinned encoder back into the CPU one.
+        mp.setattr(encoding, "_mode", "auto")
+        mp.setattr(encoding, "_refused", set())
         harness = self
         originals = {name: getattr(subprocess, name) for name in _SUBPROCESS_API}
 

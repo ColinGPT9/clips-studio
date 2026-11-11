@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { LiveOverlay } from '../lib/types'
+import { captionFontWeight, captionLayout, useBundledFonts } from '../lib/captionLook'
 import { bakedToOrig } from './TimelineEditor'
 
 /** Live DOM rendition of PENDING burned-in text — the hook title and
@@ -20,6 +21,9 @@ export default function LiveTextOverlay({
   const boxRef = useRef<HTMLDivElement>(null)
   const [box, setBox] = useState({ w: 0, h: 0 })
   const [t, setT] = useState(0) // playhead in original-clip seconds
+  // The fonts that come with the app, loaded from the engine so a bundled
+  // caption font previews in its own face and weight.
+  const bundled = useBundledFonts()
 
   useEffect(() => {
     const el = boxRef.current
@@ -59,12 +63,18 @@ export default function LiveTextOverlay({
   // The other speaker's line, in their colour (lib/speakerTurns.ts marks it).
   const lineColor = st && line?.speaker && st.second_speaker ? st.second_speaker_color : st?.color
   const capSize = st ? Math.max(40, Math.min(140, st.font_size)) * s : 0
+  // Where the burn puts it (video/captions.py _layout): today's margins, or
+  // clear of the chosen app's buttons and text on a vertical clip.
+  const lay = st ? captionLayout(st, box.w, box.h) : null
   const capPos: React.CSSProperties =
-    st?.position === 'top'
-      ? { top: 140 * s }
-      : st?.position === 'middle'
+    lay?.position === 'top'
+      ? { top: lay.margin }
+      : lay?.position === 'middle'
         ? { top: '50%', transform: 'translateY(-50%)' }
-        : { bottom: 440 * s }
+        : { bottom: lay ? lay.margin : 440 * s }
+  // Karaoke fills each word with the highlight colour as it is said, and
+  // takes the highlight's place.
+  const karaoke = st?.animation === 'karaoke'
 
   // Frosted strip over text that's ALREADY burned into the preview file, so
   // the old caption/hook doesn't ghost through behind the pending one.
@@ -104,7 +114,11 @@ export default function LiveTextOverlay({
         maskBand(
           overlay.burned.style.position,
           overlay.burned.style.font_size,
-          overlay.burned.style.position === 'top' ? 140 : 440
+          s > 0
+            ? captionLayout(overlay.burned.style, box.w, box.h).margin / s
+            : overlay.burned.style.position === 'top'
+              ? 140
+              : 440
         )}
       {overlay.burnedHook &&
         elapsed <= overlay.burnedHook.seconds &&
@@ -131,13 +145,13 @@ export default function LiveTextOverlay({
             ...capPos,
             fontFamily: st.font,
             fontSize: `${capSize}px`,
-            fontWeight: 700,
+            fontWeight: captionFontWeight(st.font, bundled),
             color: lineColor,
-            padding: `0 ${60 * s}px`,
+            padding: `0 ${lay?.side ?? 60 * s}px`,
             ...outline(3.5 * s)
           }}
         >
-          {st.highlight ? (
+          {st.highlight || karaoke ? (
             // Which word is being said right now. The burn uses Whisper's
             // real word timings; the preview has only the line's span, so it
             // splits it by word length — the same fallback the burn uses for
@@ -158,7 +172,10 @@ export default function LiveTextOverlay({
                 if (t >= b) hot = i
               })
               return words.map((w, i) => (
-                <span key={i} style={{ color: i === hot ? st.highlight_color : lineColor }}>
+                <span
+                  key={i}
+                  style={{ color: (karaoke ? i <= hot : i === hot) ? st.highlight_color : lineColor }}
+                >
                   {(st.uppercase ? w.toUpperCase() : w) + (i < words.length - 1 ? ' ' : '')}
                 </span>
               ))

@@ -6,7 +6,9 @@ import type {
   AutomationActivity,
   AutomationStatus,
   BrandingProfile,
+  BundledFont,
   CaptionLine,
+  CaptionPreset,
   CaptionStyle,
   Clip,
   CreatorDetail,
@@ -400,6 +402,11 @@ export const api = {
   /** The saved default, Original, a custom preset's starting values and every
    *  allowed value. Probes nothing, so it answers at once. */
   exportPresets: () => request<ExportPresetsInfo>('/export/presets'),
+  /** The caption fonts that ship with the app (assets/fonts), with the URLs
+   *  of their files on the engine, so the preview draws with what burns. */
+  bundledFonts: () => request<{ fonts: BundledFont[] }>('/fonts'),
+  /** Named caption looks (config/caption_presets.json), Classic first. */
+  captionPresets: () => request<{ presets: CaptionPreset[] }>('/caption-presets'),
   /** The codecs this PC can export in. The engine's first answer tests each
    *  encoder (under a second where the drivers answer at once). */
   exportCodecs: () => request<{ codecs: ExportCodecInfo[] }>('/export/codecs'),
