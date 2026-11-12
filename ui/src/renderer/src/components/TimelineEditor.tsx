@@ -16,6 +16,7 @@ import type {
   Word
 } from '../lib/types'
 import FeatureBoundary from './FeatureBoundary'
+import FreeMusicPicker from './FreeMusicPicker'
 import GamingLayoutEditor from './GamingLayoutEditor'
 import EditSuggestions from './EditSuggestions'
 import {
@@ -167,7 +168,8 @@ function isDefault(e: EditData, duration: number): boolean {
     e.fade_out === 0 &&
     Math.abs((e.speed ?? 1) - 1) < 0.01 &&
     !e.hook?.text &&
-    !e.music?.path
+    !e.music?.path &&
+    !e.music?.library
   )
 }
 
@@ -1249,6 +1251,9 @@ export default function TimelineEditor({
         return
       }
       if (typing || busy) return
+      // Space on a Free music button presses that button (open the list,
+      // hear a track, pick one) and leaves the video alone.
+      if (e.key === ' ' && t?.closest('[data-free-music]')) return
 
       const el = videoRef.current
       const mod = e.ctrlKey || e.metaKey
@@ -2091,7 +2096,9 @@ export default function TimelineEditor({
                         volume: edit.music?.volume ?? 0.25,
                         duck: edit.music?.duck ?? true
                       }
-                    : null
+                    : edit.music?.library
+                      ? edit.music
+                      : null
                 })
               }
               onBlur={() => setHistory((h) => [...h.slice(-30), { edit }])}
@@ -2117,9 +2124,28 @@ export default function TimelineEditor({
             <Folder className="mr-1.5" />
             Browse…
           </button>
+          <FreeMusicPicker
+            picked={edit.music?.path ? undefined : edit.music?.library}
+            // The free tracks are stored quieter than a typical song
+            // (-18 LUFS), so the slider starts higher for them: 40, not 25.
+            onPick={(id) =>
+              push({
+                ...edit,
+                music: id
+                  ? {
+                      library: id,
+                      volume: edit.music?.volume ?? 0.4,
+                      duck: edit.music?.duck ?? true
+                    }
+                  : null
+              })
+            }
+          />
+          {/* After the free-music list (order-last, like the list itself), so
+              switching music on never pushes the list down under the pointer. */}
           {edit.music && (
             <>
-              <label className="flex items-center gap-1.5">
+              <label className="order-last flex items-center gap-1.5">
                 Vol
                 <input
                   type="range"
@@ -2132,7 +2158,7 @@ export default function TimelineEditor({
                   }
                 />
               </label>
-              <label className="flex items-center gap-1.5 cursor-pointer" title={t("Music automatically dips whenever the creator talks")}>
+              <label className="order-last flex items-center gap-1.5 cursor-pointer" title={t("Music automatically dips whenever the creator talks")}>
                 <input
                   type="checkbox"
                   checked={edit.music.duck}

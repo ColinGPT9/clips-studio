@@ -142,6 +142,31 @@ def _apply_edits_music(h, _mp):
           "clip.mp4", normalize=True, final=True)
 
 
+def _apply_edits_library_music(h, mp):
+    """One of the app's free tracks (editor suite step 4): the bundled file is
+    the music input. An id the app doesn't have, or a file that no longer
+    matches its sha256, is a clip without music and a line in the job log."""
+    import contextlib
+    import io
+
+    from video import audio_library
+
+    said = io.StringIO()
+    with contextlib.redirect_stdout(said):
+        h.step("a free track, ducked under the voice, with cuts")
+        _edit(h, {"keep": [[0.0, 4.0], [5.0, 10.0]],
+                  "music": {"library": "music-roof-tops", "volume": 0.3, "duck": True}})
+        h.step("a free track, not ducked, written as the clip")
+        _edit(h, {"music": {"library": "music-doodles", "volume": 0.5, "duck": False}, "fade_out": 1.0},
+              "clip.mp4", normalize=True, final=True)
+        h.step("an id this copy of the app doesn't have: no music")
+        _edit(h, {"music": {"library": "no-such-track", "volume": 0.3, "duck": True}}, "unknown.mp4")
+        h.step("a damaged file: no music")
+        mp.setattr(audio_library, "_matches", lambda path, sha256: False)
+        _edit(h, {"music": {"library": "music-roof-tops", "volume": 0.3, "duck": True}}, "damaged.mp4")
+    return {"job_log": said.getvalue().splitlines()}
+
+
 # ---- light tier: video_editor/watermark.py -------------------------------------------------
 
 TEXT_MARK = {"type": "text", "text": "@YourChannel", "position": "bottom_right"}
@@ -345,6 +370,10 @@ LIGHT = {
         "video_editor/overlay.py's hook title burned by the editor's pass on a horizontal clip.",
         _apply_edits_hook),
     "apply_edits_music": ("video_editor/export.py: background music, ducked and not.", _apply_edits_music),
+    "apply_edits_library_music": (
+        "Editor suite step 4: music from the app's free library (edit.music.library): the bundled file as the "
+        "music input, ducked and not; an unknown id and a damaged file give a clip without music and a job log line.",
+        _apply_edits_library_music),
     "watermark_text": (
         "video_editor/watermark.py: text branding as ASS events, alone, merged into captions, and dragged.",
         _watermark_text),

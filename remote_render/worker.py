@@ -355,12 +355,39 @@ class Worker:
         raise RuntimeError("could not upload the rendered clip")
 
 
+def _music_not_here(render_opts) -> str:
+    """Why this PC can't put the clip's free music under it ("" when it can,
+    or the clip has none): its copy of the track is missing, damaged or not
+    one this version has. A local render makes such a clip without music; a
+    render PC hands it back instead, so the main PC, which has the track,
+    makes it, and nobody gets a silent clip that says it has music."""
+    if isinstance(render_opts, str):
+        try:
+            render_opts = json.loads(render_opts)
+        except ValueError:
+            return ""
+    edit = render_opts.get("edit") if isinstance(render_opts, dict) else None
+    music = edit.get("music") if isinstance(edit, dict) else None
+    if not isinstance(music, dict) or not music.get("library") or str(music.get("path") or "").strip():
+        return ""
+    from video import audio_library
+
+    if audio_library.resolve(music["library"], kind="music") is not None:
+        return ""
+    return audio_library.why_not(music["library"], "music") + " on the render PC"
+
+
 def run_job(job_dir: Path) -> int:
     """The child process: render one job with the same code as a local
     render, in this PC's own data folder, with only the job's settings."""
     job_dir = Path(job_dir)
     try:
         spec = json.loads((job_dir / "job.json").read_text(encoding="utf-8"))
+        missing = _music_not_here(spec.get("render_opts"))
+        if missing:
+            (job_dir / "error.txt").write_text(missing, encoding="utf-8")
+            print(f"render handed back: {missing}")
+            return 1
         from core.models import ClipCandidate, Segment
         from core.paths import resolve_data_dir
         from core.pipeline import _render_files

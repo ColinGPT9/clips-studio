@@ -175,7 +175,51 @@ The 12 new fonts are made for languages written in the English alphabet. Some co
 
 ## Creator notes for the AI, and free music and sound effects
 
-Coming in step 4
+You can now tell the AI who a creator is in your own words, and put free music under a clip without hunting for a song. Nothing changes until you write something or pick a track.
+
+### Tell the AI about a creator
+
+1. Open **Creators** and click a creator.
+2. Write in the **About this creator** box, at the top of their profile. You have 600 characters; a counter appears when you get close. It saves when you click away from the box.
+
+Say who they are, what their videos are about, and which moments matter most. For example:
+
+> Plays horror games with two friends. The best moments are the jump scares and the arguments afterwards.
+
+**What it changes:** the AI reads your note as background when it picks clips from that creator's videos and when it writes their titles, descriptions and hashtags. It works from the first video, before Clips Kitty has learned anything about the creator, and whether **Learning enabled** is ticked or not.
+
+**What it doesn't change:**
+
+- It adds no points to a clip's score by itself. The AI simply knows more about what it's looking at.
+- It isn't a list of orders. The AI treats it as background, so "only make clips about cooking" may not be followed to the letter.
+- Leave the box empty and Clips Kitty works exactly as it did before.
+- Other creators aren't affected. Each has their own box.
+
+**Wipe learned memory for this creator** removes what Clips Kitty learned by itself and keeps your note, because you wrote it. Deleting the creator's profile removes the note with it. If you merge two creators, the one you keep holds on to its note; if it had none, it takes the other's.
+
+Your note stays on this PC. The one exception: if you turned on cloud AI with your own key (Settings → AI), the note is sent to that provider with the rest of the request, the same way what Clips Kitty learned about the creator already is. It's sent nowhere else.
+
+### Free music
+
+Clips Kitty now comes with 8 music tracks you can put under any clip:
+
+1. Open a clip in the **Clip Editor** and go to the **Effects** tab.
+2. Press **Free music**, beside the Music box. The tracks are listed with their mood (chill, upbeat, funny or tense) and length. Press ▶ on a track to hear it, and ■ to stop.
+3. Click a track's name to pick it. It plays under the clip, a little quieter while someone is talking if **Duck under voice** is on, and repeats if the clip is longer than the track. It starts as quiet background music, well under the voice. On a loud clip (a street, a crowd, a game) drag **Vol** up to hear more of it. Click the name again to take the music off.
+4. Press **Apply edits** as usual.
+
+Your own music file still works the same way as before. A clip has one or the other: picking a free track clears your file, and choosing your file clears the free track.
+
+**The music is free to use, also in monetised videos.** Every track was released into the public domain (CC0) by its author. You don't need to credit anyone or ask permission. The tracks are all about as loud as each other, so the volume slider means the same for each.
+
+### Sound effects
+
+56 short sound effects (clicks, dings, hits, risers, zaps, an error sound and a scratch), also free to use anywhere, now come with Clips Kitty. You'll be able to drop them onto a clip in the new editor, which arrives in a later update. There's nowhere to place them yet.
+
+### Good to know
+
+- A clip with free music can be made on a second PC (Settings → Advanced settings → Remote rendering), because that PC has the same tracks. Update Clips Kitty on that PC too: until you do, it says it needs an update and takes no clips. A clip with your own music file is still made on this PC, where the file is. If the second PC's copy of a track is missing or damaged, that clip is made on this PC instead, and the video's progress notes say why.
+- If a track is ever missing from your copy of Clips Kitty, the clip is still made, without music, and the video's progress notes say which track was missing.
 
 ## AI voices
 

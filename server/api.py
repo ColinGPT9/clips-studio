@@ -209,6 +209,10 @@ class LearningIn(BaseModel):
     enabled: bool
 
 
+class CreatorDescriptionIn(BaseModel):
+    description: str = ""   # "About this creator"; cut to 600 characters, never refused
+
+
 class AccountIn(BaseModel):
     platform: str   # youtube | twitch | kick
     channel: str    # channel/username on that platform
@@ -878,6 +882,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     from server import fonts_api
 
     fonts_api.install(app)
+
+    # The free music and sound effects that ship with the app, for the
+    # editor's music picker (server/audio_library_api.py). Read-only.
+    from server import audio_library_api
+
+    audio_library_api.install(app)
 
     # Settings → AI: local Ollama (the default) or a cloud model on the
     # user's own key. Its own module, the same way the publishers are.
@@ -3024,7 +3034,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         d = db()
         try:
             rows = d.conn.execute(
-                """SELECT c.creator_id, c.display_name, c.aliases, c.learning_enabled,
+                """SELECT c.creator_id, c.display_name, c.aliases, c.learning_enabled, c.description,
                           COUNT(DISTINCT v.video_id) AS videos,
                           COUNT(cl.id) AS clips,
                           ROUND(AVG(cl.score), 1) AS avg_score
@@ -3214,7 +3224,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     def wipe_creator_memory(creator_id: int):
         """Erase everything LEARNED about a creator — knowledge, storyline
         events, and feedback history — from this computer. The profile, its
-        channels, videos and clips stay; only the intelligence data goes."""
+        channels, videos and clips stay; only the intelligence data goes.
+        "About this creator" stays too: the person wrote it, nothing learned it."""
         d = db()
         try:
             wiped = 0
@@ -3259,6 +3270,23 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         finally:
             d.close()
         return {"creator_id": creator_id, "learning_enabled": body.enabled}
+
+    @app.post("/creators/{creator_id}/description")
+    def set_creator_description(creator_id: int, body: CreatorDescriptionIn):
+        """Save "About this creator": the person's own note about who this
+        creator is and what moments matter, given to the AI as background
+        (creator/retrieval.py). Tidied and cut to 600 characters, never
+        refused; an empty one clears it. Returns what was saved."""
+        d = db()
+        try:
+            if d.conn.execute(
+                "SELECT 1 FROM creators WHERE creator_id = ?", (creator_id,)
+            ).fetchone() is None:
+                raise HTTPException(404, "no such creator")
+            saved = d.set_creator_description(creator_id, body.description)
+        finally:
+            d.close()
+        return {"creator_id": creator_id, "description": saved}
 
     @app.post("/creators/{creator_id}/branding")
     def set_creator_branding(creator_id: int, body: CreatorBrandingIn):

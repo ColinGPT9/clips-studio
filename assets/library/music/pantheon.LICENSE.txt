@@ -1,0 +1,16 @@
+Pantheon
+by HoliznaCC0
+
+Licence: CC0 1.0 Universal (public domain dedication)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Source page: https://freemusicarchive.org/music/holiznacc0/phonk-aura-farming/pantheon/
+The page says, as read on 2026-11-11:
+  "Pantheon by HoliznaCC0 is licensed under a CC0 1.0 Universal License"
+  (linked to https://creativecommons.org/publicdomain/zero/1.0/)
+
+Original file: https://files.freemusicarchive.org/storage-freemusicarchive-org/tracks/15yiCDxLujj0mWw7LZHHsSxb33E1qfdAHyzoTqPB.mp3
+  sha256 91f12bcbab2a774933f0beef26fccf92911d5da1c09588558374d31962fd9ee1
+
+Changes made for Clips Kitty: Cut to the first 75 seconds of 192.42, with a 3 second fade out, turned down by 6.3 dB so every track is about as loud (-18 LUFS), and encoded as OGG Vorbis (quality 4) from the MP3 on the source page.
+CC0 asks for no credit. Thank you, HoliznaCC0.

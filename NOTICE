@@ -209,6 +209,29 @@ ship inside the app to burn captions and are not sold on their own.
 
 
 -------------------------------------------------------------------------------
+Free music and sound effects
+-------------------------------------------------------------------------------
+
+The music and sound effects in assets/library/ are dedicated to the public
+domain under CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/):
+free to use, also in monetised videos, with no credit needed. Each has its
+licence file beside it, and assets/library/manifest.json lists every file
+with its sha256, author and source page. CC0 asks for no credit; these are
+named as a thank-you.
+
+  Sound effects      Kenney (https://kenney.nl), from the packs Interface
+                     Sounds, UI Audio, Impact Sounds and Digital Audio
+                     (kenney.nl/assets), unmodified.
+  Music              HoliznaCC0, from the Free Music Archive
+                     (https://freemusicarchive.org/music/holiznacc0/): Roof
+                     Tops, Bubbles, Doodles, We Drove All Night, Toy Box,
+                     Ruby 1, ITS A TRAP and Pantheon. Each is cut to its
+                     first 75 seconds or less with a fade out, turned down
+                     so every track is about as loud, and encoded as OGG
+                     Vorbis; the manifest says so per file.
+
+
+-------------------------------------------------------------------------------
 Commercial licensing
 -------------------------------------------------------------------------------
 

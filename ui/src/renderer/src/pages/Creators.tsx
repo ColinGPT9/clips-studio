@@ -1,5 +1,5 @@
 import { t } from '../lib/i18n'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import type {
   BrandingProfile,
@@ -51,6 +51,9 @@ const EVENT_CHIP: Record<string, string> = {
   completed: 'bg-green-500/15 text-green-400',
   stale: 'bg-raised text-muted'
 }
+
+// "About this creator": the engine cuts the text to this many characters.
+const ABOUT_MAX = 600
 
 function PlatformBadge({ platform }: { platform: string }): JSX.Element {
   return (
@@ -137,6 +140,39 @@ export default function Creators({
       setBusy(false)
     }
   }
+
+  // "About this creator" as it is being typed. It saves when the box loses
+  // focus, like a setting; the engine answers with the text as it stored it.
+  const [about, setAbout] = useState('')
+  const aboutNow = useRef<{ id: number; text: string; saved: string } | null>(null)
+  useEffect(() => {
+    setAbout(detail?.description ?? '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail?.creator_id, detail?.description])
+  aboutNow.current = detail
+    ? { id: detail.creator_id, text: about, saved: detail.description ?? '' }
+    : null
+  const saveAbout = async (): Promise<void> => {
+    const now = aboutNow.current
+    if (!now || now.text === now.saved) return
+    try {
+      const { description } = await api.setCreatorDescription(now.id, now.text)
+      setDetail((d) => (d && d.creator_id === now.id ? { ...d, description } : d))
+      if (aboutNow.current?.id === now.id && aboutNow.current.text === now.text) setAbout(description)
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+  // Leaving the page mid-sentence still saves what was typed.
+  useEffect(
+    () => () => {
+      const now = aboutNow.current
+      if (now && now.text !== now.saved) {
+        void api.setCreatorDescription(now.id, now.text).catch(() => undefined)
+      }
+    },
+    []
+  )
 
   const knowledgeByType = (detail?.knowledge ?? []).reduce<
     Record<string, CreatorDetail['knowledge']>
@@ -300,6 +336,31 @@ export default function Creators({
                   />
                   Learning enabled
                 </label>
+              </div>
+
+              <div>
+                <div className="flex items-baseline justify-between gap-2 mb-2">
+                  <label htmlFor="creator-about" className="text-sm font-semibold">
+                    {t('About this creator')}
+                  </label>
+                  {about.length >= ABOUT_MAX - 100 && (
+                    <span className="text-[11px] text-muted tabular-nums">
+                      {about.length} / {ABOUT_MAX}
+                    </span>
+                  )}
+                </div>
+                <textarea
+                  id="creator-about"
+                  className="input text-sm resize-y"
+                  rows={3}
+                  maxLength={ABOUT_MAX}
+                  value={about}
+                  onChange={(e) => setAbout(e.target.value)}
+                  onBlur={() => void saveAbout()}
+                  title={t(
+                    'Tell the AI who this creator is: what their videos are about and which moments matter. Example: "Plays horror games with two friends. The best moments are the jump scares." The AI reads it as background when it picks clips and writes titles. It stays on this PC, unless you use cloud AI with your own key: then it is sent to that provider with the rest of the request.'
+                  )}
+                />
               </div>
 
               <div>

@@ -10,7 +10,10 @@ in the clip's ORIGINAL timeline):
     "volume":      1.0,          # 0..2, applied to the whole (final) clip
     "mute_all":    false,
     "fade_in":     0.0,          # seconds
-    "fade_out":    0.0
+    "fade_out":    0.0,
+    "music":       {"path": "C:/.../song.mp3", "volume": 0.25, "duck": true}
+                   # the person's own file, or one of the app's free tracks:
+                   # {"library": "<id>", "volume": 0.25, "duck": true}
   }
 """
 
@@ -52,7 +55,7 @@ class EditList:
     fade_out: float = 0.0
     speed: float = 1.0                   # whole-clip playback speed (0.5-3x)
     hook: dict | None = None             # {"text": str, "seconds": float} top title
-    music: dict | None = None            # {"path": str, "volume": 0-1, "duck": bool}
+    music: dict | None = None            # {"path": str, "volume": 0-1, "duck": bool}, or "library": id for "path"
 
     @classmethod
     def from_dict(cls, d: dict | None, duration: float) -> "EditList | None":
@@ -85,10 +88,22 @@ class EditList:
 
         music = None
         m = d.get("music")
-        if isinstance(m, dict) and str(m.get("path", "")).strip():
+        if isinstance(m, dict) and isinstance(m.get("path"), str) and m["path"].strip():
             music = {
                 "path": str(m["path"]).strip(),
                 "volume": max(0.0, min(1.0, float(m.get("volume", 0.25) or 0.25))),
+                "duck": bool(m.get("duck", True)),
+            }
+        elif isinstance(m, dict) and isinstance(m.get("library"), str) and m["library"].strip():
+            # One of the app's own free tracks, named by its id
+            # (video/audio_library.py); the render finds the file.
+            try:
+                level = float(m.get("volume", 0.25) or 0.25)
+            except (TypeError, ValueError):
+                level = 0.25
+            music = {
+                "library": m["library"].strip(),
+                "volume": max(0.0, min(1.0, level)),
                 "duck": bool(m.get("duck", True)),
             }
 

@@ -1,0 +1,16 @@
+Doodles
+by HoliznaCC0
+
+Licence: CC0 1.0 Universal (public domain dedication)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Source page: https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/doodles-lofi-happy-mp3/
+The page says, as read on 2026-11-11:
+  "Doodles ( LoFi , Happy ).mp3 by HoliznaCC0 is licensed under a CC0 1.0 Universal License"
+  (linked to https://creativecommons.org/publicdomain/zero/1.0/)
+
+Original file: https://files.freemusicarchive.org/storage-freemusicarchive-org/tracks/rQGj86J7JXRwu3BRKtB6GIfnwCwI5slkTwfTWqvI.mp3
+  sha256 84db72387b14fa51294ba76a0bb3f72f39172527e5eb7964da8567596561ae72
+
+Changes made for Clips Kitty: Cut to the first 75 seconds of 138.32, with a 3 second fade out, turned down by 7.2 dB so every track is about as loud (-18 LUFS), and encoded as OGG Vorbis (quality 4) from the MP3 on the source page.
+CC0 asks for no credit. Thank you, HoliznaCC0.

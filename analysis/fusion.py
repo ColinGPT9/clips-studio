@@ -96,6 +96,12 @@ def find_clips(
         weights = apply_bias(weights, weight_bias)
         print("  Using learned scoring preferences for this creator")
 
+    # "About this creator" (creator/retrieval.py): what the person wrote about
+    # them, as one labelled line of background in the prompts that find, score
+    # and order clips. It adds no points. Nothing written: every prompt is
+    # exactly as before.
+    creator_note = getattr(creator_context, "note", "") or ""
+
     # ---- 1. extract + normalize signals --------------------------------
     progress.emit(stage="signals")
     if signals is not None:
@@ -177,7 +183,9 @@ def find_clips(
         chunk_overlap_seconds=analysis_cfg["chunk_overlap_seconds"],
         long_video_threshold_seconds=analysis_cfg["long_video_threshold_seconds"],
         events=events,
-        **({"guidance": guidance, "events_title": events_title} if gaming is not None else {}),
+        **({"guidance": _with_note(guidance, creator_note), "events_title": events_title}
+           if gaming is not None else {}),
+        **({"guidance": creator_note} if creator_note and gaming is None else {}),
         **({"selection": 2} if selection == 2 else {}),
     )
 
@@ -229,11 +237,12 @@ def find_clips(
               f"(per-modality: visual/audio/combined)")
         signal_cands = highlights.score_windows(
             segments, llm, peak_windows, events=events,
-            **({"guidance": gaming.guidance("windows"), "events_title": events_title,
+            **({"guidance": _with_note(gaming.guidance("windows"), creator_note), "events_title": events_title,
                 "labels": {i: "game here: " + gaming.game_at(s0, e0)[0]
                            for i, (s0, e0) in enumerate(peak_windows) if gaming.game_at(s0, e0)[0]},
                 "batch": 8}
                if gaming is not None else {}),
+            **({"guidance": creator_note} if creator_note and gaming is None else {}),
             **highlights.window_options(selection),
         )
         # Signal peaks are seeded tight around the hot moment — grow them to a
@@ -270,6 +279,7 @@ def find_clips(
         if wanted:
             print(f"  Clip direction: {len(wanted)} window(s) where what was asked for comes up")
             asked = highlights.score_windows(segments, llm, wanted, events=events,
+                                             **({"guidance": creator_note} if creator_note else {}),
                                              **highlights.window_options(selection))
             for c in asked:
                 c.source = "direction"
@@ -306,7 +316,8 @@ def find_clips(
         if wanted:
             found = highlights.score_windows(
                 segments, llm, [(e.start, e.end) for e in wanted], events=events,
-                guidance=sport.guidance("windows"), events_title=events_title, batch=8)
+                guidance=_with_note(sport.guidance("windows"), creator_note), events_title=events_title,
+                batch=8)
             for c in found:
                 c.source = "sport"
             candidates += found
@@ -634,7 +645,8 @@ def find_clips(
             cancel.check_active()  # one more LLM call per batch
             progress.emit(stage="ranking", current=bi, total=n_batches)
             batch = finalists[i : i + batch_size]
-            reranked += (_rerank(batch, segments, llm, gaming) if len(batch) > 1 else batch)
+            reranked += (_rerank(batch, segments, llm, gaming, **({"note": creator_note} if creator_note else {}))
+                         if len(batch) > 1 else batch)
         finalists = sorted(reranked, key=lambda c: c.score, reverse=True)
     if first is not None:
         finalists.sort(key=first, reverse=True)  # a must-have survives the cap below too
@@ -1049,9 +1061,21 @@ def _strongest_peak_windows(
 # ---- rerank ------------------------------------------------------------------
 
 
+def _with_note(guidance, note: str):
+    """A prompt's guidance with the person's note about the creator
+    (CreatorContext.note) as a last paragraph. No note: the guidance itself,
+    untouched, so the prompt is exactly what it was."""
+    if not note:
+        return guidance
+    if callable(guidance):
+        return lambda start, end: _with_note(guidance(start, end), note)
+    return f"{guidance.strip()}\n\n{note}" if guidance and guidance.strip() else note
+
+
 def _rerank(finalists: list[ClipCandidate], segments: list[Segment], llm: LLMBackend,
-            gaming=None) -> list[ClipCandidate]:
-    """One LLM call ordering the finalists best-first; blends rank into score."""
+            gaming=None, note: str = "") -> list[ClipCandidate]:
+    """One LLM call ordering the finalists best-first; blends rank into score.
+    `note`: the person's note about the creator, as background ("" for none)."""
     template = RERANK_PROMPT_PATH.read_text(encoding="utf-8")
     lines = []
     for i, c in enumerate(finalists):
@@ -1072,7 +1096,7 @@ def _rerank(finalists: list[ClipCandidate], segments: list[Segment], llm: LLMBac
     if gaming is not None:
         guidance = (gaming.guidance("rerank") + "\n- game (0-100) is how strongly chat, the "
                     "streamer's voice and the game itself mark an in-game moment in that clip.")
-    prompt = prompt.replace("{mode_guidance}", highlights._guidance_block(guidance))
+    prompt = prompt.replace("{mode_guidance}", highlights._guidance_block(_with_note(guidance, note)))
 
     try:
         raw = generate_json(llm, prompt, ORDER_SCHEMA)
