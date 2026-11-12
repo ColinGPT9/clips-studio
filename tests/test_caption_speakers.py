@@ -245,9 +245,11 @@ def test_nothing_heard_and_nothing_said_takes_a_stale_mark_off_a_saved_line():
 
 
 def test_a_saved_line_goes_by_who_says_its_words_not_by_the_pause_inside_it():
-    """ "yeah" (fixed by hand) and "right exactly" (heard) are one caption
-    with two seconds of silence in the middle. By the clock the other speaker
-    has 1.1 s of its 2.8 s; by the words, all of it."""
+    """ "yeah" (fixed by hand) and "right exactly" (heard) are one saved
+    caption with two seconds of silence in the middle (a line made from the
+    transcript ends at such a pause, #228; one a person saved can still span
+    it). By the clock the other speaker has 1.1 s of its 2.8 s; by the words,
+    all of it."""
     from video.captions import clip_words, paint_turns
 
     words = [
@@ -261,12 +263,14 @@ def test_a_saved_line_goes_by_who_says_its_words_not_by_the_pause_inside_it():
 
     built = build_caption_lines(segments, clip, 3, said)
     assert [(line["text"], line.get("speaker")) for line in built] == [
-        ("so then", None), ("yeah right exactly", 1), ("ok", None),
+        ("so then", None), ("yeah", 1), ("right exactly", 1), ("ok", None),
     ]
-    # The same lines, saved (the editor sends them when a word is muted or
-    # retyped, without their marks), are marked the same again.
-    saved = [{k: v for k, v in line.items() if k != "speaker"} for line in built]
-    assert tag_lines(saved, said, clip_words(words, 0.0, 4.5)) == built
+    # The lines as they were made before captions ended at a pause, saved
+    # (the editor sends them when a word is muted or retyped, without their
+    # marks): the one with the pause in it is still marked whole.
+    saved = [{"start": 0.0, "end": 1.0, "text": "so then"}, {"start": 1.0, "end": 3.8, "text": "yeah right exactly"},
+             {"start": 4.0, "end": 4.5, "text": "ok"}]
+    assert tag_lines(saved, said, clip_words(words, 0.0, 4.5)) == [saved[0], {**saved[1], "speaker": 1}, saved[2]]
     assert "speaker" not in tag_lines(saved, said)[1]       # by the clock alone it was lost
 
 

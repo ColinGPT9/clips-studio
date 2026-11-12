@@ -143,8 +143,22 @@ def _bursts() -> list[dict]:
     return words
 
 
+def _paused() -> list[dict]:
+    """Quiet parts (#228): pauses just under, on and over the length that
+    ends a caption, up to a few seconds; words whose end the transcript
+    stretched across the silence after them, longer than a word counts as
+    spoken; a word of no length before a pause, and a very short one."""
+    words, t = [], 1.5
+    for i in range(260):
+        k = i % 13
+        length = (0.3, 0.42, 1.44, 0.25, 0.0, 0.36, 0.5, 2.1, 0.31, 0.04, 0.4, 1.2, 0.28)[k]
+        words.append({"start": round(t, 2), "end": round(t + length, 2), "word": f"p{i}"})
+        t += length + (0.8, 0.0, 0.0, 1.0, 0.9, 0.0, 0.81, 0.0, 0.0, 2.6, 0.0, 0.79, 0.0)[k]
+    return words
+
+
 TRANSCRIPTS = {"steady": _steady(), "ragged": _ragged(), "talked_over": _talked_over(), "spoken": _spoken(),
-               "bursts": _bursts()}
+               "bursts": _bursts(), "paused": _paused()}
 # Clip starts and ends in the video: on a word's edge, and cutting through one.
 WINDOWS = [(10.0, 30.0), (249.67 - 240, 31.13), (12.21, 40.5), (3.0, 18.4), (20.36, 44.4)]
 TURNS = [
@@ -222,7 +236,8 @@ def test_the_editor_reads_who_says_each_word_as_the_render_does(tmp_path):
 def test_the_editor_breaks_and_colours_the_captions_as_the_render_does(tmp_path):
     cases = _cases()
 
-    got = _ts(tmp_path, cases, "return m.groupWords(c.words, c.size, m.paintTurns(c.turns, c.edits))")
+    got = _ts(tmp_path, cases,
+              "return m.groupWords(c.words, c.size, m.paintTurns(c.turns, c.edits), c.end - c.start)")
 
     for case, lines in zip(cases, got, strict=True):
         assert lines == _lines(case, paint_turns(case["turns"], case["edits"])), case
@@ -258,7 +273,8 @@ def test_muting_a_word_does_not_change_whose_colour_a_caption_is(tmp_path):
     will send through tagLines, the test above, so it still shows what burns."""
     cases = [c for c in _cases() if c["transcript"] not in ("talked_over", "bursts")]
 
-    got = _ts(tmp_path, cases, "return m.groupWords(c.words, c.size, m.paintTurns(c.turns, c.edits))")
+    got = _ts(tmp_path, cases,
+              "return m.groupWords(c.words, c.size, m.paintTurns(c.turns, c.edits), c.end - c.start)")
 
     for case, shown in zip(cases, got, strict=True):
         sent = [{k: v for k, v in line.items() if k != "speaker"} for line in shown]
@@ -504,7 +520,9 @@ def test_each_word_is_in_the_line_the_editor_made_for_it(tmp_path):
 
     got = _ts(tmp_path, cases, """
         const turns = m.paintTurns(c.turns, c.edits);
-        return { lines: m.groupWords(c.words, c.size, turns), held: m.groupOfWords(c.words, c.size, turns) };
+        const length = c.end - c.start;
+        return { lines: m.groupWords(c.words, c.size, turns, length),
+                 held: m.groupOfWords(c.words, c.size, turns, length) };
     """)
 
     left_out = 0

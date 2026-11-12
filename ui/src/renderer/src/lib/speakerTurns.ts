@@ -17,6 +17,20 @@ import type { CaptionLine, SpeakerTurn, Word } from './types'
  *  word beside it (video/captions.py _TINY). */
 const TINY = 0.05
 
+/** Captions clear in the quiet parts of a clip: one ends at a pause longer
+ *  than PAUSE, and no word counts as spoken for longer than LONGEST_WORD (a
+ *  transcript can stretch a short word's end across the silence after it).
+ *  video/captions.py PAUSE_SECONDS, LONGEST_WORD_SECONDS, _said. */
+const PAUSE = 0.8
+const LONGEST_WORD = 1.2
+/** How long a caption with no room of its own (a word the transcript timed
+ *  with no length) is on screen when a pause follows it.
+ *  video/captions.py ALONE_SECONDS, _alone. */
+const ALONE = 0.4
+const hundredth = (seconds: number): number => Math.round(seconds * 100) / 100
+/** Until when a word counts as spoken. */
+const saidTo = (w: Word): number => Math.min(w.end, hundredth(w.start + LONGEST_WORD))
+
 /** Turns as the engine reads them: an end after the start, a speaker above 0. */
 function turnsOf(turns: readonly SpeakerTurn[] | null | undefined): SpeakerTurn[] {
   const out: SpeakerTurn[] = []
@@ -136,11 +150,13 @@ export function speakersOf(words: readonly Word[], turns: readonly SpeakerTurn[]
 
 /** Caption lines from a clip's words, and for each word the line it went
  *  into (-1 where its group has no length: the render burns no caption that
- *  short, so the word is in none). */
+ *  short, so the word is in none). `duration` is the clip's, in seconds: no
+ *  caption is given time past it. */
 function grouped(
   words: readonly Word[],
   size: number,
-  turns: readonly SpeakerTurn[] | null | undefined
+  turns: readonly SpeakerTurn[] | null | undefined,
+  duration: number
 ): { lines: CaptionLine[]; held: number[] } {
   const heard = turnsOf(turns).length > 0
   const who = heard ? speakersOf(words, turns) : words.map(() => 0)
@@ -148,12 +164,35 @@ function grouped(
   const n = Math.max(1, Math.trunc(size))
   const lines: CaptionLine[] = []
   const held = words.map(() => -1)
+  /** How far the words [from, to) have been said. */
+  const saidBy = (from: number, to: number): number => {
+    let until = saidTo(words[from])
+    for (let k = from + 1; k < to; k++) until = Math.max(until, saidTo(words[k]))
+    return until
+  }
+  /** A pause sits between two groups (video/captions.py _quiet). */
+  const quiet = (before: [number, number], after: [number, number]): boolean =>
+    hundredth(words[after[0]].start - saidBy(before[0], before[1])) > PAUSE
+  const captions: { group: [number, number]; speaker: number }[] = []
   let first = 0
   for (let i = 1; i <= words.length; i++) {
     if (i < words.length && who[i] === who[first]) continue
-    // What one person says, n words to a group: [from, to) in the list.
+    // What one person says, n words to a group: [from, to) in the list. A
+    // pause starts a new group (video/captions.py _grouped): the words so far
+    // have been said and the next starts more than PAUSE later.
     let groups: [number, number][] = []
-    for (let g = first; g < i; g += n) groups.push([g, Math.min(i, g + n)])
+    let until = 0 // how far the group being filled has been said
+    for (let k = first; k < i; k++) {
+      const open = groups[groups.length - 1]
+      const paused = hundredth(words[k].start - until) > PAUSE
+      if (open !== undefined && k - open[0] < n && !paused) {
+        open[1] = k + 1
+        until = Math.max(until, saidTo(words[k]))
+      } else {
+        groups.push([k, k + 1])
+        until = saidTo(words[k])
+      }
+    }
     if (heard) {
       // Captions that hold a word long enough to stand alone: a group of
       // nothing but shorter words goes in the caption before it (the first
@@ -164,51 +203,93 @@ function grouped(
       // words into one instant, and the rest of those stay as they are
       // without the option.
       const limit = n + 3
-      const out: [number, number][] = []
-      let waiting: [number, number][] = [] // short groups in front of the first caption
-      let seen = false // a caption is made
-      let room = false // and the last one can still take words
-      for (const group of groups) {
-        const [g, to] = group
-        if (short.slice(g, to).some((tiny) => !tiny)) {
-          let from = g
-          while (waiting.length && to - waiting[waiting.length - 1][0] <= limit) from = waiting.pop()![0]
-          out.push(...waiting, [from, to])
-          waiting = []
-          seen = room = true
-        } else if (!seen) waiting.push(group)
-        else if (room && to - out[out.length - 1][0] <= limit) out[out.length - 1][1] = to
-        else {
-          out.push(group)
-          room = false
+      const stood = (groups: [number, number][]): [number, number][] => {
+        const out: [number, number][] = []
+        let waiting: [number, number][] = [] // short groups in front of the first caption
+        let seen = false // a caption is made
+        let room = false // and the last one can still take words
+        for (const group of groups) {
+          const [g, to] = group
+          if (short.slice(g, to).some((tiny) => !tiny)) {
+            let from = g
+            while (waiting.length && to - waiting[waiting.length - 1][0] <= limit) from = waiting.pop()![0]
+            out.push(...waiting, [from, to])
+            waiting = []
+            seen = room = true
+          } else if (!seen) waiting.push(group)
+          else if (room && to - out[out.length - 1][0] <= limit) out[out.length - 1][1] = to
+          else {
+            out.push(group)
+            room = false
+          }
+        }
+        return seen ? out : groups // nothing but short words: as they were
+      }
+      // Never across a pause, which would keep the caption up through it:
+      // each stretch between two pauses is done by itself, and short words
+      // alone in one are a caption together (video/captions.py _standing).
+      const stretches: [number, number][][] = []
+      groups.forEach((group, k) => {
+        if (k > 0 && !quiet(groups[k - 1], group)) stretches[stretches.length - 1].push(group)
+        else stretches.push([group])
+      })
+      if (stretches.length < 2) groups = stood(groups)
+      else {
+        groups = []
+        for (const stretch of stretches) {
+          const from = stretch[0][0]
+          const to = stretch[stretch.length - 1][1]
+          if (short.slice(from, to).some((tiny) => !tiny)) groups.push(...stood(stretch))
+          else for (let g = from; g < to; g += limit) groups.push([g, Math.min(to, g + limit)])
         }
       }
-      if (seen) groups = out // else nothing but short words: as they were
     }
-    for (const [g, to] of groups) {
-      const start = words[g].start
-      let end = words[to - 1].end
-      if (heard) {
-        // A short word at the end can be timed inside the word before it:
-        // the caption stays up until that word has been said.
-        let last = to - 1
-        while (last > g && short[last]) last--
-        for (let k = last; k < to; k++) end = Math.max(end, words[k].end)
-      }
-      if (end <= start) continue
-      held.fill(lines.length, g, to)
-      lines.push({
-        start,
-        end,
-        text: words
-          .slice(g, to)
-          .map((w) => w.word)
-          .join(' '),
-        ...(who[first] ? { speaker: who[first] } : {})
-      })
-    }
+    for (const group of groups) captions.push({ group, speaker: who[first] })
     first = i
   }
+  captions.forEach(({ group, speaker }, c) => {
+    const [g, to] = group
+    const start = words[g].start
+    let end = words[to - 1].end
+    // Up until its last word has been said, for no longer than a word
+    // counts as spoken: the caption is gone in the silence after it.
+    let said = saidTo(words[to - 1])
+    if (heard) {
+      // A short word at the end can be timed inside the word before it:
+      // the caption stays up until that word has been said.
+      let last = to - 1
+      while (last > g && short[last]) last--
+      for (let k = last; k < to; k++) {
+        end = Math.max(end, words[k].end)
+        said = Math.max(said, saidTo(words[k]))
+      }
+    }
+    // Beside a pause, a caption with no room of its own is on screen in the
+    // silence: for ALONE, or as much of that as there is before the next
+    // caption or the clip's end (video/captions.py _alone).
+    const after = captions[c + 1]
+    const beside = (c > 0 && quiet(captions[c - 1].group, group)) || (after !== undefined && quiet(group, after.group))
+    if (beside && saidBy(g, to) - start <= TINY) {
+      let until = Math.min(hundredth(duration), hundredth(start + ALONE))
+      if (after !== undefined) until = Math.min(until, words[after.group[0]].start)
+      if (until > start) end = said = until
+    }
+    if (end <= start) return
+    held.fill(lines.length, g, to)
+    const line: CaptionLine = {
+      start,
+      end: said,
+      text: words
+        .slice(g, to)
+        .map((w) => w.word)
+        .join(' ')
+    }
+    // A pause made it a caption of its own, and no word in it is long
+    // enough to say whose it is: by the clock, as the render marks the same
+    // line when it is sent one.
+    if (heard && beside && short.slice(g, to).every((tiny) => tiny)) lines.push(tagLines([line], turns, words)[0])
+    else lines.push(speaker ? { ...line, speaker } : line)
+  })
   return { lines, held }
 }
 
@@ -217,18 +298,20 @@ function grouped(
 export function groupWords(
   words: readonly Word[],
   size: number,
-  turns: readonly SpeakerTurn[] | null | undefined = []
+  turns: readonly SpeakerTurn[] | null | undefined = [],
+  duration = Infinity
 ): CaptionLine[] {
-  return grouped(words, size, turns).lines
+  return grouped(words, size, turns, duration).lines
 }
 
 /** For each word, which of groupWords' lines it is in; -1 for a word in none. */
 export function groupOfWords(
   words: readonly Word[],
   size: number,
-  turns: readonly SpeakerTurn[] | null | undefined = []
+  turns: readonly SpeakerTurn[] | null | undefined = [],
+  duration = Infinity
 ): number[] {
-  return grouped(words, size, turns).held
+  return grouped(words, size, turns, duration).held
 }
 
 /** Lines marked with who says them: `speaker` on a line that is mostly the
@@ -287,10 +370,15 @@ export function tagLines(
  *  transcript has no word timings: the render spreads that text out evenly,
  *  and the word list is given none of it, so lines made from the words would
  *  be missing those captions. */
-export function wordsMakeLines(words: readonly Word[], lines: readonly CaptionLine[], size: number): boolean {
+export function wordsMakeLines(
+  words: readonly Word[],
+  lines: readonly CaptionLine[],
+  size: number,
+  duration = Infinity
+): boolean {
   const read = (all: readonly CaptionLine[]): string =>
     all.flatMap((line) => String(line.text ?? '').split(/\s+/).filter(Boolean)).join(' ')
-  return read(groupWords(words, size)) === read(lines)
+  return read(groupWords(words, size, [], duration)) === read(lines)
 }
 
 // ---- fixing it by hand ------------------------------------------------------------
@@ -438,13 +526,13 @@ export function fixSpeakers(clip: SpeakerClip): SpeakerFixing {
   // clip has captions the list has no words for, its own lines are sent
   // instead (as they are without the second speaker's colour), so none goes
   // missing; the render then treats them as it treats saved ones.
-  const covered = clip.saved || clip.lines === null || wordsMakeLines(words, own, clip.storedPerCaption)
+  const covered = clip.saved || clip.lines === null || wordsMakeLines(words, own, clip.storedPerCaption, clip.duration)
   const whole = clip.saved || (clip.sending && !covered)
   const lineOf = whole ? linesOfWords(words, own) : []
   const leans = leansOn(words)
 
   const given = (turns: readonly SpeakerTurn[]): CaptionLine[] | null =>
-    whole ? clip.lines : clip.sending && words.length > 0 ? groupWords(words, clip.perCaption, turns) : null
+    whole ? clip.lines : clip.sending && words.length > 0 ? groupWords(words, clip.perCaption, turns, clip.duration) : null
 
   const speakers = (edits: readonly SpeakerTurn[]): number[] => {
     const turns = paintTurns(heard, edits)
@@ -452,7 +540,7 @@ export function fixSpeakers(clip: SpeakerClip): SpeakerFixing {
     const sent = given(turns)
     if (!sent) return byWord
     const tagged = tagLines(sent, turns, words)
-    const held = whole ? lineOf : groupOfWords(words, clip.perCaption, turns)
+    const held = whole ? lineOf : groupOfWords(words, clip.perCaption, turns, clip.duration)
     // A word in none of the lines sent (said in no time at all, and alone in
     // its group) is burned nowhere: it is shown as the word it leans on.
     return held.map((l, i) => (l >= 0 ? (tagged[l].speaker ? 1 : 0) : whole ? 0 : byWord[i]))

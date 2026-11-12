@@ -334,8 +334,8 @@ def test_a_mark_left_on_a_saved_line_colours_nothing_when_nobody_else_is_heard(
 
 def test_lines_the_editor_sends_with_a_fix_burn_as_the_editor_showed_them(pipeline, monkeypatch, tmp_path, heard):
     """A word muted in the same visit: the editor sends its lines, ending
-    where the speaker changes, and the fix beside them. A caption made of the
-    other speaker's words either side of a pause is still theirs."""
+    where the speaker changes, and the fix beside them. The other speaker's
+    words either side of a pause are two captions (#228), both still theirs."""
     from video.captions import build_caption_lines, paint_turns
 
     fix = [[5.0, 5.5, 1]]                           # w30, by hand; w34-w35 were heard
@@ -343,15 +343,16 @@ def test_lines_the_editor_sends_with_a_fix_burn_as_the_editor_showed_them(pipeli
     shown = build_caption_lines(_gapped(), CLIP, 3, paint_turns([[7.0, 8.0, 1]], fix))
     assert [(line["text"], line.get("speaker")) for line in shown] == [
         ("w20 w21 w22", None), ("w23 w24 w25", None), ("w26 w27 w28", None), ("w29", None),
-        ("w30 w34 w35", 1), ("w36 w37 w38", None), ("w39", None),
+        ("w30", 1), ("w34 w35", 1), ("w36 w37 w38", None), ("w39", None),
     ]
     sent = [{k: v for k, v in line.items() if k != "speaker"} for line in shown]
 
     ass, _ = _render(pipeline, monkeypatch, tmp_path, ON, opts={"caption_lines": sent, "speaker_edits": fix},
                      segments=_gapped())
 
-    assert _events(ass)[4] == f"{{\\1c{SECOND}}}W30 W34 W35"
-    assert [e for e in _events(ass) if "\\1c" in e] == [f"{{\\1c{SECOND}}}W30 W34 W35"]
+    theirs = [f"{{\\1c{SECOND}}}W30", f"{{\\1c{SECOND}}}W34 W35"]
+    assert _events(ass)[4:6] == theirs
+    assert [e for e in _events(ass) if "\\1c" in e] == theirs
 
 
 def test_a_hand_fix_marks_saved_lines_whole(pipeline, monkeypatch, tmp_path, heard):

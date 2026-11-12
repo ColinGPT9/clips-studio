@@ -134,6 +134,11 @@ Kitty after you change it.
 
 ### Fixed
 
+- **Captions clear in the quiet parts of a clip** (#228). A caption used to stay on
+  screen through a pause when the words either side of it were in the same caption. Now
+  a pause of more than 0.8 seconds ends the caption and the next word starts a new one,
+  and no single word keeps a caption up for more than 1.2 seconds. Captions you edited
+  yourself keep their times.
 - **A clip's cuts and mutes stay on the same moments when you change its start or
   end** in its details or with the AI chat. They used to move by as much as the start
   did, so a cut word could come back and a moment you kept could be cut. A clip you make
