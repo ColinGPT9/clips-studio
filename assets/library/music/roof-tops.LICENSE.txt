@@ -1,0 +1,16 @@
+Roof Tops
+by HoliznaCC0
+
+Licence: CC0 1.0 Universal (public domain dedication)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Source page: https://freemusicarchive.org/music/holiznacc0/summer-air-lo-fi/roof-tops/
+The page says, as read on 2026-11-11:
+  "Roof Tops by HoliznaCC0 is licensed under a CC0 1.0 Universal License"
+  (linked to https://creativecommons.org/publicdomain/zero/1.0/)
+
+Original file: https://files.freemusicarchive.org/storage-freemusicarchive-org/tracks/2hFTiuqYI7onbLzpi9ldoBP8AYeuStsCUxTqm6vd.mp3
+  sha256 f6e619fbfdc0898c409494d5c810d34d9cd29be2b75bb2d8c197e1edb37155b5
+
+Changes made for Clips Kitty: Cut to the first 75 seconds of 214.45, with a 3 second fade out, turned down by 2.6 dB so every track is about as loud (-18 LUFS), and encoded as OGG Vorbis (quality 4) from the MP3 on the source page.
+CC0 asks for no credit. Thank you, HoliznaCC0.

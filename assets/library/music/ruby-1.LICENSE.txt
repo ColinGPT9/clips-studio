@@ -1,0 +1,16 @@
+Ruby 1
+by HoliznaCC0
+
+Licence: CC0 1.0 Universal (public domain dedication)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Source page: https://freemusicarchive.org/music/holiznacc0/ruby-chiptunes/ruby-1/
+The page says, as read on 2026-11-11:
+  "Ruby 1 by HoliznaCC0 is licensed under a CC0 1.0 Universal License"
+  (linked to https://creativecommons.org/publicdomain/zero/1.0/)
+
+Original file: https://files.freemusicarchive.org/storage-freemusicarchive-org/tracks/mJ6FK4kyTEtc69eSeLph8dKvWheroaqcChOazEI4.mp3
+  sha256 39c660ab99420dd4e3f7472f7759d4042072e87e53cf4674ff7bfede50aa90d0
+
+Changes made for Clips Kitty: Cut to the first 75 seconds of 128.34, with a 3 second fade out, turned down by 4.8 dB so every track is about as loud (-18 LUFS), and encoded as OGG Vorbis (quality 4) from the MP3 on the source page.
+CC0 asks for no credit. Thank you, HoliznaCC0.

@@ -9,6 +9,7 @@ nothing is ever reprocessed or double-uploaded.
 import hashlib
 import json
 import sqlite3
+import unicodedata
 from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
@@ -107,7 +108,8 @@ CREATE TABLE IF NOT EXISTS creators (
     display_name     TEXT NOT NULL,
     aliases          TEXT NOT NULL DEFAULT '[]',   -- JSON list of alternate names
     learning_enabled INTEGER NOT NULL DEFAULT 1,
-    created_at       TEXT NOT NULL
+    created_at       TEXT NOT NULL,
+    description      TEXT NOT NULL DEFAULT ''      -- the person's own note about this creator, for the AI
 );
 
 CREATE TABLE IF NOT EXISTS platform_accounts (
@@ -538,6 +540,24 @@ def _checked(fields: dict, allowed: frozenset, what: str) -> dict:
 # Clip lifecycle:   rendered -> queued -> scheduled -> uploaded | failed
 
 
+CREATOR_DESCRIPTION_MAX = 600   # characters of "About this creator" kept
+
+
+def clean_creator_description(text) -> str:
+    """What a person typed about a creator, as it is stored: line breaks kept
+    (Windows ones as plain ones), tabs as spaces, every other control
+    character removed, trimmed, and cut to CREATOR_DESCRIPTION_MAX characters."""
+    if not isinstance(text, str):
+        return ""
+    text = text.replace("\r\n", "\n").replace("\r", "\n").replace("\t", " ")
+    # Cc: control characters. Cs: half of a broken pair, which can't be saved.
+    text = "".join(ch for ch in text if ch == "\n" or unicodedata.category(ch) not in ("Cc", "Cs"))
+    # Only invisible characters (zero-width spaces, direction marks): empty.
+    if not any(unicodedata.category(ch)[0] not in "CZ" for ch in text):
+        return ""
+    return text.strip()[:CREATOR_DESCRIPTION_MAX].rstrip()
+
+
 def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
@@ -790,6 +810,10 @@ class StateDB:
             # Gaming / Reaction: the webcam and game area a person set for this
             # creator in the editor, used for their next videos (gaming/run.py).
             self.conn.execute("ALTER TABLE creators ADD COLUMN gaming_layout TEXT")
+        if "description" not in creator_cols:
+            # "About this creator": what the person wrote about them, given
+            # to the AI as background (creator/retrieval.py). Empty by default.
+            self.conn.execute("ALTER TABLE creators ADD COLUMN description TEXT NOT NULL DEFAULT ''")
         knowledge_cols = {
             r["name"] for r in self.conn.execute("PRAGMA table_info(creator_knowledge)")
         }
@@ -1120,6 +1144,26 @@ class StateDB:
         self.conn.execute("DELETE FROM creators WHERE creator_id = ?", (creator_id,))
         self.conn.commit()
         return counts
+
+    # ---- "About this creator": the person's own note, for the AI --------
+
+    def creator_description(self, creator_id: int) -> str:
+        row = self.conn.execute(
+            "SELECT description FROM creators WHERE creator_id = ?", (creator_id,)
+        ).fetchone()
+        return (row["description"] or "") if row else ""
+
+    def set_creator_description(self, creator_id: int, text) -> str:
+        """Save what the person wrote about this creator, tidied and cut to
+        CREATOR_DESCRIPTION_MAX characters (never refused). Returns what was
+        saved. It is theirs, not something learned: erasing what was learned
+        leaves it, and deleting the creator removes it with the profile."""
+        cleaned = clean_creator_description(text)
+        self.conn.execute(
+            "UPDATE creators SET description = ? WHERE creator_id = ?", (cleaned, creator_id)
+        )
+        self.conn.commit()
+        return cleaned
 
     # ---- translation glossary -----------------------------------------
 

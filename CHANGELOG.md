@@ -64,6 +64,27 @@ were often broken in a way that only showed up on somebody else's machine.
 - **Remote rendering: update both PCs** (#174). A render PC on an older Clips Kitty now
   says it needs an update and takes no clips, instead of making clips with the new caption
   looks in plain Arial.
+- **About this creator** (#174). On the Creators page you can write up to 600 characters
+  about a creator: who they are, what their videos are about, which moments matter. The
+  AI reads it as background when it picks clips and writes titles, descriptions and
+  hashtags, from the first video on. It adds no points by itself, wiping a creator's
+  learned memory keeps it, and left empty nothing changes. With cloud AI on your own key
+  it is sent to that provider with the rest of the request, like what was learned.
+- **Free music** (#155). 8 music tracks (chill, upbeat, funny and tense) now come with
+  Clips Kitty, all about as loud as each other. Pick one in the Clip Editor's Effects tab to play it under a
+  clip; your own music file still works as before. The tracks are public domain (CC0):
+  free to use, also in monetised videos, with no credit needed. With Duck under voice on,
+  a free track dips a little while someone talks and stays in the clip, also when the
+  clip is loud from start to end.
+- **Free sound effects, ready for the new editor** (#155). 56 short sound effects
+  (clicks, dings, hits, risers, zaps), also public domain (CC0), now come with Clips
+  Kitty. Placing them on a clip arrives with the new editor.
+- **Remote rendering: clips with free music can go to your render PC** (#155). A clip
+  with one of the built-in tracks is made on the render PC like any other; a clip with
+  your own music file is still made on this PC. Update Clips Kitty on the render PC too:
+  an older one says it needs an update and takes no clips. If the render PC's copy of a
+  track is missing or damaged, the clip is made on this PC instead, so it never comes
+  back without its music.
 - **Optional Clip updates.** App-wide Approve/Deny cards, private Discord
   updates and an Away from desk approval gate, with local-model wording and
   plain-text fallback. Includes a configurable attorney joke popup. Off by default.

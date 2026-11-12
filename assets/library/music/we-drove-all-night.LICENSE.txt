@@ -1,0 +1,16 @@
+We Drove All Night
+by HoliznaCC0
+
+Licence: CC0 1.0 Universal (public domain dedication)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Source page: https://freemusicarchive.org/music/holiznacc0/we-drove-all-night-game-soundtrack/we-drove-all-night/
+The page says, as read on 2026-11-11:
+  "We Drove All Night by HoliznaCC0 is licensed under a CC0 1.0 Universal License"
+  (linked to https://creativecommons.org/publicdomain/zero/1.0/)
+
+Original file: https://files.freemusicarchive.org/storage-freemusicarchive-org/tracks/m0FGlg9TFoyweOePWHw8uvhqA5s7rXgR4pScZat4.mp3
+  sha256 7f2f8953c5cb21c4704ec700a2c16f75043f6ceb7d8cfab69e69bc175b6ffaed
+
+Changes made for Clips Kitty: Cut to the first 75 seconds of 157.86, with a 3 second fade out, turned down by 3.5 dB so every track is about as loud (-18 LUFS), and encoded as OGG Vorbis (quality 4) from the MP3 on the source page.
+CC0 asks for no credit. Thank you, HoliznaCC0.

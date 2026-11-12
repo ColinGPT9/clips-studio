@@ -24,6 +24,7 @@ import type {
   GamingSettings,
   Job,
   JobOptions,
+  LibrarySound,
   ModelPull,
   ModelsInfo,
   Preflight,
@@ -405,6 +406,10 @@ export const api = {
   /** The caption fonts that ship with the app (assets/fonts), with the URLs
    *  of their files on the engine, so the preview draws with what burns. */
   bundledFonts: () => request<{ fonts: BundledFont[] }>('/fonts'),
+  /** The free music and sound effects that ship with the app (assets/library). */
+  audioLibrary: () => request<{ items: LibrarySound[] }>('/assets/library'),
+  /** Where the engine serves one of them, for an audio player. */
+  audioLibraryUrl: (sound: LibrarySound) => `${API_BASE}${sound.url}`,
   /** Named caption looks (config/caption_presets.json), Classic first. */
   captionPresets: () => request<{ presets: CaptionPreset[] }>('/caption-presets'),
   /** The codecs this PC can export in. The engine's first answer tests each
@@ -667,6 +672,13 @@ export const api = {
     request<{ learning_enabled: boolean }>(`/creators/${creatorId}/learning`, {
       method: 'POST',
       body: JSON.stringify({ enabled })
+    }),
+  /** Save "About this creator". The answer is the text as it was stored
+   *  (tidied, cut to 600 characters). */
+  setCreatorDescription: (creatorId: number, description: string) =>
+    request<{ creator_id: number; description: string }>(`/creators/${creatorId}/description`, {
+      method: 'POST',
+      body: JSON.stringify({ description })
     }),
   setCreatorBranding: (creatorId: number, brandingId: number | null) =>
     request<{ default_branding_id: number | null }>(`/creators/${creatorId}/branding`, {

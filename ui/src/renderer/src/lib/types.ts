@@ -388,7 +388,23 @@ export interface EditData {
   fade_out: number
   speed: number
   hook: { text: string; seconds: number } | null
-  music: { path: string; volume: number; duck: boolean } | null
+  /** Background music: the person's own file (`path`) or one of the free
+   *  tracks that ship with the app (`library`, an id from GET /assets/library).
+   *  One or the other. */
+  music: { path?: string; library?: string; volume: number; duck: boolean } | null
+}
+
+/** One bundled sound from GET /assets/library. `url` is an engine path to
+ *  prefix with the engine's address; `mood` is a sound effect's category. */
+export interface LibrarySound {
+  id: string
+  kind: 'music' | 'sfx'
+  title: string
+  mood: string
+  seconds: number
+  file: string
+  url: string
+  licence: string
 }
 
 export interface Word {
@@ -1193,6 +1209,8 @@ export interface CreatorDetail {
   display_name: string
   aliases: string[]
   learning_enabled: number
+  /** "About this creator": what the person wrote for the AI, '' if nothing. */
+  description: string
   default_branding_id: number | null
   accounts: CreatorAccount[]
   knowledge: CreatorKnowledgeItem[]

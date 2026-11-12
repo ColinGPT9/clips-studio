@@ -13,3 +13,6 @@ vendor/** linguist-vendored
 # The bundled caption fonts are checked byte for byte against their sha256 in
 # assets/fonts/manifest.json.
 *.ttf  binary
+# So are the bundled free music and sound effects, against
+# assets/library/manifest.json.
+*.ogg  binary

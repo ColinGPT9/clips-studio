@@ -191,6 +191,11 @@ datas += [
     # the folder the same way as the end cards). The engine serves them to
     # the caption preview too (GET /fonts), so electron-builder needs nothing.
     (str(ROOT / "assets" / "fonts"), "assets/fonts"),
+    # The free music and sound effects (CC0): the audio files, each with its
+    # licence file, and manifest.json with their sha256 (video/audio_library.py
+    # finds the folder the same way). The engine serves them to the editor's
+    # music picker too (GET /assets/library).
+    (str(ROOT / "assets" / "library"), "assets/library"),
     # The caption presets the caption controls offer (GET /caption-presets).
     (str(ROOT / "config" / "caption_presets.json"), "config"),
     # Gaming / Reaction's layouts and platform safe zones, read beside

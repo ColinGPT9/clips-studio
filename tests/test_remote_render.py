@@ -75,8 +75,17 @@ def test_a_worker_is_matched_on_what_it_can_actually_do():
 def test_a_worker_on_the_app_before_the_new_caption_looks_is_told_to_update():
     """Protocol 1 workers burn captions in Arial with no animation and the
     old margins: since step 3 of the editor suite they are refused."""
-    assert protocol.PROTOCOL == 2
+    assert protocol.PROTOCOL >= 2
     old = {"protocol": 1, "encoders": ["cpu"], "framing": True}
+    assert protocol.compatible(False, old) == (False, "worker update required")
+
+
+def test_a_worker_on_the_app_before_the_free_music_is_told_to_update():
+    """Protocol 2 workers have no music library and would make a clip
+    without its free track: since step 4 of the editor suite they are
+    refused."""
+    assert protocol.PROTOCOL == 3
+    old = {"protocol": 2, "encoders": ["cpu"], "framing": True}
     assert protocol.compatible(False, old) == (False, "worker update required")
 
 
@@ -242,6 +251,19 @@ def test_pairing_and_every_route_after_it_need_the_workers_credential(gateway):
     assert client.post("/v1/claim").status_code == 401
     assert client.post("/v1/claim", headers=_auth(wid, "wrong")).status_code == 401
     assert client.post("/v1/claim", headers=_auth(wid, secret)).status_code == 204     # nothing queued
+
+
+def test_a_render_pc_on_the_app_before_the_free_music_is_refused(gateway):
+    """Protocol 2 (the app before editor suite step 4) has no music library:
+    it can't pair, and one paired earlier is told to update at its heartbeat."""
+    q, client, _tmp = gateway
+    older = {**CAPS, "protocol": 2}
+    r = client.post("/v1/pair", json={"code": q.new_pairing_code(), "caps": older})
+    assert r.status_code == 409 and "Update both to the same version" in r.json()["detail"]
+    wid, secret = _paired(q)
+    r = client.post("/v1/heartbeat", json={"caps": older}, headers=_auth(wid, secret))
+    assert r.status_code == 409 and r.json()["detail"] == "worker update required"
+    assert client.post("/v1/heartbeat", json={"caps": CAPS}, headers=_auth(wid, secret)).status_code == 200
 
 
 def test_a_job_its_piece_resumes_and_its_result_is_checked(gateway):
@@ -492,6 +514,115 @@ def test_a_clip_with_music_from_this_pc_renders_here(dispatching, capsys):
         opts_for=lambda _c, _m: music)]
     assert sorted(calls) == [10.0, 50.0] and sorted(got) == [10.0, 50.0]
     assert q.jobs_for("v-all") == [] and "sending" not in capsys.readouterr().out
+
+
+def test_a_clip_with_music_from_the_free_library_goes_out(dispatching, capsys):
+    """One of the app's free tracks is named by its id, and the render PC has
+    the same file: the clip is sent like any other, its music with it."""
+    dispatch, gw, tmp = dispatching
+    q = gw.queue
+    wid, _s = _paired(q)
+    q.heartbeat(wid, {}, False, 1, [])
+    free = {"edit": {"music": {"library": "music-roof-tops", "volume": 0.4, "duck": True}}}
+    assert not dispatch._needs_this_pc(free)
+    # The person's own file still keeps a clip here, whatever else it names.
+    assert dispatch._needs_this_pc({"edit": {"music": {"path": "song.mp3", "library": "music-roof-tops"}}})
+    specs: list = []
+    t = _completing(q, wid, tmp, specs, 2)
+    calls = []
+    got = [c.start for c, _m, _get in dispatch.RemoteRenderer(gw, "auto", tmp).render_all(
+        "v-free", tmp / "s.mp4", _items(), [], tmp / "clips", CONFIG, None, "en", 2, local=_local(calls),
+        opts_for=lambda _c, _m: free)]
+    t.join(5)
+    assert calls == [] and sorted(got) == [10.0, 50.0]
+    assert [s["render_opts"] for s in specs] == [free, free]
+    assert all(s["protocol"] == 3 for s in specs)
+    out = capsys.readouterr().out
+    assert "Remote rendering: sending 2 clip(s) to a render worker\n" in out and "renders here" not in out
+
+
+def test_a_clip_a_render_pc_hands_back_for_its_music_is_made_here(dispatching, capsys):
+    """A render PC whose copy of the free track is missing or damaged hands
+    the clip back (worker.run_job) instead of making it without music. It is
+    then made on this PC, which has the track, also when that render PC was
+    chosen by name; any other failure there still fails the clip."""
+    from remote_render.queue import MAX_ATTEMPTS
+
+    dispatch, gw, tmp = dispatching
+    q = gw.queue
+    wid, _s = _paired(q)
+    q.heartbeat(wid, {}, False, 1, [])
+    free = {"edit": {"music": {"library": "music-roof-tops", "volume": 0.4, "duck": True}}}
+    handed_back = 'The free music "Roof Tops" is missing or damaged in this copy of the app on the render PC'
+    assert dispatch._music_handed_back({"error": handed_back})
+    assert not dispatch._music_handed_back({"error": "the render process exited with code 1"})
+    assert not dispatch._music_handed_back({"error": ""}) and not dispatch._music_handed_back({})
+
+    for why, here in ((handed_back, True), ("the render process exited with code 1", False)):
+        def work(why=why):
+            failed = 0
+            deadline = time.time() + 10
+            while failed < MAX_ATTEMPTS and time.time() < deadline:
+                job = q.claim(wid)
+                if job is None:
+                    time.sleep(0.05)
+                    continue
+                q.fail(job["id"], wid, why)
+                failed += 1
+
+        t = threading.Thread(target=work, daemon=True)
+        t.start()
+        calls = []
+        capsys.readouterr()
+        outcomes = []
+        for _c, _m, get in dispatch.RemoteRenderer(gw, f"worker:{wid}", tmp).render_all(
+                f"v-back-{here}", tmp / "s.mp4", _items()[:1], [], tmp / "clips", CONFIG, None, "en", 2,
+                local=_local(calls), opts_for=lambda _c, _m: free):
+            try:
+                get()
+                outcomes.append("made")
+            except RuntimeError as e:
+                outcomes.append(str(e))
+        t.join(5)
+        if here:
+            assert calls == [10.0] and outcomes == ["made"]
+            assert f"10s-30s renders here ({handed_back})" in capsys.readouterr().out
+        else:
+            assert calls == [] and "exited with code 1" in outcomes[0]
+
+
+def test_a_render_pc_without_the_free_track_hands_the_clip_back(tmp_path, monkeypatch, capsys):
+    """run_job, before any rendering: a free track this PC can't play (not
+    listed, a sound effect, missing or changed) ends the job with the plain
+    reason, so no clip that only says it has music is sent back. A track it
+    has, the person's own file and no music at all go on to the render."""
+    from remote_render import worker
+    from video import audio_library
+
+    def opts(music):
+        return {"edit": {"music": music}}
+
+    good = opts({"library": "music-roof-tops", "volume": 0.4, "duck": True})
+    for fine in (None, {}, {"crop": "center"}, {"edit": None}, opts(None), opts({"path": "song.mp3"}),
+                 opts({"path": "song.mp3", "library": "no-such-track"}), good, json.dumps(good), "not json"):
+        assert worker._music_not_here(fine) == "", fine
+    effect = next(e["id"] for e in audio_library.items("sfx"))
+    for missing in ("no-such-track", effect):
+        assert worker._music_not_here(opts({"library": missing})) == (
+            f'The free music "{missing}" isn\'t in this copy of the app on the render PC')
+
+    monkeypatch.setattr(audio_library, "_matches", lambda path, sha256: False)       # this PC's file is damaged
+    reason = 'The free music "Roof Tops" is missing or damaged in this copy of the app on the render PC'
+    assert worker._music_not_here(good) == reason and worker._music_not_here(json.dumps(good)) == reason
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    (job_dir / "job.json").write_text(json.dumps({
+        "config": {}, "offset": 0, "candidate": {"start": 10, "end": 30, "score": 50}, "segments": [],
+        "render_opts": good, "language": "en"}), encoding="utf-8")
+    assert worker.run_job(job_dir) == 1
+    assert (job_dir / "error.txt").read_text(encoding="utf-8") == reason
+    assert not (job_dir / "result.mp4").exists() and not (job_dir / "result.json").exists()
+    assert f"render handed back: {reason}" in capsys.readouterr().out
 
 
 # ---- the worker's side --------------------------------------------------------------------

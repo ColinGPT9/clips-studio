@@ -157,6 +157,13 @@ def merge(db: StateDB, from_id: int, into_id: int) -> None:
         "UPDATE creators SET aliases = ? WHERE creator_id = ?",
         (json.dumps(sorted(aliases)), into_id),
     )
+    # What the person wrote about the profile being folded in is kept when
+    # the one it joins has nothing written; otherwise the kept profile's stays.
+    db.conn.execute(
+        "UPDATE creators SET description = (SELECT description FROM creators WHERE creator_id = ?)"
+        " WHERE creator_id = ? AND description = ''",
+        (from_id, into_id),
+    )
     db.conn.execute("DELETE FROM creators WHERE creator_id = ?", (from_id,))
     db.conn.commit()
 

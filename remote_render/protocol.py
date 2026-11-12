@@ -15,7 +15,12 @@ import socket
 # (editor suite step 3). A worker on an older app would burn them in Arial
 # with no animation and the old margins without a word, so it is told to
 # update instead (the gateway refuses a different number with 409).
-PROTOCOL = 2
+# 3: music from the app's free library (editor suite step 4): the job names
+# the track by its id and the worker plays its own copy, checked against the
+# same sha256 (video/audio_library.py). A worker on an older app has no
+# library and would make the clip without its music, so it too is told to
+# update.
+PROTOCOL = 3
 
 # The config sections a render reads (core/pipeline._render_files and what it
 # calls: captions, tracking, the encoder, the end card). Nothing else leaves

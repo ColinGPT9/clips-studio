@@ -73,12 +73,22 @@ def _assets(render_opts: dict | None, config: dict) -> dict:
 
 
 def _needs_this_pc(render_opts: dict | None) -> bool:
-    """Whether a clip needs a file only this PC has: music added in the
-    editor (edit.music), which a render PC can't fetch and would leave
-    out (video_editor/export.py)."""
+    """Whether a clip needs a file only this PC has: the person's own music
+    file added in the editor (edit.music.path), which a render PC can't
+    fetch and would leave out (video_editor/export.py). Music from the app's
+    free library (edit.music.library) goes out: the render PC has the same
+    file, and checks it against the same sha256."""
     edit = (render_opts or {}).get("edit")
     music = edit.get("music") if isinstance(edit, dict) else None
     return isinstance(music, dict) and bool(str(music.get("path") or "").strip())
+
+
+def _music_handed_back(job: dict) -> bool:
+    """A render PC that lacks the clip's free track hands the clip back
+    (remote_render/worker.py) with the line video/audio_library.py's why_not
+    writes. That clip is made here, where the track is, also when one render
+    PC was chosen by name."""
+    return str(job.get("error") or "").startswith("The free music ")
 
 
 class RemoteRenderer:
@@ -198,7 +208,8 @@ class RemoteRenderer:
                         done += 1
                         yield candidate, meta, self._take(job, clip_dir, candidate)
                         self._discard_piece(jid)
-                    elif state == "local" or (state == "failed" and not self.target) or (
+                    elif state == "local" or (
+                            state == "failed" and (not self.target or _music_handed_back(job))) or (
                             state == "queued" and no_worker_since is not None
                             and time.time() - no_worker_since > UNCLAIMED_GRACE):
                         if state != "local":

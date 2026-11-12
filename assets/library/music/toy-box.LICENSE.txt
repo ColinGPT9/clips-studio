@@ -1,0 +1,16 @@
+Toy Box
+by HoliznaCC0
+
+Licence: CC0 1.0 Universal (public domain dedication)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Source page: https://freemusicarchive.org/music/holiznacc0/spring-woke-me-up/toy-box/
+The page says, as read on 2026-11-11:
+  "Toy Box by HoliznaCC0 is licensed under a CC0 1.0 Universal License"
+  (linked to https://creativecommons.org/publicdomain/zero/1.0/)
+
+Original file: https://files.freemusicarchive.org/storage-freemusicarchive-org/tracks/04mkhAeFGClmKwwsdfUfLZX1wrROoSQl2A6GsW28.mp3
+  sha256 98ab5546dfbb10d4c31f6c7d29c1bc70407fdb405d9b49d206ee89a4ccb1dee0
+
+Changes made for Clips Kitty: Cut to the first 75 seconds of 155.82, with a 3 second fade out, turned down by 1.6 dB so every track is about as loud (-18 LUFS), and encoded as OGG Vorbis (quality 4) from the MP3 on the source page.
+CC0 asks for no credit. Thank you, HoliznaCC0.

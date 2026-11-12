@@ -17,6 +17,35 @@ from video_editor.audio import master_filter, mute_filter
 from video_editor.cuts import concat_graph
 from video_editor.timeline import EditList
 
+# "Duck under voice": how far the music dips while the clip's own sound is loud.
+# _DUCK_OWN is what the person's own music file has always had. On a clip
+# whose sound never goes quiet (a street, a crowd, game sound) it holds the
+# music about 20 dB down for the whole clip: at the editor's volumes that is
+# 35 dB or more under the voice, which nobody hears. It stays as it is for
+# their own file so that those clips render exactly as before.
+# _DUCK_FREE is for the app's free tracks (new in editor suite step 4): a dip
+# of about 7 dB under a normal voice, so the music stays in the clip.
+_DUCK_OWN = "threshold=0.02:ratio=12:attack=15:release=400"
+_DUCK_FREE = "threshold=0.05:ratio=2:attack=15:release=400"
+
+
+def _music_file(music: dict | None) -> Path | None:
+    """The file a clip's music plays: the person's own (music["path"]), when
+    it exists, or one of the app's free tracks (music["library"], an id),
+    when this copy of the app has it unchanged (video/audio_library.py; a
+    render PC finds its own copy the same way). None: the clip is made
+    without music, and for a free track the job log says why."""
+    if music is None:
+        return None
+    if music.get("library"):
+        from video import audio_library
+
+        # kind: a sound effect is not music (it would loop under the whole clip).
+        return audio_library.resolve(music["library"], kind="music",
+                                     log=lambda line: print(f"      {line}, so this clip has no music"))
+    path = Path(music["path"])
+    return path if path.exists() else None
+
 
 def apply_edits(
     input_path: Path,
@@ -57,7 +86,8 @@ def apply_edits(
     # (optionally) DUCKED under the voice via sidechain compression — the
     # music dips automatically whenever the creator talks.
     inputs = ["-i", str(input_path.resolve())]
-    with_music = edit.music is not None and Path(edit.music["path"]).exists()
+    music_file = _music_file(edit.music)
+    with_music = music_file is not None
 
     # Voice chain: loudness (first, so fades still shape the end) + speed +
     # volume/mute + fades (final timeline).
@@ -66,7 +96,7 @@ def apply_edits(
     graph_parts.append(f"{audio_out}{level}{master_filter(edit)}[{voice_label}]")
 
     if with_music:
-        inputs += ["-stream_loop", "-1", "-i", str(Path(edit.music["path"]).resolve())]
+        inputs += ["-stream_loop", "-1", "-i", str(music_file.resolve())]
         dur = edit.final_duration()
         graph_parts.append(
             f"[1:a]atrim=0:{dur:.3f},asetpts=PTS-STARTPTS,"
@@ -75,7 +105,7 @@ def apply_edits(
         if edit.music.get("duck", True):
             graph_parts.append("[avoice]asplit=2[av1][av2]")
             graph_parts.append(
-                "[mus][av2]sidechaincompress=threshold=0.02:ratio=12:attack=15:release=400[musd]"
+                f"[mus][av2]sidechaincompress={_DUCK_FREE if edit.music.get('library') else _DUCK_OWN}[musd]"
             )
             graph_parts.append("[av1][musd]amix=inputs=2:duration=first:normalize=0[aout]")
         else:
