@@ -12,13 +12,16 @@ word-level timestamps are missing (transcripts cached before they were
 enabled).
 """
 
+import math
 import re
 from pathlib import Path
 
 from core.models import ClipCandidate, Segment
+from video import alphabets, caption_fit
+from video import fonts as bundled
 
 DEFAULT_STYLE = {
-    "font": "Arial",          # must be in FONTS (installed on stock Windows)
+    "font": "Arial",          # must be in FONTS (installed on stock Windows, or bundled)
     "font_size": 84,          # at 1080x1920 playback resolution
     "color": "#FFFFFF",       # text colour (hex RGB)
     "position": "bottom",     # bottom | middle | top
@@ -28,12 +31,34 @@ DEFAULT_STYLE = {
     "highlight_color": "#FFE600",
     "second_speaker": False,      # another colour when it isn't the main speaker talking (#126)
     "second_speaker_color": "#5CE1FF",
+    "animation": "none",          # how each caption comes on screen (ANIMATIONS)
+    "safe_zone": "off",           # keep clear of an app's own buttons and text (SAFE_ZONES)
 }
+
+# How each caption comes on screen, written as ASS override tags timed from
+# the caption's own start (_animated). "none" writes no tag at all.
+ANIMATIONS = ("none", "pop", "fade", "bounce", "karaoke", "slide")
+
+# The area each app covers with its own buttons and text, in px on a
+# 1080x1920 Short: the bottom bar (name, description, sound) and the column of
+# buttons down the right. The same measured guidance values as the Gaming
+# layout editor's (gaming/layouts.json, docs/GAMING.md: measured September
+# 2026 on each app's feed, kreatli.com's safe zone checkers); a test keeps the
+# two the same. Guidance, not a promise: the apps change by device and by
+# how long the post's description is.
+SAFE_ZONES = {
+    "tiktok": {"top": 180, "bottom": 420, "right": 190},
+    "reels": {"top": 245, "bottom": 400, "right": 205},
+    "shorts": {"top": 250, "bottom": 350, "right": 190},
+}
+SAFE_ZONE_CHOICES = ("off", *SAFE_ZONES)
+_SAFE_CLEARANCE = 20     # px between a caption and the app's own text: the outline and shadow fit in it
+_INK_SPREAD = 9          # px the style's outline (7) and shadow (2) reach past the letters, at the sides
 
 # Fonts shipped with every stock Windows install, so a burned clip renders
 # identically on any user's machine. Whitelisted: the name goes into the ASS
 # header, and unknown names would silently fall back to a default anyway.
-FONTS = [
+WINDOWS_FONTS = [
     "Arial",
     "Arial Black",
     "Impact",
@@ -52,6 +77,12 @@ FONTS = [
     "Leelawadee UI",
 ]
 
+# Plus the fonts that ship with the app (assets/fonts/, video/fonts.py),
+# burned from files staged beside the ASS file. A copy without them has
+# only the Windows fonts.
+BUNDLED_FONTS = [f for f in bundled.families() if f not in WINDOWS_FONTS]
+FONTS = WINDOWS_FONTS + BUNDLED_FONTS
+
 # The classic caption fonts only cover Latin/Cyrillic/Greek. Burning e.g.
 # Hindi through Arial produces tofu boxes — permanently, in the video. For
 # languages written in other scripts, the caption font is swapped to the
@@ -69,13 +100,32 @@ SCRIPT_FONTS = {
     "ar": "Segoe UI", "fa": "Segoe UI", "ur": "Segoe UI",
 }
 
-_LATIN_ONLY = set(FONTS[:10])
+_LATIN_ONLY = set(WINDOWS_FONTS[:10])
+
+def script_of(language: str | None) -> str:
+    """The writing system a language's captions need (video/alphabets.py)."""
+    return alphabets.script_of(language)
 
 
 def caption_font_for(language: str, chosen: str | None) -> str | None:
     """The font captions should actually burn with: the user's choice,
-    unless the content language needs a script that choice can't render."""
+    unless the content language needs a script that choice can't render.
+
+    A bundled font is kept only when its file has every letter the language
+    is written with (video/alphabets.py letters_for, checked against the
+    font's character map): otherwise libass would draw the missing letters
+    in another font in the middle of a word. The captions then take the
+    Windows font for that language (SCRIPT_FONTS), or Arial, which has
+    Cyrillic, Greek and every accented Latin letter."""
     lang = (language or "en").lower()
+    if chosen is not None and bundled.is_bundled(chosen):
+        letters = alphabets.letters_for(lang)
+        has = bundled.covers(chosen, letters) if letters is not None else False
+        if has is None:     # the file cannot be read: go by its manifest (the render then says it is missing)
+            has = script_of(lang) in bundled.scripts_for(chosen)
+        if has:
+            return chosen
+        return SCRIPT_FONTS.get(alphabets.base_language(lang), "Arial")
     if lang in SCRIPT_FONTS and (chosen is None or chosen in _LATIN_ONLY):
         return SCRIPT_FONTS[lang]
     return chosen
@@ -459,8 +509,12 @@ def build_captions(
     lines: list[dict] | None = None,
     canvas: tuple[int, int] = (1080, 1920),
     language: str = "en",
+    karaoke_untimed: bool = False,
 ) -> Path | None:
     """Write an ASS file with times relative to the clip start.
+    `karaoke_untimed`: the lines were moved to an edited timeline (cuts or
+    speed), so the transcript's word times no longer match them; karaoke
+    then spreads each line's fill over its own time by word length.
     `lines` (user-corrected caption text) overrides the generated ones.
     `canvas` is the output frame (default portrait Shorts; longform passes
     1920x1080 and the style scales to it). Returns the path, or None if
@@ -468,17 +522,36 @@ def build_captions(
     opts = {**DEFAULT_STYLE, **(style or {})}
     # Non-Latin content: swap in a font that has the glyphs (see SCRIPT_FONTS).
     opts["font"] = caption_font_for(language, opts.get("font")) or opts.get("font")
+    if bundled.is_bundled(opts["font"]) and not bundled.usable(opts["font"]):
+        # Never a failed render over a font: Arial, and a line in the job log.
+        print(f"      The caption font {opts['font']} is missing or damaged in this copy of the app, "
+              f"so the captions use Arial")
+        opts["font"] = "Arial"
+    elif opts.get("font") not in FONTS:
+        # A name this copy does not have (an app without its fonts folder,
+        # a style saved by a newer app) burns in Arial: the job log says so.
+        if opts.get("font"):
+            missing = " (the app's own caption fonts are missing)" if bundled.folder() is None else ""
+            print(f"      The caption font {opts['font']} is not in this copy of the app, "
+                  f"so the captions use Arial{missing}")
+        opts["font"] = "Arial"
+    animation = opts.get("animation") if opts.get("animation") in ANIMATIONS else "none"
+    if animation == "karaoke" and str(language or "").lower().replace("_", "-").split("-")[0] in _RTL_LANGUAGES:
+        # libass lays karaoke's per-word runs out left to right, which puts a
+        # right-to-left line's words in reverse order: burn it plain instead.
+        animation = "none"
+        opts = {**opts, "animation": "none", "highlight": False}
     if lines is None:
         lines = build_caption_lines(segments, candidate, opts["words_per_caption"])
 
-    # Word timings for the highlight, clip-relative like `lines` are.
+    # Word timings for the highlight and karaoke, clip-relative like `lines` are.
     spoken = (
         [
             {"start": w["start"] - candidate.start, "end": w["end"] - candidate.start,
              "word": w["word"]}
             for w in _words_in_window(segments, candidate.start, candidate.end)
         ]
-        if opts.get("highlight")
+        if opts.get("highlight") or animation == "karaoke"
         else []
     )
 
@@ -491,6 +564,16 @@ def build_captions(
         else None
     )
 
+    # Pop, bounce and slide turn off libass's stacking of captions that are
+    # on screen together (hand-edited times can overlap), so a caption that
+    # overlaps another is written without them (_animated).
+    spans = [
+        (_centis(float(line["start"])), _centis(float(line["end"])))
+        for line in lines
+        if str(line.get("text", "")).strip() and float(line["end"]) > float(line["start"])
+    ] if animation in ("pop", "bounce", "slide") else []
+
+    zoned = _zoned(opts, canvas)
     dialogue = []
     for line in lines:
         text = str(line.get("text", "")).strip()
@@ -503,17 +586,396 @@ def build_captions(
         if end <= start:
             continue
         tint = second if second and line.get("speaker") else None
+        if animation != "none" or zoned:
+            # What is measured must be what is drawn (_spaced). Never for a
+            # plain caption: its text stays exactly as it always was.
+            text = _spaced(text)
+            if not text:
+                continue
+        # A safe zone: a word too wide for the safe area shrinks its caption.
+        fit = _fit_scale(text, opts, canvas)
+        if animation == "karaoke":
+            # Karaoke fills each word as it is said: it does the word
+            # highlight's job, so the highlight is not drawn on top of it.
+            dialogue.extend(_with_scale(
+                [_karaoke(text, start, end, [] if karaoke_untimed else spoken, opts, tint)], fit))
+            continue
         if opts.get("highlight"):
-            dialogue.extend(_highlighted(text, start, end, spoken, opts, tint))
+            events = _highlighted(text, start, end, spoken, opts, tint)
         else:
-            dialogue.append(
-                f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,{_tinted(text, tint)}"
-            )
+            events = [f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,{_tinted(text, tint)}"]
+        if animation != "none":
+            here = (_centis(start), _centis(end))
+            alone = sum(1 for s, e in spans if s < here[1] and e > here[0]) <= 1
+            events = _animated(events, animation, opts, canvas, text, alone, fit)
+        else:
+            events = _with_scale(events, fit)
+        dialogue.extend(events)
 
     if not dialogue:
         return None
     output_path.write_text(_header(opts, canvas) + "\n".join(dialogue) + "\n", encoding="utf-8")
     return output_path
+
+
+# The animations' timings, in ms from the caption's own start.
+_POP_MS = 120          # pop: 80% to 100%
+_BOUNCE_MS = (120, 200)    # bounce: 80% to 110% by the first, settled at 100% by the second
+_FADE_MS = (120, 80)   # fade: in, and out before the caption's end
+_FADE_SHARE = 0.6      # the most of a caption the two fades may take: the rest is held at full colour
+_HOLD_MS = 120         # pop and bounce on a caption that cannot be measured: fades in at full size
+_SLIDE_MS = 150        # slide: rises into place
+_SLIDE_PX = 40         # how far it rises, on the 1920-tall canvas
+_EVENT_TEXT = "Default,,0,0,0,,"
+
+
+_BOUNCE_PEAK = 110     # bounce's overshoot, in %
+
+
+def _animated(
+    events: list[str], animation: str, opts: dict, canvas: tuple[int, int], text: str = "", alone: bool = True,
+    fit: int | None = None,
+) -> list[str]:
+    """One caption's Dialogue events with its animation's override tags.
+
+    The animation plays once, from the moment the caption comes on screen.
+    The word highlight writes a caption as several events (one per word);
+    each event that starts while the animation is still playing picks it up
+    where it has got to (the size, place or fade it has reached at that
+    moment) and plays the rest, so a short first word never cuts it off.
+    The fade-out runs over the caption's last 80 ms, across events too.
+
+    Times, words and colours stay as they are. Pop and bounce keep the lines
+    libass makes at 100%: when the size change would move a line break, the
+    breaks are written out (\\N, with \\q2) so the caption never jumps from
+    one line to two part way. A caption whose lines cannot be measured
+    (caption_fit.lines: an emoji, a script it does not follow such as Thai,
+    Hindi or Arabic, a letter the font lacks, a close call) is not
+    scaled at all: it fades in at full size over the same time instead
+    (_HOLD_MS), so it never changes its lines or overshoots. Bounce
+    overshoots to 110%, or less when that would reach past the margins. A
+    caption whose time overlaps another caption's gets no pop, bounce or
+    slide (they stop libass from stacking the two), only a fade if fade is
+    chosen.
+
+    `fit` (_fit_scale) is the size, in %, a safe zone shrinks the caption to
+    when one of its words is too wide for the safe area: pop and bounce
+    grow to that size instead of 100%, and every other event is drawn at
+    it (_with_scale)."""
+    if animation in ("pop", "bounce", "slide") and not alone:
+        return _with_scale(events, fit)
+    timed = []
+    for event in events:
+        head, sep, body = event.partition(_EVENT_TEXT)
+        fields = head.split(",")
+        if not sep or len(fields) < 3:
+            return _with_scale(events, fit)
+        timed.append((head, body, _centis_of(fields[1]), _centis_of(fields[2])))
+    first, last = timed[0][2], timed[-1][3]
+    peak = _BOUNCE_PEAK if animation == "bounce" else 100
+    base = fit or 100                                # the caption's full size, in %
+    breaks: set[int] = set()
+    hold = False                                     # pop or bounce on a caption that cannot be measured
+    if animation in ("pop", "bounce") and text:
+        fixed, peak, measured = _scale_lines(text, opts, canvas, peak, base)
+        hold = not measured
+        if fixed:
+            counts = [len(line.split()) for line in fixed]
+            breaks = {sum(counts[:k]) - 1 for k in range(1, len(counts))}
+    full = _num(base)
+
+    def sized(pct: float) -> str:
+        return _num(pct if base == 100 else pct * base / 100)
+
+    x, y = _anchor(opts, canvas)
+    out = []
+    for head, body, ev_start, ev_end in timed:
+        at = (ev_start - first) * 10                 # ms from the caption's start
+        tag = ""
+        if hold:
+            tag = _scale_tag(fit) + _fade_tag(at, (ev_end - ev_start) * 10, (last - first) * 10, (_HOLD_MS, 0))
+        elif animation == "pop" and at < _POP_MS:
+            s = sized(80 + 20 * at / _POP_MS)
+            tag = f"\\fscx{s}\\fscy{s}\\t(0,{_POP_MS - at},\\fscx{full}\\fscy{full})"
+        elif animation == "bounce" and at < _BOUNCE_MS[1]:
+            a, b = _BOUNCE_MS
+            top = sized(peak)
+            if at < a:
+                s = sized(80 + (peak - 80) * at / a)
+                tag = (f"\\fscx{s}\\fscy{s}\\t(0,{a - at},\\fscx{top}\\fscy{top})"
+                       f"\\t({a - at},{b - at},\\fscx{full}\\fscy{full})")
+            else:
+                s = sized(peak - (peak - 100) * (at - a) / (b - a))
+                tag = f"\\fscx{s}\\fscy{s}\\t(0,{b - at},\\fscx{full}\\fscy{full})"
+        elif animation in ("pop", "bounce"):
+            tag = _scale_tag(fit)
+        elif animation == "fade":
+            tag = _fade_tag(at, (ev_end - ev_start) * 10, (last - first) * 10)
+        elif animation == "slide" and at < _SLIDE_MS:
+            rise = max(1, round(_SLIDE_PX * canvas[1] / 1920))
+            tag = f"\\move({x},{y + round(rise * (1 - at / _SLIDE_MS))},{x},{y},0,{_SLIDE_MS - at})"
+        if animation in ("fade", "slide"):
+            tag = _scale_tag(fit) + tag
+        if breaks:
+            tag = f"\\q2{tag}"
+            body = _broken(body, breaks)
+        out.append(f"{head}{_EVENT_TEXT}{{{tag}}}{body}" if tag else f"{head}{_EVENT_TEXT}{body}")
+    return out
+
+
+def _fade_times(total: int, fade: tuple[int, int] = _FADE_MS) -> tuple[int, int]:
+    """How long a caption `total` ms long fades in and out: 120 and 80 ms,
+    or shorter in that proportion when those would take more than
+    _FADE_SHARE of the caption, so a short caption (one word said quickly)
+    still reaches full colour and holds it before it goes. On a 140 ms
+    caption that is 50 ms in, 56 ms held, 34 ms out; \\fad(120,80) on it
+    would have the fade-out start inside the fade-in, and libass then jumps
+    from one to the other between two frames."""
+    fade_in, fade_out = fade
+    both = fade_in + fade_out
+    budget = min(both, math.floor(total * _FADE_SHARE))
+    if budget >= both or both <= 0:
+        return fade_in, fade_out
+    scaled_in = round(budget * fade_in / both)
+    return scaled_in, budget - scaled_in
+
+
+def _fade_tag(at: int, length: int, total: int, fade: tuple[int, int] = _FADE_MS) -> str:
+    """Fade's tag for an event `at` ms into a caption `total` ms long: in
+    over the caption's first 120 ms, out over its last 80, or less on a
+    short caption (_fade_times). A caption that is one event gets \\fad; an
+    event of a longer caption gets the part of the fade it is on screen
+    for, from where it has got to (\\fade). `fade` is (in, out) in ms: the
+    hold of an unmeasured pop or bounce passes (_HOLD_MS, 0)."""
+    fade_in, fade_out = _fade_times(total, fade)
+    if at == 0 and length == total:
+        return f"\\fad({fade_in},{fade_out})"
+    out_from = total - fade_out - at                 # when the fade-out starts, from this event's start
+    in_now = at < fade_in
+    out_now = fade_out > 0 and out_from < length
+    if not in_now and not out_now:
+        return ""
+    if at == 0 and not out_now and length >= fade_in:
+        return f"\\fad({fade_in},0)"
+    if not in_now and out_from >= 0 and length == total - at:
+        return f"\\fad(0,{fade_out})"
+    if not in_now:
+        a1 = a2 = 0 if out_from >= 0 else round(255 * min(1.0, -out_from / fade_out))
+        t2 = 0
+    else:
+        a1, a2, t2 = round(255 * (1 - at / fade_in)), 0, fade_in - at
+    t3 = max(t2, out_from)
+    t4 = max(t3, total - at)
+    return f"\\fade({a1},{a2},255,0,{t2},{t3},{t4})"
+
+
+def _scale_lines(
+    text: str, opts: dict, canvas: tuple[int, int], peak: int, base: int = 100
+) -> tuple[list[str] | None, int, bool]:
+    """For pop and bounce: (the lines to write out, when libass would break
+    the caption differently at some size between 80% and the peak, else
+    None; the peak to use, at most 110% and no wider than the margins; and
+    whether the caption could be measured at all). Sizes are in % of
+    `base`, the caption's full size (below 100 when a safe zone shrinks it,
+    _fit_scale). A character the measuring does not follow and a close call
+    it cannot be sure of (caption_fit.lines) give (None, peak, False): the
+    caller then holds the caption at full size instead of scaling it. A
+    font whose file this machine does not have (never one of Windows' own
+    on Windows, nor a bundled one that is whole: a damaged one has already
+    been swapped for Arial) is drawn in some other font anyway, so there is
+    nothing to measure: it scales as written, (None, peak, True)."""
+    font = _style_font(opts)
+    if caption_fit.font(font) is None:
+        return None, peak, True
+    size = _style_size(opts, canvas)
+    if base != 100:
+        size = size * base / 100
+    bold = _style_bold(font)
+    _, margin_l, margin_r, _ = _layout(opts, canvas)
+    wrap = canvas[0] - margin_l - margin_r
+    if text != _spaced(text):
+        # Not the text build_captions writes (it comes here already
+        # _spaced): what would be measured is not what is drawn, so hold.
+        return None, peak, False
+    words = text
+    at100 = caption_fit.lines(words, font, size, bold, wrap)
+    if at100 is None:
+        return None, peak, False
+    widest = caption_fit.widest(at100, font, size, bold) or 0
+    if widest > 0 and peak > 100:
+        peak = max(100, min(peak, math.floor(100 * (wrap - 1) / widest)))
+    for pct in range(80, peak + 1):
+        if caption_fit.lines(words, font, size * pct / 100, bold, wrap) != at100:
+            return at100, peak, True
+    return None, peak, True
+
+
+def _broken(body: str, breaks: set[int]) -> str:
+    """An event's text with a line break (\\N) in place of the spaces
+    between words number b and b + 1 (counted from 0) for each b in
+    `breaks`. Override tags ({...}) are left as they are."""
+    out = []
+    depth = 0
+    gap = -1
+    in_gap = False
+    for ch in body:
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth = max(0, depth - 1)
+        elif depth == 0 and ch.isspace():
+            if not in_gap:
+                gap += 1
+                in_gap = True
+                if gap in breaks:
+                    out.append("\\N")
+            if gap in breaks:
+                continue
+        elif depth == 0:
+            in_gap = False
+        out.append(ch)
+    return "".join(out)
+
+
+# Characters with no width and no ink that are not spaces to Python either:
+# zero-width space, word joiner, byte-order mark, Mongolian vowel separator.
+# (The zero-width joiner and non-joiner stay: they shape Arabic, Indic
+# scripts and emoji.)
+_NO_WIDTH = dict.fromkeys((0x200B, 0x2060, 0xFEFF, 0x180E))
+
+
+def _zoned(opts: dict, canvas: tuple[int, int]) -> bool:
+    """Whether a safe zone applies: one is chosen and the clip is portrait."""
+    name = opts.get("safe_zone")
+    return isinstance(name, str) and name in SAFE_ZONES and canvas[1] > canvas[0]
+
+
+def _spaced(text: str) -> str:
+    """A caption's text with single ordinary spaces between its words, as
+    it is written to the event when an animation or a safe zone is on.
+
+    libass draws the text as written and breaks a line only at an ordinary
+    space (U+0020): two spaces are twice as wide, and words joined by a
+    no-break space (U+00A0, U+202F, what French puts before ? ! : ;) are one
+    unbreakable run. The measuring behind the safe zones and behind pop and
+    bounce (caption_fit) works on words with one space between them, so the
+    event gets exactly that text: every run of spaces of any kind (tabs,
+    no-break and other Unicode spaces) becomes one ordinary space, the ends
+    are trimmed and characters with no width are dropped. The word highlight
+    and karaoke have always rebuilt their text this way. A caption with no
+    animation and no safe zone never comes here."""
+    return " ".join(text.translate(_NO_WIDTH).split())
+
+
+def _fit_scale(text: str, opts: dict, canvas: tuple[int, int]) -> int | None:
+    """With a safe zone, the size (in %) that brings a caption's widest word
+    inside the safe area, when that word is wider than the space between
+    the margins (libass breaks lines only at spaces, so such a word would
+    run under the app's buttons; a caption in a language written without
+    spaces, Chinese, Japanese or Thai, is one word). None when the caption
+    fits, when no safe zone applies, and when the font or a character
+    cannot be measured (caption_fit.widest_word: Hindi, Arabic, an emoji):
+    that caption is written as it always was."""
+    if not _zoned(opts, canvas):
+        return None
+    font = _style_font(opts)
+    _, margin_l, margin_r, _ = _layout(opts, canvas)
+    room = canvas[0] - margin_l - margin_r - 1
+    # The text exactly as the event has it (build_captions has already made
+    # its spaces plain, _spaced): nothing is collapsed here, and
+    # widest_word splits only where libass can break.
+    widest = caption_fit.widest_word(text, font, _style_size(opts, canvas), _style_bold(font))
+    if not widest or widest <= room:
+        return None
+    return max(1, math.floor(100 * room / widest))
+
+
+def _scale_tag(fit: int | None) -> str:
+    """The override that draws a caption at `fit` % of its size ("" for none)."""
+    return f"\\fscx{fit}\\fscy{fit}" if fit else ""
+
+
+def _with_scale(events: list[str], fit: int | None) -> list[str]:
+    """`events` drawn at `fit` % of their size: the scale goes at the start
+    of each event's first override block, or in a block of its own."""
+    if not fit:
+        return events
+    out = []
+    for event in events:
+        head, sep, body = event.partition(_EVENT_TEXT)
+        if not sep:
+            out.append(event)
+        elif body.startswith("{"):
+            out.append(f"{head}{_EVENT_TEXT}{{{_scale_tag(fit)}{body[1:]}")
+        else:
+            out.append(f"{head}{_EVENT_TEXT}{{{_scale_tag(fit)}}}{body}")
+    return out
+
+
+def _num(value: float) -> str:
+    """A tag's number: whole numbers as they are, others to 2 decimals."""
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+def _centis(seconds: float) -> int:
+    """A time as the ASS file writes it (_ass_time), in hundredths of a second."""
+    return _centis_of(_ass_time(seconds))
+
+
+def _centis_of(stamp: str) -> int:
+    h, m, s = stamp.strip().split(":")
+    whole, _, frac = s.partition(".")
+    return ((int(h) * 60 + int(m)) * 60 + int(whole)) * 100 + int((frac + "00")[:2])
+
+
+def _anchor(opts: dict, canvas: tuple[int, int]) -> tuple[int, int]:
+    """Where a caption's alignment point sits on the frame, as libass places
+    an event with no position of its own: across, the middle of the space
+    between the margins; down, the margin from the bottom or top, or the
+    middle of the frame."""
+    alignment, margin_l, margin_r, margin_v = _layout(opts, canvas)
+    x = round((margin_l + canvas[0] - margin_r) / 2)
+    if alignment == 2:
+        y = canvas[1] - margin_v
+    elif alignment == 8:
+        y = margin_v
+    else:
+        y = round(canvas[1] / 2)
+    return x, y
+
+
+# Right-to-left languages: no karaoke runs (see build_captions).
+_RTL_LANGUAGES = frozenset({"ar", "he", "iw", "fa", "ur", "yi", "ps", "sd", "ug", "dv"})
+
+
+def _karaoke(
+    text: str, start: float, end: float, spoken: list[dict], opts: dict, tint: str | None = None
+) -> str:
+    """One Dialogue for the caption, each word filling with the highlight
+    colour while it is said (\\kf, in hundredths of a second from the
+    caption's start), from the caption's own colour (the other speaker's,
+    for their lines). A pause between words is an empty \\k. Words without
+    exact timings are spread over the caption by length (_word_times)."""
+    tokens = text.split()
+    base = tint or _inline_color(opts["color"])
+    hot = _inline_color(opts.get("highlight_color") or DEFAULT_STYLE["highlight_color"])
+    total = max(0, round((end - start) * 100))
+    times = _word_times(text, start, end, spoken)
+    parts = []
+    at = 0                                  # hundredths of a second written so far
+    for i, tok in enumerate(tokens):
+        w_start, w_end = times[i] if i < len(times) else (end, end)
+        said_from = min(total, max(at, round((w_start - start) * 100)))
+        upto = round((w_end - start) * 100)
+        if i + 1 < len(times):
+            upto = min(upto, round((times[i + 1][0] - start) * 100))
+        said_to = min(total, max(said_from, upto))
+        if said_from > at:
+            parts.append(f"{{\\k{said_from - at}}}")        # the pause before the word
+        parts.append(f"{{\\kf{said_to - said_from}}}{tok}" + (" " if i < len(tokens) - 1 else ""))
+        at = said_to
+    return (f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,"
+            f"{{\\1c{hot}\\2c{base}}}" + "".join(parts))
 
 
 def _word_times(text: str, start: float, end: float, spoken: list[dict]) -> list[tuple[float, float]]:
@@ -584,16 +1046,61 @@ def _highlighted(
     return events
 
 
-def _header(opts: dict, canvas: tuple[int, int] = (1080, 1920)) -> str:
-    alignment, margin_v = _POSITIONS.get(opts["position"], _POSITIONS["bottom"])
-    color = _ass_color(opts["color"])
-    size = max(40, min(140, int(opts["font_size"])))
-    font = opts.get("font") if opts.get("font") in FONTS else "Arial"
+def _layout(opts: dict, canvas: tuple[int, int] = (1080, 1920)) -> tuple[int, int, int, int]:
+    """(alignment, MarginL, MarginR, MarginV) for the caption style.
+
+    With a safe zone (a portrait clip only: the apps' buttons and text are
+    laid over vertical video), a bottom caption sits at least 20 px above
+    the app's bottom bar, a top one 20 px below its top bar, and a middle
+    one stays in the middle of the frame, which is inside every app's safe
+    area. A bottom caption that slides in starts 40 px lower, so it sits
+    that much higher again. The side margins both become the width of the
+    app's right-hand column of buttons plus the caption's outline and shadow
+    (the margins bound the letters, not their outline), so the caption keeps
+    clear of it and stays centred."""
+    alignment, margin_v = _POSITIONS.get(opts.get("position"), _POSITIONS["bottom"])
+    margin_l = margin_r = 60
+    name = opts.get("safe_zone")
+    zone = SAFE_ZONES.get(name) if isinstance(name, str) and canvas[1] > canvas[0] else None
+    if zone:
+        if alignment == 2:
+            rise = _SLIDE_PX if opts.get("animation") == "slide" else 0
+            margin_v = max(margin_v, zone["bottom"] + _SAFE_CLEARANCE + rise)
+        elif alignment == 8:
+            margin_v = max(margin_v, zone["top"] + _SAFE_CLEARANCE)
+        margin_l = margin_r = round((max(60, zone["right"]) + _INK_SPREAD) * canvas[0] / 1080)
     # Style values are calibrated for the 1920-tall Shorts canvas; scale
     # them to whatever frame this clip renders at (e.g. landscape 1080).
-    scale = canvas[1] / 1920
-    size = max(24, round(size * scale))
-    margin_v = round(margin_v * scale)
+    # (canvas[1] / 1920) first, as it always was: the other order rounds a
+    # few unusual frame heights 1 px differently.
+    return alignment, margin_l, margin_r, round(margin_v * (canvas[1] / 1920))
+
+
+def _style_font(opts: dict) -> str:
+    """The font the ASS style names."""
+    return opts.get("font") if opts.get("font") in FONTS else "Arial"
+
+
+def _style_size(opts: dict, canvas: tuple[int, int]) -> int:
+    """The style's font size on this frame."""
+    size = max(40, min(140, int(opts["font_size"])))
+    return max(24, round(size * (canvas[1] / 1920)))
+
+
+def _style_bold(font: str) -> bool:
+    """Captions are bold. A bundled display face that comes in one regular
+    weight (Anton, Bebas Neue...) is already heavy: asking libass for bold
+    would thicken it artificially, so its style is not marked bold."""
+    weight = bundled.weight_for(font) if bundled.is_bundled(font) else None
+    return not (weight is not None and weight < 600)
+
+
+def _header(opts: dict, canvas: tuple[int, int] = (1080, 1920)) -> str:
+    alignment, margin_l, margin_r, margin_v = _layout(opts, canvas)
+    color = _ass_color(opts["color"])
+    font = _style_font(opts)
+    bold = -1 if _style_bold(font) else 0
+    size = _style_size(opts, canvas)
     return f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {canvas[0]}
@@ -602,7 +1109,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font},{size},{color},{color},&H00000000,&H7F000000,-1,0,0,0,100,100,0,0,1,7,2,{alignment},60,60,{margin_v},1
+Style: Default,{font},{size},{color},{color},&H00000000,&H7F000000,{bold},0,0,0,100,100,0,0,1,7,2,{alignment},{margin_l},{margin_r},{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

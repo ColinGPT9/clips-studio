@@ -1568,6 +1568,7 @@ def _render_files(
             elif said:
                 wpc = {**DEFAULT_STYLE, **(caption_style or {})}["words_per_caption"]
                 lines = build_caption_lines(segments, candidate, wpc, said)
+        retimed = False
         if edit is not None and (edit.keep is not None or abs(edit.speed - 1) >= 0.01):
             # Sections were cut out and/or the clip was sped up: every
             # surviving caption shifts to its new time on the edited timeline.
@@ -1578,12 +1579,14 @@ def _render_files(
                 wpc = {**DEFAULT_STYLE, **(caption_style or {})}["words_per_caption"]
                 lines = build_caption_lines(segments, candidate, wpc)
             lines = remap_lines(lines, edit)
+            retimed = True
         ass_path = build_captions(
             segments, candidate, clip_dir / f"{stem}.ass",
             style=caption_style,
             lines=lines,
             canvas=canvas,
             language=content_language,
+            **({"karaoke_untimed": True} if retimed else {}),
         )
 
     # Hook title (big text, top third, first few seconds) burns through the
@@ -1760,6 +1763,11 @@ def _render_files(
 
     if ass_path is not None:
         discard(ass_path)
+        # A bundled caption font's files were copied beside it for the burn:
+        # gone once no clip in this folder still has captions to burn.
+        from video.fonts import release
+
+        release(ass_path.parent)
 
     # Image watermark: one overlay pass on the finished clip (only when set).
     if wm_cfg and _wm.has_image(wm_cfg, wm_assets):

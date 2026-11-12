@@ -243,7 +243,87 @@ def _encoding_args(h, mp):
     return {"values": values}
 
 
+# ---- light tier: caption fonts, animations and safe zones (editor suite step 3) ---------------
+
+
+def _cut_clip_bundled_font(h, _mp):
+    """A bundled font: its file is staged beside the captions, and the burn
+    is given fontsdir. Burned by the one-encode cut and by the editor's pass."""
+    source = h.source()
+    h.step("the one-encode cut, landscape")
+    ass = build_captions(SEGMENTS, WINDOW, h.root / "clip.ass", style={"font": "Anton"}, canvas=(1920, 1080))
+    cutter.cut_clip(source, PADDED, h.out("clip.mp4"), ass_path=ass, normalize=True, final=True)
+    h.step("the editor's pass, with cuts")
+    ass = build_captions(SEGMENTS, WINDOW, h.root / "edited.ass",
+                         style={"font": "Poppins ExtraBold", "animation": "pop"}, canvas=(1920, 1080))
+    clip = h.media("edited.source.mp4", duration=PADDED.duration)
+    export.apply_edits(clip, EditList.from_dict({"keep": [[0.0, 3.2], [4.6, 10.0]]}, duration=WINDOW.duration),
+                       h.root / "edited.mp4", ass_path=ass, normalize=True, final=True)
+
+
+def _caption_animations(h, _mp):
+    """Each animation's tags in the burned captions (a Windows font: no fontsdir)."""
+    source = h.source()
+    for animation in ("pop", "fade", "bounce", "karaoke", "slide"):
+        h.step(animation)
+        ass = build_captions(SEGMENTS, WINDOW, h.root / f"{animation}.ass", style={"animation": animation})
+        cutter.cut_clip(source, PADDED, h.root / f"{animation}.mp4", ass_path=ass, normalize=True, final=True)
+    h.step("pop over the word highlight: the first of each caption's events")
+    ass = build_captions(SEGMENTS, WINDOW, h.root / "pop-highlight.ass", style={"animation": "pop", "highlight": True})
+    cutter.cut_clip(source, PADDED, h.root / "pop-highlight.mp4", ass_path=ass, normalize=True, final=True)
+
+
+def _caption_animation_handoffs(h, _mp):
+    """Animations across events and lines: a short first word hands the
+    animation on, pop and bounce write out the line breaks libass makes at
+    100%, overlapping captions get no moving tag, and a bottom caption that
+    slides in a safe zone stands clear of the bar from its first frame."""
+    source = h.source()
+    short = [{"start": 0.0, "end": 0.9, "text": "so impossible shot"}, {"start": 1.0, "end": 2.0, "text": "a buzzer"},
+             {"start": 2.1, "end": 3.0, "text": "is overlapping"}, {"start": 2.6, "end": 3.4, "text": "these two"}]
+    words = [Segment(start=10.0, end=13.4, text="so impossible shot a buzzer is overlapping these two", words=[
+        {"start": 10.0, "end": 10.07, "word": "so"}, {"start": 10.07, "end": 10.5, "word": "impossible"},
+        {"start": 10.5, "end": 10.9, "word": "shot"}, {"start": 11.0, "end": 11.05, "word": "a"},
+        {"start": 11.05, "end": 12.0, "word": "buzzer"}])]
+    window = ClipCandidate(start=10.0, end=13.4, score=0)
+    padded = ClipCandidate(start=10.0, end=13.4, score=0)
+    for animation in ("pop", "bounce", "slide", "fade"):
+        h.step(f"{animation}, Titan One, word highlight, TikTok safe zone")
+        ass = build_captions(words, window, h.root / f"{animation}.ass", lines=short,
+                             style={"font": "Titan One", "font_size": 86, "animation": animation, "highlight": True,
+                                    "safe_zone": "tiktok"})
+        cutter.cut_clip(source, padded, h.root / f"{animation}.mp4", ass_path=ass, normalize=True, final=True)
+
+
+def _caption_safe_zones(h, _mp):
+    """Each app's safe zone: the captions' margins, at the bottom and at the top."""
+    source = h.source()
+    for zone in ("tiktok", "reels", "shorts"):
+        for position in ("bottom", "top"):
+            h.step(f"{zone}, {position}")
+            name = f"{zone}-{position}"
+            ass = build_captions(SEGMENTS, WINDOW, h.root / f"{name}.ass",
+                                 style={"safe_zone": zone, "position": position})
+            cutter.cut_clip(source, PADDED, h.root / f"{name}.mp4", ass_path=ass, normalize=True, final=True)
+
+
 LIGHT = {
+    "cut_clip_bundled_font": (
+        "Editor suite step 3: captions in a bundled font, staged into fonts/ beside them and burned with "
+        "fontsdir=fonts, by the one-encode cut and by the editor's pass.",
+        _cut_clip_bundled_font),
+    "caption_animations": (
+        "Editor suite step 3: pop, fade, bounce, karaoke and slide as ASS override tags, and pop over the word "
+        "highlight. Arial: the burn is as before.",
+        _caption_animations),
+    "caption_animation_handoffs": (
+        "Editor suite step 3, QC fix round 1: animations across the word highlight's events (a short first word), "
+        "line breaks written out for pop and bounce, no moving tag on overlapping captions, and slide in a safe zone. "
+        "Titan One, a bundled font: fontsdir=fonts.",
+        _caption_animation_handoffs),
+    "caption_safe_zones": (
+        "Editor suite step 3: TikTok, Reels and Shorts safe zones, bottom and top: the captions' margins.",
+        _caption_safe_zones),
     "cut_clip_staging": (
         "video/cutter.py: the staging cut a vertical render crops from. No loudness pass, plain +faststart.",
         _cut_clip_staging),
@@ -319,6 +399,11 @@ CROPPER = {
     "cropper_split_cam_bottom": (
         "The facecam layout with the webcam band at the bottom.",
         {"tracking": {"mode": "split", "webcam_box": WEBCAM}, "cam_position": "bottom"}),
+    "cropper_track_bundled_font": (
+        "Editor suite step 3: following the subject, captions in a bundled font that bounce, in the TikTok "
+        "safe zone: the font staged beside them and fontsdir=fonts in the burn.",
+        {"tracking": {"mode": "track", "path": PATH, "face_y": 0.34}, "ass": True,
+         "style": {"font": "Bangers", "animation": "bounce", "safe_zone": "tiktok"}}),
 }
 
 
@@ -344,7 +429,7 @@ def test_a_vertical_render_matches_its_snapshot(case, monkeypatch, tmp_path, upd
 
     def run(h, _mp):
         clip = h.media("clip.source.mp4", duration=PADDED.duration)
-        ass = build_captions(SEGMENTS, WINDOW, h.root / "clip.ass") if spec.get("ass") else None
+        ass = build_captions(SEGMENTS, WINDOW, h.root / "clip.ass", style=spec.get("style")) if spec.get("ass") else None
         options = {k: spec[k] for k in ("vf_extra", "cam_position", "normalize") if k in spec}
         render_vertical(clip, _tracking(spec["tracking"]), h.out("clip.mp4"), ass_path=ass, **options)
 

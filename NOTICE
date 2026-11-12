@@ -159,6 +159,56 @@ mean accepting those terms on every user's behalf.
 
 
 -------------------------------------------------------------------------------
+Fonts
+-------------------------------------------------------------------------------
+
+The caption fonts in assets/fonts/ are licensed under the SIL Open Font
+License 1.1 (https://openfontlicense.org), each with its OFL.txt beside it.
+They are the static TTF files from https://github.com/google/fonts (the ofl/
+folder) at commit 5bb28733cec313b63fbd415b574b5ae35c8aa8b8, unmodified and
+unrenamed; assets/fonts/manifest.json lists each file with its sha256. They
+ship inside the app to burn captions and are not sold on their own.
+
+  Anton              Copyright 2020 The Anton Project Authors
+                     (https://github.com/googlefonts/AntonFont.git)
+                     SIL Open Font License 1.1
+  Archivo Black      Copyright 2017 The Archivo Black Project Authors
+                     (https://github.com/Omnibus-Type/ArchivoBlack)
+                     SIL Open Font License 1.1
+  Bangers            Copyright 2010 The Bangers Project Authors
+                     (https://github.com/googlefonts/bangers)
+                     SIL Open Font License 1.1
+  Barlow ExtraBold   Copyright 2017 The Barlow Project Authors
+                     (https://github.com/jpt/barlow)
+                     SIL Open Font License 1.1
+  Bebas Neue         Copyright © 2010 by Dharma Type.
+                     SIL Open Font License 1.1
+  Bowlby One         Copyright (c) 2011 by vernon adams
+                     (vern@newtypography.co.uk), with Reserved Font Names
+                     "Bowlby" "Bowlby One" and "Bowlby One SC"
+                     SIL Open Font License 1.1
+  Kanit ExtraBold    Copyright 2020 The Kanit Project Authors
+                     (https://github.com/cadsondemak/kanit)
+                     SIL Open Font License 1.1
+  Lilita One         Copyright (c) 2011 Juan Montoreano (juan@remolacha.biz),
+                     with Reserved Font Name Lilita
+                     SIL Open Font License 1.1
+  Passion One Black  Copyright (c) 2011 Fontstage (info@fontstage.com), with
+                     Reserved Font Names, 'Passion'
+                     SIL Open Font License 1.1
+  Poppins ExtraBold  Copyright 2020 The Poppins Project Authors
+                     (https://github.com/itfoundry/Poppins)
+                     SIL Open Font License 1.1
+  Russo One          Copyright (c) 2011-2012, Jovanny Lemonad (jovanny.ru),
+                     with Reserved Font Name "Russo"
+                     SIL Open Font License 1.1
+  Titan One          Copyright (c) 2011, Rodrigo Fuenzalida
+                     (www.rfuenzalida.com|hello@rfuenzalida.com), with
+                     Reserved Font Name Titan.
+                     SIL Open Font License 1.1
+
+
+-------------------------------------------------------------------------------
 Commercial licensing
 -------------------------------------------------------------------------------
 

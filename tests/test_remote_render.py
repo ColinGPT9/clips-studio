@@ -72,6 +72,14 @@ def test_a_worker_is_matched_on_what_it_can_actually_do():
     assert protocol.compatible(True, {**ok, "protocol": 99}) == (False, "worker update required")
 
 
+def test_a_worker_on_the_app_before_the_new_caption_looks_is_told_to_update():
+    """Protocol 1 workers burn captions in Arial with no animation and the
+    old margins: since step 3 of the editor suite they are refused."""
+    assert protocol.PROTOCOL == 2
+    old = {"protocol": 1, "encoders": ["cpu"], "framing": True}
+    assert protocol.compatible(False, old) == (False, "worker update required")
+
+
 def test_settings_default_off_and_never_show_the_worker_secret(tmp_path):
     s = settings.load(tmp_path)
     assert s["enabled"] is False and s["mode"] == "local"

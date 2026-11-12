@@ -10,3 +10,6 @@ vendor/** linguist-vendored
 *.model binary
 *.mp4  binary
 *.png  binary
+# The bundled caption fonts are checked byte for byte against their sha256 in
+# assets/fonts/manifest.json.
+*.ttf  binary

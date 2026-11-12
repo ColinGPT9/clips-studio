@@ -1,0 +1,113 @@
+{
+  "about": "Caption looks offered as one-click choices (GET /caption-presets). Each style is a complete caption_style, as video/captions.py reads it: picking a preset fills every control, and changing a control afterwards just edits the style. Classic is exactly the default style (video/captions.py DEFAULT_STYLE); tests/test_caption_presets.py checks it, and checks every preset against the renderer's fonts, animations and safe zones.",
+  "presets": [
+    {
+      "id": "classic",
+      "name": "Classic",
+      "style": {
+        "font": "Arial",
+        "font_size": 84,
+        "color": "#FFFFFF",
+        "position": "bottom",
+        "words_per_caption": 3,
+        "uppercase": true,
+        "highlight": false,
+        "highlight_color": "#FFE600",
+        "second_speaker": false,
+        "second_speaker_color": "#5CE1FF",
+        "animation": "none",
+        "safe_zone": "off"
+      }
+    },
+    {
+      "id": "bold_pop",
+      "name": "Bold pop",
+      "style": {
+        "font": "Poppins ExtraBold",
+        "font_size": 92,
+        "color": "#FFFFFF",
+        "position": "bottom",
+        "words_per_caption": 2,
+        "uppercase": true,
+        "highlight": true,
+        "highlight_color": "#FFE600",
+        "second_speaker": false,
+        "second_speaker_color": "#5CE1FF",
+        "animation": "pop",
+        "safe_zone": "tiktok"
+      }
+    },
+    {
+      "id": "clean_fade",
+      "name": "Clean fade",
+      "style": {
+        "font": "Barlow ExtraBold",
+        "font_size": 78,
+        "color": "#FFFFFF",
+        "position": "bottom",
+        "words_per_caption": 4,
+        "uppercase": false,
+        "highlight": false,
+        "highlight_color": "#FFE600",
+        "second_speaker": false,
+        "second_speaker_color": "#5CE1FF",
+        "animation": "fade",
+        "safe_zone": "reels"
+      }
+    },
+    {
+      "id": "karaoke",
+      "name": "Karaoke",
+      "style": {
+        "font": "Archivo Black",
+        "font_size": 80,
+        "color": "#FFFFFF",
+        "position": "bottom",
+        "words_per_caption": 4,
+        "uppercase": true,
+        "highlight": false,
+        "highlight_color": "#FFE600",
+        "second_speaker": false,
+        "second_speaker_color": "#5CE1FF",
+        "animation": "karaoke",
+        "safe_zone": "tiktok"
+      }
+    },
+    {
+      "id": "bounce",
+      "name": "Bounce",
+      "style": {
+        "font": "Titan One",
+        "font_size": 86,
+        "color": "#FFFFFF",
+        "position": "middle",
+        "words_per_caption": 2,
+        "uppercase": true,
+        "highlight": true,
+        "highlight_color": "#7CFF4F",
+        "second_speaker": false,
+        "second_speaker_color": "#5CE1FF",
+        "animation": "bounce",
+        "safe_zone": "tiktok"
+      }
+    },
+    {
+      "id": "slide_up",
+      "name": "Slide up",
+      "style": {
+        "font": "Bebas Neue",
+        "font_size": 110,
+        "color": "#FFFFFF",
+        "position": "bottom",
+        "words_per_caption": 3,
+        "uppercase": true,
+        "highlight": false,
+        "highlight_color": "#FFE600",
+        "second_speaker": false,
+        "second_speaker_color": "#5CE1FF",
+        "animation": "slide",
+        "safe_zone": "shorts"
+      }
+    }
+  ]
+}

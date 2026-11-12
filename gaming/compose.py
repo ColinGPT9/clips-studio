@@ -23,6 +23,7 @@ from pathlib import Path
 from core.binaries import ffmpeg
 from gaming.layout import OUT_H, OUT_W, Element, Plan
 from video.encoding import audio_filter_args, final_movflags, video_encoder_args
+from video.fonts import subtitles_filter
 
 
 def _blur_fill(label: str, w: int, h: int) -> str:
@@ -63,7 +64,9 @@ def _element(i: int, e: Element) -> tuple[str, str]:
 
 
 def filter_graph(p: Plan, vf_extra: str = "", ass_name: str | None = None) -> str:
-    """The -filter_complex for one plan; the output pad is [v]."""
+    """The -filter_complex for one plan; the output pad is [v]. `ass_name`
+    is what follows "subtitles=": the captions' file name, with
+    ":fontsdir=fonts" after it when they use a bundled font."""
     parts = [f"[0:v]crop=2:2:0:0,scale={OUT_W}:{OUT_H},setsar=1,"
              f"drawbox=x=0:y=0:w={OUT_W}:h={OUT_H}:color=black:t=fill[base]"]
     below = "base"
@@ -87,7 +90,8 @@ def render(clip_path: Path, output_path: Path, p: Plan, ass_path: Path | None = 
     cmd = [
         ffmpeg(), "-y",
         "-i", str(clip_path.resolve()),
-        "-filter_complex", filter_graph(p, vf_extra, ass_path.name if ass_path is not None else None),
+        "-filter_complex", filter_graph(
+            p, vf_extra, subtitles_filter(ass_path).removeprefix("subtitles=") if ass_path is not None else None),
         "-map", "[v]", "-map", "0:a:0?",
         *video_encoder_args(),
         "-c:a", "aac", "-b:a", "128k",

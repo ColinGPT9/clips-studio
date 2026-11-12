@@ -45,6 +45,25 @@ were often broken in a way that only showed up on somebody else's machine.
 - **WoopSocial: make a smaller copy when a clip is over 100 MB** (off unless you tick
   it). A clip WoopSocial would refuse is sent as a copy under about 95 MB, which is
   deleted once it's sent.
+- **12 new caption fonts** (#174): Anton, Archivo Black, Bangers, Barlow ExtraBold, Bebas
+  Neue, Bowlby One, Kanit ExtraBold, Lilita One, Passion One Black, Poppins ExtraBold,
+  Russo One and Titan One, built into the app (SIL Open Font License), so clips look the
+  same on any PC. A language whose letters a font doesn't all have still gets a Windows
+  font that has them.
+- **Animated captions** (#174): captions can pop, fade, bounce or slide in, or fill word
+  by word like karaoke. None, the default, keeps captions as they were.
+- **Caption safe zones** (#174): keep captions clear of TikTok's, Reels' or Shorts' own
+  buttons and text. A caption with one word too long to fit between the buttons is made
+  a little smaller, and so is a Chinese, Japanese or Thai caption (written without
+  spaces) that is too long. Off by default.
+- **Caption looks** (#174): Classic, Bold pop, Clean fade, Karaoke, Bounce and Slide up
+  fill in every caption setting with one click. Classic is the look captions always had.
+- **Caption previews show the new looks** (#174): the caption example plays the animation,
+  shades what the chosen app covers and puts the caption where it will sit, and the Clip
+  Editor's caption preview uses the new fonts.
+- **Remote rendering: update both PCs** (#174). A render PC on an older Clips Kitty now
+  says it needs an update and takes no clips, instead of making clips with the new caption
+  looks in plain Arial.
 - **Optional Clip updates.** App-wide Approve/Deny cards, private Discord
   updates and an Away from desk approval gate, with local-model wording and
   plain-text fallback. Includes a configurable attorney joke popup. Off by default.

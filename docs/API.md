@@ -247,7 +247,7 @@ values in `config/settings.yaml`:
 | `max_clips` | int | cap clips from this video |
 | `min_score` | int | quality bar, 0–100 |
 | `captions` | bool | burn captions in (default true) |
-| `caption_style` | object | font, size, colour, position, `words_per_caption`; `second_speaker` (bool) with `second_speaker_color` burns anyone but the main speaker in another colour |
+| `caption_style` | object | font, size, colour, position, `words_per_caption`; `second_speaker` (bool) with `second_speaker_color` burns anyone but the main speaker in another colour; `animation` (`none`, `pop`, `fade`, `bounce`, `karaoke`, `slide`) and `safe_zone` (`off`, `tiktok`, `reels`, `shorts`), both off unless set. The font can be one of the fonts the app ships (`GET /fonts`). See [editor-suite/api/step3-captions.md](editor-suite/api/step3-captions.md) |
 | `long_clips` | bool | 61–180s clips, for TikTok monetisation |
 | `podcast` | bool | multi-camera: each shot gets a steady crop on whoever is talking |
 | `longform` | object | `{"mode": ...}`: `short_clips`, `clips_140`, `highlights` or `edited_stream`; add `"shorts": true` to make the 9:16 Shorts in the same job |

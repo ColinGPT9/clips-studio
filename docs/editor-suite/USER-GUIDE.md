@@ -115,7 +115,62 @@ Before, a new start moved every cut and mute to a different moment.
 
 ## Caption fonts and animations
 
-Coming in step 3
+Your captions can now use 12 bold caption fonts that come with Clips Kitty, move when they appear, and keep out of the way of TikTok's, Reels' and Shorts' own buttons. Nothing changes until you pick something: Classic, the look your captions have always had, stays the default.
+
+### Pick a look
+
+The caption settings (when you add a video, in a queued video's settings, and in the Clip Editor) start with **Presets**, a row of ready-made looks, each name written in its own font. Click one and every caption setting is filled in for you:
+
+- **Classic:** white Arial, three words at a time, at the bottom. Your captions as they've always been.
+- **Bold pop:** a heavy, round-lettered font, two words at a time, each word lighting up yellow as it's said, and every caption popping in.
+- **Clean fade:** a clean font in ordinary capitals and small letters, four words at a time, fading in and out.
+- **Karaoke:** each word fills with yellow as it's said, like a sing-along.
+- **Bounce:** a fun rounded font in the middle of the screen, bouncing in, each word lighting up green.
+- **Slide up:** a tall, narrow font that slides up into place.
+
+Every look except Classic also turns on a **Safe zone** (TikTok for Bold pop, Karaoke and Bounce, Instagram Reels for Clean fade, YouTube Shorts for Slide up), which keeps the captions narrower so they stay clear of the app's buttons. Set **Safe zone** to Off if you want them wider.
+
+After picking a look, change anything you like: the font, the size, the colours. Your change just edits the look, and the preset no longer shows as picked. Picking a look doesn't change **Second speaker in another colour**.
+
+### Fonts
+
+The font list has two groups: **Windows fonts**, the ones on every Windows PC (Arial, Impact and the rest), and **Fonts that come with Clips Kitty**, 12 of them: Anton, Archivo Black, Bangers, Barlow ExtraBold, Bebas Neue, Bowlby One, Kanit ExtraBold, Lilita One, Passion One Black, Poppins ExtraBold, Russo One and Titan One. Each name is shown in its own font, so you can see it before you pick it.
+
+They're built into the app, so your clips look the same on any PC, even one that doesn't have them installed.
+
+### Animations
+
+**Animation** sets how each caption comes on screen. Hover over it for a short description.
+
+- **None:** captions just appear, as before.
+- **Pop:** each caption grows quickly into place.
+- **Fade:** each caption fades in, and fades out just before the next one.
+- **Bounce:** each caption grows a little past full size and settles back.
+- **Slide up:** each caption rises a little into place.
+- **Karaoke:** each word fills with your highlight colour while it's said. It does the same job as **Highlight each word as it's said**, so that switch shows as included while Karaoke is on. On a clip you've cut or sped up in the editor, the fill moves through each caption evenly by word length instead of following each word exactly. In Arabic, Hebrew and other right-to-left languages Karaoke isn't used, and the captions are shown without it.
+
+The animations are quick (a fifth of a second or less), so captions still appear exactly when the words are said, and they never change the words. They play in full even when the first word is very short, and a caption that pops or bounces keeps the same lines from start to finish, also when it has a hyphen, a dollar sign or a percent sign in it (TWENTY-FIVE, $500, 50%). A very short caption (one quick word) fades in and out faster, so it still shows at full colour. A caption with an emoji, or in a language such as Thai, Hindi or Arabic, fades in at full size when you pick Pop or Bounce, because growing it could move its line breaks. If you edit caption times so two captions are on screen together, those two just appear (or fade), so they stay stacked and readable. The example below the settings plays the animation roughly; your finished clip shows exactly how it looks.
+
+### Keep clear of the app's buttons
+
+TikTok, Reels and Shorts put their own buttons down the right side of your video and your name and description at the bottom. **Safe zone** keeps your captions out from under them. Choose the app you post to most:
+
+- **Off:** captions where they've always been.
+- **TikTok**, **Instagram Reels** or **YouTube Shorts:** captions stay narrower so they keep away from the buttons on the right (and stay centred), and captions at the top move down below the app's top bar. Captions at the bottom already sit above all three apps' bottom text, so they stay at the same height. With **Slide up**, bottom captions sit a little higher on TikTok and Reels, so they don't slide in from under the app's text.
+
+A word can't be split across two lines, so a caption with one very long word (like CONGRATULATIONS, or a long word at a big size) is made a little smaller, just that caption, so the whole word stays clear of the buttons. Chinese, Japanese and Thai are written without spaces, so a whole caption counts as one word there and is made smaller the same way; fewer **words per caption** keeps those captions big. Hindi and Arabic captions can't be measured this way yet: a single very long word in those languages can still reach under the buttons.
+
+The example below the settings shades the area that app covers, and shows your caption where it will sit. The apps move their buttons a little from phone to phone, so treat it as a guide. Safe zones are for tall clips only; wide clips aren't changed.
+
+### Other languages
+
+The 12 new fonts are made for languages written in the English alphabet. Some cover more: Russo One has Russian, Ukrainian and other Cyrillic letters, Kanit ExtraBold has Thai and Vietnamese, and several have the accented letters of Polish, Czech, Romanian, Turkish and Vietnamese. Clips Kitty checks every letter your video's language uses. If your chosen font is missing even one (for example Romanian's Ț, or the extra letters of Kazakh), it uses a Windows font that has them all, the same way it always has for languages like Hindi, Japanese and Arabic: your captions never show empty boxes, or a letter in a different font in the middle of a word. Translated captions work the same way, language by language.
+
+### Good to know
+
+- If one of the new fonts is ever missing from your copy of Clips Kitty, that clip's captions are made in Arial instead, and the clip is still made. The video's progress notes say which font was missing, and say so too if all the new fonts are missing.
+- If you render on a second PC (Settings → Advanced settings → Remote rendering), update Clips Kitty on that PC too. Until you do, that PC says it needs an update and takes no clips.
+- Exports (Settings → Export) keep the captions exactly as they are in your clip.
 
 ## Creator notes for the AI, and free music and sound effects
 
