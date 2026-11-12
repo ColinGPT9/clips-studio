@@ -214,7 +214,8 @@ def stage(families_used, ass_dir: Path) -> str | None:
                         continue        # staged already, by this clip's neighbour
                     # A short name: the copy must not need a longer path than
                     # the clip's own files, or a long clip folder loses its font.
-                    part = target.with_name(f"~{os.getpid():x}{threading.get_ident():x}.tmp")
+                    part = target.with_name(
+                        f"~{(os.getpid() * 1000003 ^ threading.get_ident()) & 0xFFFFFFFF:08x}.tmp")
                     shutil.copyfile(src, part)
                     os.replace(part, target)
                 staged = True
