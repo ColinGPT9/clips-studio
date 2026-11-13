@@ -134,6 +134,7 @@ jobs:
           tests/test_caption_render_ffmpeg.py tests/test_fonts_routes.py
           tests/test_creator_description.py tests/test_audio_library_routes.py
           tests/test_library_music_render_ffmpeg.py tests/test_remote_render.py
+          tests/test_project_routes.py
 
   sdk-windows:
     name: SDK (Windows)

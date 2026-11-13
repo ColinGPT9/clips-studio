@@ -598,6 +598,77 @@ def as_made(title, description, hashtags, start, end) -> str:
     return hashlib.sha256(made.encode("utf-8")).hexdigest()[:32]
 
 
+# The new editor's projects (editor suite step 5; video_editor/project/store.py
+# reads and writes them, and docs/editor-suite/api/step5-project-core.md
+# describes them). Made by _migrate() on every database, and empty until a
+# project route is called: nothing that makes clips reads them.
+# - projects.clip_id is the clip a project was made from. NOT a foreign key:
+#   a re-render gives the clip a new id (follow_clip_id moves it), and a
+#   deleted clip leaves its project, with no clip (delete_clip).
+# - head goes up by one with every change, undo and redo included: what a
+#   caller's expected_revision is compared with. cursor is the revision the
+#   document is at, tip the last one (redo while cursor < tip), base the one
+#   undo stops at.
+PROJECT_TABLES = (
+    """CREATE TABLE IF NOT EXISTS projects (
+        id          TEXT PRIMARY KEY,
+        name        TEXT NOT NULL DEFAULT '',
+        clip_id     INTEGER,
+        video_id    TEXT NOT NULL DEFAULT '',
+        doc_schema  INTEGER NOT NULL DEFAULT 1,
+        head        INTEGER NOT NULL DEFAULT 0,
+        cursor      INTEGER NOT NULL DEFAULT 0,
+        tip         INTEGER NOT NULL DEFAULT 0,
+        base        INTEGER NOT NULL DEFAULT 0,
+        doc         TEXT NOT NULL,
+        created_at  TEXT NOT NULL DEFAULT '',
+        updated_at  TEXT NOT NULL DEFAULT ''
+    )""",
+    "CREATE UNIQUE INDEX IF NOT EXISTS projects_by_clip ON projects (clip_id) WHERE clip_id IS NOT NULL",
+    """CREATE TABLE IF NOT EXISTS project_revisions (
+        project_id  TEXT NOT NULL,
+        seq         INTEGER NOT NULL,
+        head        INTEGER NOT NULL DEFAULT 0,
+        label       TEXT NOT NULL DEFAULT '',
+        ops         TEXT NOT NULL DEFAULT '[]',
+        forward     TEXT NOT NULL DEFAULT '[]',
+        inverse     TEXT NOT NULL DEFAULT '[]',
+        snapshot    TEXT,
+        coalesce    TEXT NOT NULL DEFAULT '',
+        at          REAL NOT NULL DEFAULT 0,
+        created_at  TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (project_id, seq)
+    )""",
+    """CREATE TABLE IF NOT EXISTS media_assets (
+        sha256      TEXT PRIMARY KEY,
+        kind        TEXT NOT NULL,
+        name        TEXT NOT NULL DEFAULT '',
+        ext         TEXT NOT NULL DEFAULT '',
+        size        INTEGER NOT NULL DEFAULT 0,
+        duration_us INTEGER NOT NULL DEFAULT 0,
+        width       INTEGER NOT NULL DEFAULT 0,
+        height      INTEGER NOT NULL DEFAULT 0,
+        fps_num     INTEGER NOT NULL DEFAULT 0,
+        fps_den     INTEGER NOT NULL DEFAULT 0,
+        has_audio   INTEGER NOT NULL DEFAULT 1,
+        created_at  TEXT NOT NULL DEFAULT ''
+    )""",
+    """CREATE TABLE IF NOT EXISTS project_exports (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id  TEXT NOT NULL,
+        head        INTEGER NOT NULL DEFAULT 0,
+        clip_id     INTEGER,
+        path        TEXT NOT NULL DEFAULT '',
+        preset      TEXT NOT NULL DEFAULT '',
+        status      TEXT NOT NULL DEFAULT '',
+        error       TEXT NOT NULL DEFAULT '',
+        created_at  TEXT NOT NULL DEFAULT '',
+        updated_at  TEXT NOT NULL DEFAULT ''
+    )""",
+    "CREATE INDEX IF NOT EXISTS project_exports_by_project ON project_exports (project_id)",
+)
+
+
 class StateDB:
     def __init__(self, db_path: Path):
         db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -902,6 +973,8 @@ class StateDB:
             self.conn.execute(
                 "INSERT INTO app_state (key, value) VALUES ('watches_imported', '1')"
             )
+        for statement in PROJECT_TABLES:
+            self.conn.execute(statement)
 
     def _mark_exports_from_before(self) -> None:
         """Once, as clips.first_exported_at is added: the exports made before
@@ -998,6 +1071,16 @@ class StateDB:
             "(SELECT id FROM clips WHERE video_id = ?)",
             (video_id,),
         )
+        # A project made from one of its clips stays, with no clip (see
+        # delete_clip).
+        self.conn.execute(
+            "UPDATE projects SET clip_id = NULL WHERE clip_id IN (SELECT id FROM clips WHERE video_id = ?)",
+            (video_id,),
+        )
+        self.conn.execute(
+            "UPDATE project_exports SET clip_id = NULL WHERE clip_id IN (SELECT id FROM clips WHERE video_id = ?)",
+            (video_id,),
+        )
         self.conn.execute("DELETE FROM clips WHERE video_id = ?", (video_id,))
         self.conn.execute("DELETE FROM rejections WHERE video_id = ?", (video_id,))
         self.conn.execute("DELETE FROM videos WHERE video_id = ?", (video_id,))
@@ -1015,6 +1098,11 @@ class StateDB:
         self.conn.execute("DELETE FROM uploads WHERE clip_id = ?", (clip_id,))
         self.conn.execute("DELETE FROM clip_translations WHERE clip_id = ?", (clip_id,))
         self.conn.execute("DELETE FROM clip_feedback WHERE clip_id = ?", (clip_id,))
+        # A project made from the clip (the new editor's) is a person's work:
+        # it stays, with no clip, and still opens. Nothing happens when the
+        # clip has none.
+        self.conn.execute("UPDATE projects SET clip_id = NULL WHERE clip_id = ?", (clip_id,))
+        self.conn.execute("UPDATE project_exports SET clip_id = NULL WHERE clip_id = ?", (clip_id,))
         self.conn.execute("DELETE FROM clips WHERE id = ?", (clip_id,))
         self.conn.commit()
         return row["path"]
@@ -1081,9 +1169,24 @@ class StateDB:
         A platform the new id already has a row for keeps that row.
 
         Campaign submissions follow too: their identity is the post's, and
-        their clip_id is only the last known id (for lists and {title})."""
+        their clip_id is only the last known id (for lists and {title}).
+
+        So does the clip's project in the new editor (projects.clip_id, which
+        is no foreign key for this reason). Nothing happens when the clip has
+        none."""
         self.conn.execute(
             "UPDATE OR IGNORE clip_publishes SET clip_id = ? WHERE clip_id = ?",
+            (int(new_id), int(old_id)),
+        )
+        self.conn.execute(
+            "UPDATE OR IGNORE projects SET clip_id = ? WHERE clip_id = ?",
+            (int(new_id), int(old_id)),
+        )
+        # Left behind only when the new id already had a project of its own
+        # (a clip has one): it stays, with no clip, never on an id that is gone.
+        self.conn.execute("UPDATE projects SET clip_id = NULL WHERE clip_id = ?", (int(old_id),))
+        self.conn.execute(
+            "UPDATE project_exports SET clip_id = ? WHERE clip_id = ?",
             (int(new_id), int(old_id)),
         )
         self.conn.execute(

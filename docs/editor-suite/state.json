@@ -709,7 +709,7 @@
       ],
       "notes": [
         "The plan lists it with the engine-only steps a cloud run may take, only as a draft PR on Colin's go",
-        "Out of scope here: project clips arrive in step 5, and how a remake treats them is decided with them. The proof names them, so that part stays open until then",
+        "Out of scope here: project clips arrive in step 5, and how a remake treats them is decided with them. The proof names them, so that part stays open until then. Closed by step 5 (2026-11-12): a clip that has a project counts as edited and is kept",
         "Engine side built 2026-11-06: shift_edit, _rerender_clip carrying the edit (an edit sent with a new range too), the Make clips again routes and replacement (core/remake.py), clips.edited_at. The UI builds against docs/editor-suite/api/step2-remake.md",
         "Choices made building it: the routes are protected as POST /jobs is (Host check, a JSON body required), with no session header, so the browser shim can use them; a remake refuses Longform (400) and GET leaves it out of the prefill; the original job's webhook and `then` aren't carried; a linked video whose link is lost but whose download is here is queued as local:<id>; a run that made some clips while others failed to render still replaced (the spec's rule: it finished and made at least one 9:16 clip) until 2-D15 replaced that choice: since then a run in which any render failed replaces nothing and makes nothing again in place",
         "edited_at marks title, description and hashtag changes (and every re-render) from this version on. Text changed in an earlier version leaves no mark, so since the QC fix round every clip made before the update (app_state clips_unmarked_through) is kept as older, unless the run makes its window again: then it is made again in place and keeps its title, description and hashtags",
@@ -1457,7 +1457,7 @@
         "2",
         "3"
       ],
-      "status": "todo",
+      "status": "done",
       "user_visible": false,
       "acceptance": [
         "Random op sequences undo back to the start",
@@ -1466,23 +1466,295 @@
         "≤40 ms per op round trip at 300 items"
       ],
       "files": [
-        "video_editor/project/model.py (new)",
-        "video_editor/project/ops.py (new)",
-        "video_editor/project/store.py (new)",
-        "video_editor/project/importer.py (new)",
-        "video_editor/project/projection.py (new)",
-        "video_editor/project/migrate.py (new)",
-        "core/state.py",
-        "server/api.py"
+        "video_editor/project/__init__.py, model.py, patch.py, ops.py, env.py, migrate.py, importer.py, projection.py, store.py (new; standard library only)",
+        "core/state.py (PROJECT_TABLES made by _migrate: projects, project_revisions, media_assets, project_exports; follow_clip_id moves projects.clip_id; delete_clip and delete_video leave a project with no clip)",
+        "core/remake.py (a clip that has a project counts as edited and is kept)",
+        "server/projects_api.py (new; the eight project routes, session header and Origin check), server/api.py (installs it)",
+        "tests/project_helpers.py, tests/test_project_model.py, test_project_ops.py, test_project_property.py, test_project_store.py, test_project_projection.py, test_project_env.py, test_project_routes.py (new), tests/test_editor_import_guard.py (the package's own rules added)",
+        ".github/workflows/ci.yml (tests/test_project_routes.py in the Plugin platform job)",
+        "docs/editor-suite/api/step5-project-core.md (new), docs/editor-suite/DECISIONS.md (ED19 to ED22), docs/editor-suite/STATUS.md, docs/developers/api-reference.md (regenerated)"
       ],
       "notes": [
         "#192: foundation",
-        "New routes carry the INTERNAL stability label",
-        "Engine-only: a cloud run may take it, only as a draft PR on Colin's go",
-        "Needs step 1 (set_export_preset accepts only a codec this PC can encode) and step 3 (add_text takes fonts from the registry)"
+        "Engine only, not user-visible: no USER-GUIDE or CHANGELOG entry. The contract is docs/editor-suite/api/step5-project-core.md",
+        "New routes carry the INTERNAL stability label; every one, reading included, needs the X-Clips-Kitty-Session header and an Origin the app itself sends: none, file://, null, the dev server's or the engine's own. Any other http(s) origin is refused",
+        "Needs step 1 (set_export_preset accepts only a codec this PC can encode) and step 3 (add_text takes fonts from the registry)",
+        "Built in three sittings on 2026-11-12: the document, the operations, the patches, the app adapter, the migration and the importer first; the first QC and review ran before the rest existed (5-D1). Fix round 1 built the store, the projection, the tables, the routes, the tests and the docs, and fixed 5-D6 to 5-D9. The third sitting (after a usage-limit stop) finished it: the Origin rule as answered, looped music that stays in time through a split, export records that follow their clip, and every gate run again",
+        "Closes step 2's open proof item: Make clips again keeps a clip that has a project",
+        "server/jobs.py and core/pipeline.py are unchanged: the re-render's existing follow_clip_id call moves a project. _rerender_clip has no render_opts_replace yet (step 7)",
+        "Choices of consequence: DECISIONS.md ED19 (undo is the exact difference; head only goes up), ED20 (a project outlives its clip; a clip has one project), ED21 (projection keeps what didn't change)",
+        "Open for later steps: playing looped music from its loop_offset_us (step 7); a project made from a clip with its own music file holds that path in its document, as the clip's render options do; which Origin the packaged window sends (file:// or null, both let through) was read from ui/src/main/index.ts, not captured from the running app (step 8); Branch A's start and end can be finer than the hundredth of a second a clip's row keeps (step 7); when a re-render makes no new row, follow_clip_id is not called and the project keeps the old clip id (server/jobs.py, unchanged here)",
+        "Fix round after the second QC and review (5-D15 to 5-D27): 24 operations now (move_track added); the document holds one zero; what can't be saved is refused up front; a watermark set by an operation takes only the keys the render reads (ED22)"
       ],
-      "results": [],
-      "defects": []
+      "results": [
+        {
+          "date": "2026-11-12",
+          "agent": "Engineering (fix round 1)",
+          "check": "Random op sequences undo back to the start",
+          "outcome": "pass",
+          "evidence": "tests/test_project_property.py: 14 seeded runs of 350 random operations (7 frame rates x 2 seeds), each inverse and forward step byte-identical, all inverses in reverse give the first bytes; every one of the 23 operations applied at least once; a batch all or nothing at every position; undo and redo through the store land on the same bytes"
+        },
+        {
+          "date": "2026-11-12",
+          "agent": "Engineering (fix round 1)",
+          "check": "projection(import(x)) == x on fixtures",
+          "outcome": "pass",
+          "evidence": "tests/test_project_projection.py: 56 clip shapes (the render options the 15 step-0 pipeline snapshot cases saved, 18 edits, 16 option sets, 5 raw forms, 2 odd windows), each with 4 sets of source facts, exact including number kinds, with and without the unchanged-project shortcut"
+        },
+        {
+          "date": "2026-11-12",
+          "agent": "Engineering (fix round 1)",
+          "check": "409 on stale edits",
+          "outcome": "pass",
+          "evidence": "tests/test_project_routes.py: ops, dry run, undo and redo with a stale expected_revision answer 409 with current_revision and change nothing; tests/test_project_store.py: two connections on one revision"
+        },
+        {
+          "date": "2026-11-12",
+          "agent": "Engineering (third sitting)",
+          "check": "≤40 ms per op round trip at 300 items",
+          "outcome": "pass",
+          "evidence": "scratch/step5/perf_op_round_trip.py on this PC, a 300-item project with 400 caption lines (112 KB document), 200 mixed operations, two runs: store.apply_ops plus writing the answer median 15.3 and 15.4 ms, p95 17.2 and 17.7 ms; undo median 17.0 and 17.1 ms; the HTTP route through TestClient (which adds the client's own JSON work) median 23.7 and 23.7 ms, p95 27.3 and 26.8 ms. Single calls were slower (route 60 ms at worst; one store call 454 ms in the second run). Measured by the builder, not by the Performance engineer"
+        },
+        {
+          "date": "2026-11-12",
+          "agent": "Engineering (third sitting)",
+          "check": "Regression gates",
+          "outcome": "pass",
+          "evidence": "Step-0 snapshot tests without --update-snapshots, the import guard and the API contract test: 99 passed. The project tests: 341 passed on the system Python; 321 passed, 32 skipped on the CI light install (the route tests need FastAPI). Golden check: 4 cases identical. ruff: all checks passed. Earlier steps' tests on the system Python: 2487 passed, 8 skipped (the CI Plugin platform list plus the caption and audio-library tests). CI light full suite: the 27 known Windows-only failures, 5920 passed, 808 skipped (run as two halves)"
+        },
+        {
+          "date": "2026-11-12",
+          "agent": "Engineering (fix round after the second QC and review)",
+          "check": "Regression gates after 5-D15 to 5-D27",
+          "outcome": "pass",
+          "evidence": "The project tests and the import guard: 386 passed on the system Python; 352 passed, 34 skipped on the CI light install (the route tests need FastAPI). The step-0 snapshots without --update-snapshots, the import guard and the API contract: 99 passed; the golden check: all 4 cases identical; ruff: all checks passed. Earlier steps' tests on the system Python (the CI Plugin platform list plus the caption and audio-library tests): 2841 passed, 8 skipped (the project tests and the import guard in the same run). CI light full suite: the 27 known Windows-only failures (test_ui_marketplace 14, test_ui_edit_suggestions 9, test_plugin_sdk_new 2, test_plugin_docs 1, test_ui_steps 1), 5951 passed, 810 skipped, in one run. The reviewers' reproduction scripts (scratch/step5-review/repro_ops.py, repro_relay.py, routes_more.py, routes_attack.py, fuzz_ops.py) were run again; each defect's case is also a test in tests/test_project_*.py"
+        },
+        {
+          "date": "2026-11-12",
+          "agent": "Engineering (fix round after the second QC and review)",
+          "check": "≤40 ms per op round trip at 300 items",
+          "outcome": "pass",
+          "evidence": "scratch/step5/qc_perf.py (the QC's script) with nothing else running: store call plus writing the answer, 300 items, three runs of 180 calls: medians 12 to 16 ms for set volume, ripple trim, split and undo, the slowest of the 540 calls 56 ms (one undo); 1,500 more store calls in a row (scratch/step5/fix2_perf_probe.py), none over 16 ms; through the HTTP route with TestClient (200 calls) median 24 ms, p95 30 ms, and one call of 534 ms. The 1,049 ms call did not come back."
+        }
+      ],
+      "defects": [
+        {
+          "id": "5-D1",
+          "date": "2026-11-12",
+          "found_by": "QC and Review",
+          "summary": "The first QC and review ran while the step was half built: no store.py or projection.py, no tables, no routes, no tests, no docs. Fixed: all of them built in fix round 1 (docs/editor-suite/api/step5-project-core.md lists them).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D2",
+          "date": "2026-11-12",
+          "found_by": "QC",
+          "summary": "No project tables; a project would not follow its clip through a re-render, and Make clips again had no rule for a clip with a project. Fixed: PROJECT_TABLES in core/state.py _migrate; follow_clip_id moves projects.clip_id and does nothing without one; core/remake.py counts such a clip as edited; delete_clip and delete_video leave the project with no clip (tests/test_project_store.py).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D3",
+          "date": "2026-11-12",
+          "found_by": "QC",
+          "summary": "No regression gate had been run (the checking session could only read). Fixed: all run in fix round 1; see the results.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D4",
+          "date": "2026-11-12",
+          "found_by": "QC",
+          "summary": "To confirm: env.py and importer.py import app modules inside a standard-library-only package. Confirmed as the design and pinned: only those two files, only inside functions, the named modules only; loading the package loads no numpy, cv2, torch, PIL, FastAPI or pydantic (tests/test_editor_import_guard.py).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D5",
+          "date": "2026-11-12",
+          "found_by": "Review",
+          "summary": "The same as 5-D1, from the review: nothing of the store, the routes or the round trip could be reviewed. Fixed with 5-D1.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D6",
+          "date": "2026-11-12",
+          "found_by": "Review",
+          "summary": "split_item on any V1 item but the last was refused with a misleading error, or made the next item and the whole video one frame longer: the items' frame counts were taken after the item was shortened. Fixed: counted first. Every other caller of the count was checked (insert, trim, delete, move, duplicate, speed: all count before they change). Tests split first, middle and last items one frame from each end, and the random run checks that no split moves anything else.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D7",
+          "date": "2026-11-12",
+          "found_by": "Review",
+          "summary": "set_canvas with a new frame rate worked each V1 item's new length out from its old length, so another rate and back could leave a short item a frame longer. Fixed: from its source and speed (text and pictures from their length). Tested for 18 pairs of rates.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D8",
+          "date": "2026-11-12",
+          "found_by": "Review",
+          "summary": "A key ending in _us inside a payload carried verbatim (a Gaming layout, a caption line's words, a muted word) with a value that isn't a whole number made import_clip raise ModelError. Fixed: what is carried verbatim is not read as the document's times, and import_clip raises ClipImportError for anything the checks still refuse.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D9",
+          "date": "2026-11-12",
+          "found_by": "Review",
+          "summary": "An item's link could point at a deleted item (a doubt in the review, no reproduction). Fixed: delete_items and remove_track clear links to items that are gone.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D10",
+          "date": "2026-11-12",
+          "found_by": "Engineering",
+          "summary": "The Origin check refused null and let in any page served from this PC on any port. Fixed to the owner's answer: no Origin, file://, null, the two dev-server origins and the engine's own address pass; every other http(s) origin is refused (tests/test_project_routes.py).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D11",
+          "date": "2026-11-12",
+          "found_by": "Engineering",
+          "summary": "Splitting looped music started the loop again in the right half. Fixed: a looped item has an optional loop_offset_us, set by a split and by a trimmed start, so every moment of the video keeps the same moment of the music; music that stops looping plays its stretch once or is refused when there is no room.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D12",
+          "date": "2026-11-12",
+          "found_by": "Engineering",
+          "summary": "env.py named a free track with a kind key the importer's media lacks, so the same track could be added twice. Fixed: both name it {type, id}.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D13",
+          "date": "2026-11-12",
+          "found_by": "Engineering",
+          "summary": "store.add_asset deleted its temporary file in a finally without a guard, which tests/test_scratch_cleanup.py refuses (#74). Fixed.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D14",
+          "date": "2026-11-12",
+          "found_by": "Engineering",
+          "summary": "project_exports.clip_id did not follow a re-rendered clip or let go of a deleted one, and a project could be left on a gone clip id when the new id already had a project. Fixed in StateDB.follow_clip_id, delete_clip and delete_video.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D15",
+          "date": "2026-11-12",
+          "found_by": "QC and Review",
+          "summary": "Serious. An edit between 0.0 and -0.0 (transform, volume, colour adjustment, master and track volume, or inside an object kept as given) was saved as a revision whose undo and redo were empty, so undo did not give back the earlier bytes: the two zeros compare equal and are written differently. Fixed twice over: every number an operation checks is stored as 0.0, never -0.0, so such an edit is no change; and the strict difference (patch.py) compares floats as they are written, so objects kept as given (extra, a watermark) undo exactly too. The class (values equal to Python, different as bytes) was already covered for 1, 1.0 and true; -0.0 was the member left out. The random generator now draws -0.0.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D16",
+          "date": "2026-11-12",
+          "found_by": "QC",
+          "summary": "A number that is NaN or Infinity inside an object kept as given, or as a frame rate, raised a plain ValueError (a 500 through the route) instead of a refusal naming the operation and field. Fixed: ops.apply checks what was sent before applying anything and refuses by operation and field; model.fps_of refuses a frame rate that is not finite or too large to read; a ValueError from inside an operation can no longer leave apply() as anything but an OpError.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D17",
+          "date": "2026-11-12",
+          "found_by": "QC",
+          "summary": "A project could keep a clip_id whose clip row is gone: the re-render deletes the old row before the new one exists, and follow_clip_id only runs when the new row is found. Harmless (a clip id is never used again), but the store said otherwise. Fixed in the store, with no change to server/jobs.py: store.get and store.create report clip_id as null whenever the clip's row is gone; the project follows the new row as before when it arrives.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D18",
+          "date": "2026-11-12",
+          "found_by": "QC",
+          "summary": "One ripple trim of 40 took 1,049 ms at 300 items while the test suite ran on the same disk. Measured again by the builder with nothing else running: store call plus writing the answer, 300 items, three runs of 180 calls: medians 12 to 16 ms for set volume, ripple trim, split and undo, the slowest of the 540 calls 56 ms (one undo); 1,500 more store calls in a row (scratch/step5/fix2_perf_probe.py), none over 16 ms; through the HTTP route with TestClient (200 calls) median 24 ms, p95 30 ms, and one call of 534 ms. The 1,049 ms call did not come back. Nothing was changed: no call in the store was slow by itself, so there was nothing to fix in the operations or the statements. What makes a rare single call slow was not found (the disk or another program is a guess); the Performance engineer's own measurement is still open.",
+          "routed_to": "Engineering",
+          "status": "measured again, not changed"
+        },
+        {
+          "id": "5-D19",
+          "date": "2026-11-12",
+          "found_by": "Review",
+          "summary": "Serious. Laying V1 out again makes a neighbour a microsecond longer or shorter at frame rates whose frame is not a whole number of microseconds (30 and 29.97 among them), and only the edited item was kept in step. A picture on V1, or a clip whose fades fill it, then failed the document check, and an edit somewhere else was refused with the internal message 'would leave the project broken' (20 of 60 inserts before a picture). Fixed in ops._lay: every item whose length moved has its picture source times and its fades brought along (fades lose at most the rounding, silently). The class: the random tests now put pictures on V1 and assert that no refusal ever carries the internal message; 42,000 random operations gave none (575 before, by the review's count).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D20",
+          "date": "2026-11-12",
+          "found_by": "Review",
+          "summary": "A clip could almost never be moved from V1 to an overlay track: it kept its whole-frames length, which the overlay rule (length matches the source to the microsecond) refused. Fixed: a clip that leaves V1 takes the length of its source stretch at its speed; a picture keeps its length.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D21",
+          "date": "2026-11-12",
+          "found_by": "Review",
+          "summary": "set_captions gave a line without an id the next generated id even when another line in the same call already had it, and the call was refused. Fixed: the caller's ids are collected first and a new id is never one of them.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D22",
+          "date": "2026-11-12",
+          "found_by": "Review",
+          "summary": "Half of a character (a lone UTF-16 surrogate, which cutting text inside an emoji leaves) anywhere in an operation answered 500: the operations are stored as sent and SQLite could not take the text. Fixed with 5-D16: refused up front, 400, by operation and field. In a revision's label it is left out.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D23",
+          "date": "2026-11-12",
+          "found_by": "Review",
+          "summary": "Quick tweaks that ended where they began (a slider dragged out and back, a switch flipped twice) left an undo step that did nothing. Fixed: when the joined tweaks give back the document from before them, the revision is removed. Switches still join like sliders (two flips: no step; three: one).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D24",
+          "date": "2026-11-12",
+          "found_by": "Review",
+          "summary": "expected_revision: true passed as revision 1 (the request model turned it into a number). Fixed: a strict whole number on the ops, undo and redo routes; true, \"1\" and 1.0 answer 422.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D25",
+          "date": "2026-11-12",
+          "found_by": "Review",
+          "summary": "A saved document holding NaN was read and then crashed the next change with a plain ValueError. Fixed: the store reads its JSON strictly (the document, the history rows, the snapshots); such a row is store.Damaged, in plain words, and nothing changes.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D26",
+          "date": "2026-11-12",
+          "found_by": "Review",
+          "summary": "set_branding kept unknown watermark keys, so a caller could put a file path in the document (watermark.image, watermark.path). Nothing read it, but a path never comes from a caller. Fixed: the operation takes only the keys video_editor/watermark.py reads (a test keeps the two lists the same), each checked. An imported clip's watermark is still kept as it was; ED22 records the rule for step 7.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "5-D27",
+          "date": "2026-11-12",
+          "found_by": "Review",
+          "summary": "There was no operation to reorder tracks, and track order is the stacking order. Added: move_track {track_id, index}, within the track's kind, V1 and A1 staying first. No change to the document's shape.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        }
+      ]
     },
     {
       "id": "6",

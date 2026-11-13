@@ -403,6 +403,10 @@ def _evidence(db, video_id: str, data_dir: Path | None = None) -> dict:
         "submitted_windows": submitted_windows,
         "feedback": feedback,
         "rendered": rendered,
+        # A clip opened in the new editor has a project (core/state.py
+        # projects.clip_id, which follows the clip through a re-render): a
+        # person's work on it, whether or not it was rendered since.
+        "projects": _project_clips(db, video_id),
         "chosen": chosen,
         "busy": busy,
         # A thumbnail a person chose for the clip (server/youtube_api.py
@@ -411,6 +415,20 @@ def _evidence(db, video_id: str, data_dir: Path | None = None) -> dict:
         "thumbnails": None if data_dir is None else Path(data_dir) / "thumbnails",
         "unmarked_through": _unmarked_through(db),
     }
+
+
+def _project_clips(db, video_id: str) -> set[int]:
+    """The video's clips that have a project in the new editor. None on a
+    database with no projects table (one a test built by hand)."""
+    import sqlite3
+
+    try:
+        rows = db.conn.execute(
+            "SELECT clip_id FROM projects WHERE clip_id IN (SELECT id FROM clips WHERE video_id = ?)",
+            (video_id,)).fetchall()
+    except sqlite3.OperationalError:
+        return set()
+    return {int(r[0]) for r in rows}
 
 
 def _made_as(row) -> str:
@@ -464,6 +482,8 @@ def _reasons(row, seen: dict, busy: set[int]) -> list[str]:
             or actions - {"exported"}):   # captions_edited, timestamps_adjusted, rerendered
         found.add("edited")
     if seen["thumbnails"] is not None and (seen["thumbnails"] / f"clip_{clip_id}_chosen.jpg").is_file():
+        found.add("edited")
+    if clip_id in seen.get("projects", ()):
         found.add("edited")
     made = _made_as(row)
     if not made:

@@ -933,6 +933,13 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     campaigns_api.install(app, db=db, data_dir=data_dir, publish_worker=publish_worker,
                           session_secret=desktop_session)
 
+    # The new editor's projects (video_editor/project/, editor suite step 5):
+    # engine only so far, no screen uses them. Every route takes the session
+    # secret and an Origin of this PC's own.
+    from server import projects_api
+
+    projects_api.install(app, db=db, data_dir=data_dir, session_secret=desktop_session)
+
     # Streamer integrations such as the OBS plugin: hand over a finished stream,
     # find its VOD, report progress. Its own module for the same reason.
     from server import integrations

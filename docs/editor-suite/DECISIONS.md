@@ -329,3 +329,62 @@ Rules: footage is only Colin's own or CC0 sample video, never other creators' st
 **Rejected:** Running straight on into Phases 3 to 7.
 
 **Undo:** Colin's go starts Phase 3.
+
+## ED19 · Undo is the exact difference between two documents, and a project's revision number only goes up
+
+**Date:** 2026-11-12 · **Steps:** 5, 8 · taken while building step 5
+
+**Context:** The plan asks for inverse operations that undo a change exactly, a compare-and-swap on the project's head with 409 for a stale edit, and undo and redo on the server. Two things were open: what an inverse is for an operation with no natural opposite (a ripple delete, a batch, a frame-rate change), and what number a caller compares.
+
+**Decision:**
+1. The inverse of any call is one internal `restore` operation that holds the difference between the document after and the document before (`video_editor/project/patch.py`). Redo is the same the other way. Only the store's undo and redo may apply a `restore`; sent by a caller, it is refused.
+2. A project has two numbers. `head` goes up by one with every change, undo and redo included, and is what `expected_revision` is compared with. `cursor` is the place in the undo chain. The head document is kept on the project's row; revisions keep the differences, with the whole document on every 25th.
+3. Undo doesn't cross a change of the document's format: after an app update that changes the format, a project's history starts again at its first change.
+
+**Why:** A difference is exact for every operation by construction, which is what "byte for byte" needs, and it stays small. With one number, an undo followed by a new edit would give a different document the number an earlier one had, and a caller holding the old number would pass the check.
+
+**Rejected:** A hand-written opposite for each operation (about 20 chances to be subtly wrong, and none for a batch); one revision number for both jobs; rebuilding the head document from snapshots on every read (slower, and the 40 ms target is per operation).
+
+**Undo:** The inverse format is inside `ops.py` and `store.py` only. A later step can add hand-written inverses for display without changing what is stored.
+
+## ED20 · A project outlives its clip, and a clip with a project is never made again
+
+**Date:** 2026-11-12 · **Steps:** 5, 8 · taken while building step 5; Colin can overrule at step 8's click-through
+
+**Context:** `projects.clip_id` is not a foreign key, because a re-render gives a clip a new id. That leaves open what happens to a project when its clip is deleted, and whether opening a clip twice makes two projects.
+
+**Decision:** A clip has at most one project; opening it again gives the same one. A re-render moves the project to the clip's new id (`StateDB.follow_clip_id`). Deleting the clip or its video leaves the project, with no clip. Make clips again counts a clip that has a project as edited and keeps it, even when nothing in the project was changed yet.
+
+**Why:** A project is a person's work. Losing it because the clip was culled, or having Make clips again replace a clip someone has open in the editor, would both be data loss.
+
+**Rejected:** Deleting the project with its clip (simplest, but silent loss); a foreign key (breaks every re-render); keeping only clips whose project has a change (a clip open in the editor would be deleted under it).
+
+**Undo:** One line each in `StateDB.delete_clip` and `delete_video`, and one in `core/remake.py`.
+
+## ED21 · Going back to today's render keeps what didn't change, and says when it can't
+
+**Date:** 2026-11-12 · **Steps:** 5, 7 · taken while building step 5
+
+**Context:** Branch A (ED1) sends a project that still fits today's render options to the existing render job. The plan asks that a project made from a clip and turned back gives the clip exactly.
+
+**Decision:** `projection.to_clip` reads the project as pieces (window, cuts, speed, sound, hook, music, look, captions, mutes, watermark) and reads the clip it came from, imported again, the same way. A piece that reads the same in both keeps the value the clip was saved with; only a piece that differs is written new. Anything today's render has no words for (an overlay, a second sound, a bleep, a transform, items at different speeds, a different canvas) makes the answer "needs the compiler", with the reasons in plain sentences. The export preset never decides the branch.
+
+**Why:** Writing the whole set of render options again from the project would change clips nobody edited (rounding, key order, unknown keys), and Branch A's promise is output identical to now.
+
+**Rejected:** Rebuilding all render options from the project; a flag set by operations ("touched"), which an undo would leave set.
+
+**Undo:** Step 7 can replace `projection.py` without touching the document or the store.
+
+## ED22 · What an operation may put in a project
+
+**Date:** 2026-11-12 · **Steps:** 5, 7, Phase 5 · taken while fixing step 5's review (5-D15, 5-D16, 5-D22, 5-D26)
+
+**Context:** The operations are one set for the editor's window, the AI and MCP. The window's JavaScript can't send `-0.0`, NaN or Infinity; a script or a model can. Some objects are kept as they are given (an item's `extra`, a watermark, a Gaming layout), and the review showed three things getting in through them: a second zero that broke exact undo, values that can't be saved (a 500), and a file path in a watermark key the render doesn't read.
+
+**Decision:** (1) The document holds one zero: every number an operation checks is stored as `0.0`, never `-0.0`; where an object is kept as given, the difference between two documents compares floats as they are written, so undo is exact there too. (2) What can't be saved (NaN, Infinity, half of a character, anything that is not JSON) is refused before anything is applied, by operation and field; it is not cleaned. (3) A watermark set by `set_branding` takes only the keys `video_editor/watermark.py` reads. A watermark that came with an imported clip is kept as it was. **The export compiler of step 7 must read a watermark's image only through `image_asset`, by safe name, and no path from any other key of any object kept as given.**
+
+**Why:** Undo that gives back the very bytes is the contract every later step builds on (ED19), and the AI and MCP are the callers most likely to send the odd values. Refusing rather than cleaning keeps the history (which stores the operations as sent) writable and tells a caller with a bug that it has one. The plan's rule is that a path never comes from the client.
+
+**Rejected:** Turning `-0.0` into `0.0` everywhere, including inside objects kept as given (an imported clip must come back exactly as it was saved, ED21); dropping the unknown watermark keys silently (a caller would think they were saved); checking every string in every kept object for something that looks like a path (guesswork).
+
+**Undo:** `ops._savable`, `ops.WATERMARK_KEYS` and the `+ 0.0` in `ops._in_range` and `ops._numbers` are each a few lines; `patch._same_types` is one line.
