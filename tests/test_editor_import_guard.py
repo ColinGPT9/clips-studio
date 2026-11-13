@@ -9,12 +9,19 @@ anything under it, in any form, at the top of a file or inside a function.
 That covers core/pipeline.py itself and every repo module it reaches through
 its own imports (video_editor.timeline, video_editor.export and so on).
 
-The package doesn't exist yet. The guard is for the steps that add it. The
-self-tests prove it catches every way of writing that import, including one
-reached through another module, so it means something before then.
+The self-tests prove it catches every way of writing that import, including
+one reached through another module.
+
+The package exists since editor suite step 5, and has rules of its own, kept
+at the end of this file: it is standard library only (what it asks the rest
+of the app it asks inside a function, in env.py and importer.py), loading it
+loads no heavy library, and the job worker and the clip database never
+import it.
 """
 
 import ast
+import subprocess
+import sys
 from collections import deque
 from pathlib import Path
 
@@ -221,3 +228,88 @@ def test_a_clean_chain_passes(tmp_path):
         "video_editor/timeline.py": "class EditList:\n    pass\n",
     })
     assert reachable_offenders(root, root / "core" / "pipeline.py") == []
+
+
+# ---- the package itself (editor suite step 5) ----------------------------------------------------
+
+PACKAGE = ROOT / "video_editor" / "project"
+PACKAGE_FILES = ("__init__.py", "env.py", "importer.py", "migrate.py", "model.py", "ops.py", "patch.py",
+                 "projection.py", "store.py")
+# The only imports from outside the package and the standard library, each
+# inside the function that needs it: what the operations ask the app
+# (env.py), and the edit as the render reads it (importer.py).
+ASKED_INSIDE_A_FUNCTION = {
+    "env.py": {"video.audio_library", "video.export_presets", "video.filters", "core.modes", "video.captions",
+               "video.encoding"},
+    "importer.py": {"video_editor.timeline"},
+}
+
+
+def _imports(path: Path) -> tuple[set[str], set[str]]:
+    """(the modules a file imports at its top, the ones it imports inside a function)."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    top, inner = set(), set()
+
+    def names(node) -> set[str]:
+        if isinstance(node, ast.Import):
+            return {a.name for a in node.names}
+        if isinstance(node, ast.ImportFrom):
+            assert not node.level, f"{path.name}: a relative import"
+            return {f"{node.module}.{a.name}" if node.module in ("video", "core", "video_editor") else node.module
+                    for a in node.names}
+        return set()
+
+    for node in tree.body:
+        top |= names(node)
+    for node in ast.walk(tree):
+        if node not in tree.body:
+            inner |= names(node)
+    return top, inner
+
+
+def _outside(names: set[str]) -> set[str]:
+    return {n for n in names if n.split(".")[0] not in sys.stdlib_module_names and n != "__future__"
+            and not _forbidden(n)}
+
+
+def test_the_package_is_these_files():
+    assert sorted(p.name for p in PACKAGE.glob("*.py")) == sorted(PACKAGE_FILES)
+    assert not project_imports((ROOT / "video_editor" / "__init__.py").read_text(encoding="utf-8"))
+
+
+def test_the_project_package_is_standard_library_only():
+    for name in PACKAGE_FILES:
+        top, inner = _imports(PACKAGE / name)
+        assert _outside(top) == set(), f"{name} imports {_outside(top)} at its top"
+        assert _outside(inner) == ASKED_INSIDE_A_FUNCTION.get(name, set()), name
+
+
+def test_loading_the_project_package_loads_nothing_heavy():
+    """In a fresh Python: every module of the package, then the heavy
+    libraries and the pipeline looked for among what got loaded."""
+    code = "; ".join((
+        "import sys",
+        f"sys.path.insert(0, {str(ROOT)!r})",
+        "from video_editor.project import env, importer, migrate, model, ops, patch, projection, store",
+        "importer.import_clip({'video_id': 'v', 'start': 0, 'end': 9, 'render_opts': {'edit': {'speed': 2}}})",
+        "heavy = [m for m in ('numpy', 'cv2', 'torch', 'PIL', 'fastapi', 'pydantic', 'core.pipeline', 'core.state',"
+        " 'server.jobs') if m in sys.modules]",
+        "print('loaded:', heavy)",
+    ))
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "loaded: []", out.stdout
+
+
+def test_the_worker_and_the_database_never_import_the_package():
+    """Nothing of step 5 runs unless a project route is called: only the
+    routes' own module imports the package."""
+    for rel in ("server/jobs.py", "core/state.py", "core/remake.py", "server/editor_lane.py", "core/housekeeping.py"):
+        assert not project_imports((ROOT / rel).read_text(encoding="utf-8")), rel
+    importers = sorted(
+        path.relative_to(ROOT).as_posix()
+        for folder in ("core", "server", "video", "video_editor", "analysis", "plugins", "publish", "campaigns")
+        for path in (ROOT / folder).rglob("*.py")
+        if PACKAGE not in path.parents and project_imports(path.read_text(encoding="utf-8")))
+    assert importers == ["server/projects_api.py"]
+
