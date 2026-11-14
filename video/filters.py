@@ -18,10 +18,11 @@ def subtitles_filter(name: str) -> str:
     Callers pass a bare file name and run FFmpeg from the captions' folder
     (that avoids Windows drive-letter escaping). The name still needs FFmpeg's
     two levels ("Notes on filtergraph escaping"): first as an option value
-    (\\ ' :), then as part of the filtergraph (\\ ' [ ] , ;). Unescaped, a
-    comma in a clip's title reads as the start of the next filter.
+    (\\ ' : =), then as part of the filtergraph (\\ ' [ ] , ;). Unescaped, a
+    comma in a clip's title reads as the start of the next filter, and
+    "a=b.ass" as option "a".
     """
-    value = re.sub(r"([\\':])", r"\\\1", name)
+    value = re.sub(r"([\\':=])", r"\\\1", name)
     return "subtitles=" + re.sub(r"([\\'\[\],;])", r"\\\1", value)
 
 PRESETS: dict[str, str] = {

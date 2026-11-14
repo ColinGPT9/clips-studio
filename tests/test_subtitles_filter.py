@@ -39,6 +39,11 @@ def test_escapes_both_filter_levels():
         r"subtitles=Corte\, do \\\'Paulinho\\\' \[GTA\]\; parte 1\\: final.ass"
 
 
+def test_escapes_an_equals_sign():
+    # "a=b.ass" read as option a, value b.ass ("Option not found").
+    assert subtitles_filter("GTA=top.ass") == r"subtitles=GTA\\=top.ass"
+
+
 def test_plain_name_unchanged():
     assert subtitles_filter("clip_12.ass") == "subtitles=clip_12.ass"
 
@@ -48,6 +53,20 @@ def test_ffmpeg_burns_a_title_with_commas_quotes_and_brackets(tmp_path):
     if not Path(binary).is_file():
         pytest.skip("FFmpeg is not installed here")
     name = "Corte, do 'Paulinho' [GTA]; parte 1.ass"
+    (tmp_path / name).write_text(ASS, encoding="utf-8")
+    result = subprocess.run(
+        [binary, "-v", "error", "-f", "lavfi", "-i", "color=black:s=320x240:d=1",
+         "-vf", subtitles_filter(name), "-f", "null", "-"],
+        capture_output=True, text=True, cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stderr[-500:]
+
+
+@pytest.mark.parametrize("name", ["a=b.ass", "GTA=top, do 'Paulinho' [x]; parte 1.ass"])
+def test_ffmpeg_burns_a_title_with_an_equals_sign(tmp_path, name):
+    binary = ffmpeg()
+    if not Path(binary).is_file():
+        pytest.skip("FFmpeg is not installed here")
     (tmp_path / name).write_text(ASS, encoding="utf-8")
     result = subprocess.run(
         [binary, "-v", "error", "-f", "lavfi", "-i", "color=black:s=320x240:d=1",
