@@ -23,6 +23,7 @@ from pathlib import Path
 from core.binaries import ffmpeg
 from gaming.layout import OUT_H, OUT_W, Element, Plan
 from video.encoding import audio_filter_args, final_movflags, video_encoder_args
+from video.filters import subtitles_filter
 
 
 def _blur_fill(label: str, w: int, h: int) -> str:
@@ -78,7 +79,7 @@ def filter_graph(p: Plan, vf_extra: str = "", ass_name: str | None = None) -> st
     if vf_extra:
         graph += f";[v]{vf_extra}[v]"
     if ass_name:
-        graph += f";[v]subtitles={ass_name}[v]"
+        graph += f";[v]{subtitles_filter(ass_name)}[v]"
     return graph
 
 
