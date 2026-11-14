@@ -9,6 +9,22 @@ Preset names are validated against this registry everywhere (API, AI edit
 chat), so an unknown name can never inject filter syntax into FFmpeg.
 """
 
+import re
+
+
+def subtitles_filter(name: str) -> str:
+    """`subtitles=<name>` with the file name escaped for FFmpeg.
+
+    Callers pass a bare file name and run FFmpeg from the captions' folder
+    (that avoids Windows drive-letter escaping). The name still needs FFmpeg's
+    two levels ("Notes on filtergraph escaping"): first as an option value
+    (\\ ' : =), then as part of the filtergraph (\\ ' [ ] , ;). Unescaped, a
+    comma in a clip's title reads as the start of the next filter, and
+    "a=b.ass" as option "a".
+    """
+    value = re.sub(r"([\\':=])", r"\\\1", name)
+    return "subtitles=" + re.sub(r"([\\'\[\],;])", r"\\\1", value)
+
 PRESETS: dict[str, str] = {
     "none": "",
     "vibrant": "eq=saturation=1.35:contrast=1.08",
