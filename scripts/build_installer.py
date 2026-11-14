@@ -154,6 +154,9 @@ def ensure_vendored() -> None:
         ("Basketball detector", ROOT / "models" / "BODD_yolov8n_0001.pt", "fetch_basketball_model.py"),
         # The marker is the second of the two it fetches: there when both are.
         ("Voice models", ROOT / "models" / "pyannote_segmentation_3.onnx", "fetch_voice_model.py"),
+        # The built-in voice (voice/engines/kokoro.py). The marker is the
+        # second of the two files it fetches: there when both are.
+        ("Built-in voice", ROOT / "models" / "kokoro" / "voices-v1.0.bin", "fetch_kokoro.py"),
     ]
     for label, marker, script in wanted:
         if marker.exists():

@@ -51,7 +51,7 @@ SCRIPT = "CLIPSKITTY_SCRIPT"  # the running script, for multiprocessing children
 ENGINE_PACKAGES = frozenset({
     "analysis", "campaigns", "connected_accounts", "core", "creator", "gaming", "llm", "longform",
     "main", "multilingual", "plugins", "publish", "remote_render", "server", "sources", "sports",
-    "stream_workflows", "third_party", "transcription", "video", "video_editor",
+    "stream_workflows", "third_party", "transcription", "video", "video_editor", "voice",
     "_clipskitty_script_host",
 })
 

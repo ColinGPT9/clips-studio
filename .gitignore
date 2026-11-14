@@ -276,9 +276,10 @@ _test_*.py
 /tests/assets/sample_video.mp4
 
 # Model weights: speaker detection (scripts/fetch_asd_model.py, 63 MB), game
-# sounds (scripts/fetch_panns.py, 24 MB) and voices
-# (scripts/fetch_voice_model.py, 33 MB), bundled into the installer, not
-# committed.
+# sounds (scripts/fetch_panns.py, 24 MB), voices
+# (scripts/fetch_voice_model.py, 33 MB) and the built-in voice
+# (scripts/fetch_kokoro.py, 354 MB, in models/kokoro/), bundled into the
+# installer, not committed.
 /models/
 
 # Scratch files from probing the Twitch proxy by hand. m3u8 dumps and .ts

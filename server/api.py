@@ -940,6 +940,13 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     projects_api.install(app, db=db, data_dir=data_dir, session_secret=desktop_session)
 
+    # Settings → Voice and speech on request (voice/, editor suite step V1):
+    # the built-in voice, or the person's own Voicebox, VoiceStudio or other
+    # local voice app. Guarded like the project routes.
+    from server import voice_api
+
+    voice_api.install(app, config=config, data_dir=data_dir, session_secret=desktop_session)
+
     # Streamer integrations such as the OBS plugin: hand over a finished stream,
     # find its VOD, report progress. Its own module for the same reason.
     from server import integrations
@@ -2495,9 +2502,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     @app.get("/languages")
     def list_languages():
-        from multilingual import dub as dubber
         from multilingual.languages import LANGUAGES
         from video.captions import caption_font_for
+        from voice import can_dub, dubbing_available
 
         return {
             "languages": [
@@ -2505,7 +2512,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                     "code": c,
                     "name": n,
                     "native": nat,
-                    "can_dub": dubber.supported(c),
+                    # Whether a voice can speak it: the built-in ones, or the
+                    # person's own voice app when one is chosen (voice/).
+                    "can_dub": can_dub(data_dir, c),
                     # The font a burn would actually use — non-Latin scripts
                     # get swapped to one that has the glyphs. None means the
                     # clip's own caption font is fine. The editor preview
@@ -2514,58 +2523,51 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 }
                 for c, (n, nat, _p) in LANGUAGES.items()
             ],
-            # Dubbing needs an optional local TTS package; everything else
-            # works without it.
-            "dubbing_available": dubber.available(),
+            # Dubbing needs a voice; everything else works without one.
+            "dubbing_available": dubbing_available(data_dir),
         }
 
     @app.get("/voices")
     def list_voices(language: str):
         """Every dubbing voice available for a language, so the creator can
-        choose one that matches the person on screen."""
-        from multilingual import dub as dubber
-        from multilingual.voices import DEFAULTS, list_for
+        choose one that matches the person on screen. Through the voice layer
+        (voice/): the built-in voices, or the voices of the person's own
+        voice app when one is chosen in Settings → Voice. `message` is a
+        plain line when that app is closed."""
+        from voice import voices as layer_voices
 
-        if not dubber.available():
-            return {"voices": [], "default": None}
+        got = layer_voices(data_dir, language)
         return {
-            "voices": list_for(language, data_dir / "voices"),
-            "default": DEFAULTS.get(language),
+            "voices": got["voices"],
+            "default": got["default"],
+            "engine": got["engine"],
+            "message": got["message"],
         }
 
     @app.get("/voices/preview")
     def preview_voice(language: str, voice: str | None = None):
         """A spoken sample of one voice. GET so the player can point at it
         directly — the app's CSP allows media from this API, not blobs."""
-        from multilingual import dub as dubber
-        from multilingual.languages import sample_text
-        from multilingual.voices import resolve
+        from voice import VoiceError, preview
 
-        if not dubber.available():
-            raise HTTPException(400, "dubbing package not installed")
-        voices_dir = data_dir / "voices"
-        name = dubber.ensure_voice(language, voices_dir, voice)
-        if name is None:
-            raise HTTPException(400, f"no voice available for {language}")
-        _n, speaker = resolve(voice, language)
-        # Must be spoken IN the language being auditioned. Reading English
-        # through a Turkish voice only demonstrates an accent, which tells
-        # you nothing about the dub — so refuse rather than mislead.
-        sample = sample_text(language)
-        if sample is None:
-            raise HTTPException(400, f"no sample sentence for {language}")
-        # Built from the RESOLVED name, not the raw `voice` parameter. The old
-        # line stripped "#" and "/" from whatever the caller sent, which left
-        # "\" and ".." intact — enough to write the preview outside previews/
-        # on Windows. resolve() has already validated the shape of `name`.
-        safe = f"{name}_{speaker}" if speaker is not None else name
-        out = data_dir / "previews" / f"voice_{safe}.wav"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        if not out.exists() and not dubber._speak(
-            sample, name, voices_dir, out, speaker=speaker
-        ):
-            raise HTTPException(500, "could not synthesize a sample")
-        return FileResponse(out, media_type="audio/wav")
+        # Through the voice layer (voice/__init__.py preview): spoken IN the
+        # language being auditioned, and written under previews/ by a name
+        # that is never built from the raw `voice` parameter (a Piper voice's
+        # name as resolve() validated it, any other voice's as a digest).
+        # This older route has no session guard (the player points at it), so
+        # it only reaches a voice app the person chose in Settings → Voice:
+        # a voice of any other app is refused without contacting it.
+        from voice import settings as voice_settings
+        from voice.base import split
+
+        owner = split(voice)[0]
+        if owner not in ("", "piper", "kokoro") and owner != voice_settings.load(data_dir)["engine"]:
+            raise HTTPException(400, "That voice belongs to a voice app that is not chosen in Settings.")
+        try:
+            out = preview(data_dir, language, voice)
+        except VoiceError as e:
+            raise HTTPException(500 if e.code == "failed" else 400, str(e)) from None
+        return FileResponse(out, media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
     @app.post("/translate")
     def translate_clips(body: TranslateIn):

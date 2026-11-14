@@ -105,6 +105,37 @@ significant ones, with their licences:
                                          fetched by scripts/fetch_whisper.py
                                          and are MIT (Systran/faster-whisper,
                                          converted from OpenAI Whisper)
+  Kokoro-82M                Apache-2.0   the built-in voice (voice/engines/
+                                         kokoro.py); the model and its voice
+                                         pack (huggingface.co/hexgrad/
+                                         Kokoro-82M) as the kokoro-onnx project
+                                         released them for ONNX Runtime
+                                         (release model-files-v1.1),
+                                         unmodified, fetched by
+                                         scripts/fetch_kokoro.py. The voice
+                                         pack's French voice (ff_siwis) was
+                                         trained on the SIWIS French speech
+                                         data (CC BY 4.0), and its Japanese
+                                         voices (in the pack, not offered by
+                                         the app) on Koniwa (CC BY 3.0)
+  kokoro-onnx               MIT          runs that model (github.com/
+                                         thewh1teagle/kokoro-onnx)
+  phonemizer                GPL-3.0      turns text into sounds for the
+                                         built-in voice (github.com/bootphon/
+                                         phonemizer); brings attrs (MIT),
+                                         dlinfo (MIT) and joblib (BSD-3-Clause,
+                                         which scikit-learn already brought)
+  eSpeak NG                 GPL-3.0      the library and language data behind
+                                         phonemizer and Piper (github.com/
+                                         espeak-ng/espeak-ng); arrives inside
+                                         espeakng-loader (MIT, github.com/
+                                         thewh1teagle/espeakng-loader) and
+                                         inside piper-tts
+  Piper (piper-tts)         GPL-3.0      the dubbing voices for the languages
+                                         the built-in voice does not speak;
+                                         its voices are downloaded one at a
+                                         time when first used, and each
+                                         carries its own licence
   keyring                   MIT          OS-protected Connected Accounts tokens
                                          on Linux and macOS only; Windows uses
                                          DPAPI, and keyring isn't installed there

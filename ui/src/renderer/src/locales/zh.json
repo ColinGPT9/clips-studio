@@ -143,7 +143,6 @@
   "about 4.7 GB, one time, stays on your PC": "约 4.7 GB，只需装一次，留在你的电脑上",
   "Applies to every language you export. Non-Latin scripts switch to a font that has the glyphs automatically.": "适用于你导出的每一种语言。非拉丁字母会自动换成包含所需字形的字体。",
   "default voice": "默认声音",
-  "Dubbing needs one extra local package (Piper). Install it with: pip install piper-tts - then restart the app. Voices download per language, about 60 MB each, and stay on your PC.": "配音需要额外安装一个本地包（Piper）。用这条命令安装：pip install piper-tts，然后重启应用。声音按语言分别下载，每个约 60 MB，下载后留在你的电脑上。",
   "Each language gives you": "每种语言都会生成",
   "Export": "导出",
   "Install & use": "安装并使用",

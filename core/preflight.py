@@ -15,6 +15,7 @@ Nothing here raises — a check that itself fails is reported as a failed check.
 
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -232,6 +233,48 @@ def check_whisper(configured: str) -> Check:
     )
 
 
+def check_voice() -> Check:
+    """The built-in voice (voice/engines/kokoro.py): are its two files here?
+
+    Never blocking: clipping needs no voice, and dubbing keeps its other
+    voices without it. Only looks at the files' names and sizes, which is
+    instant; the SHA-256 check that decides whether they are loaded happens
+    when something first speaks (voice/kokoro_files.py), and what it found
+    is used here from then on. Voice apps the
+    person may have chosen in Settings → Voice are not contacted here.
+    """
+    from voice import kokoro_files
+    from voice.engines import kokoro
+
+    # An installed copy has no command line to send anyone to.
+    frozen = getattr(sys, "frozen", False)
+    carry_on = "Nothing to do for clipping. Dubbing uses its other voices."
+    fix = carry_on if frozen else f"Run: {kokoro_files.FETCH_COMMAND}"
+    if not kokoro.installed():
+        return Check(name="voice", ok=False, blocking=False,
+                     detail="The built-in voice is not installed in this copy.",
+                     fix=carry_on if frozen else "Run: pip install -r requirements.txt")
+    folder = kokoro_files.find()
+    if folder is None:
+        return Check(name="voice", ok=False, blocking=False, detail="Voice files missing.", fix=fix)
+    for name, _label, _url, _sha, size in kokoro_files.FILES:
+        try:
+            found = (Path(folder) / name).stat().st_size
+        except OSError:
+            found = -1
+        if found != size:
+            return Check(name="voice", ok=False, blocking=False,
+                         detail=f"The voice file {name} is not the one this version expects.", fix=fix)
+    # A file of the right size that the SHA-256 check has since refused to
+    # load (once something tried to speak) is not "ready" either. Reads
+    # nothing: only what that check already found.
+    wrong = kokoro_files.known_wrong(Path(folder))
+    if wrong:
+        return Check(name="voice", ok=False, blocking=False,
+                     detail=f"The voice file {wrong} is not the one this version expects.", fix=fix)
+    return Check(name="voice", ok=True, detail="Built-in voice ready")
+
+
 def check_gpu() -> Check:
     """Not blocking: the app works on CPU, just slowly. Worth saying so
     plainly rather than letting someone conclude it's broken."""
@@ -327,5 +370,9 @@ def run(config: dict) -> Preflight:
         pf.checks.append(check_cloud_transcription(str(online.get("backend")), data_dir))
 
     pf.checks.append(check_gpu())
+    try:
+        pf.checks.append(check_voice())
+    except Exception:  # a voice check must never take the other checks down with it
+        pass
     pf.checks.append(check_disk(Path(config.get("paths", {}).get("data_dir", "data"))))
     return pf

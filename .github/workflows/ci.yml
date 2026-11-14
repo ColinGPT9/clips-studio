@@ -36,7 +36,7 @@ jobs:
       - name: Compile every module
         # Catches syntax errors across the whole engine in seconds, without
         # installing PyTorch. Import checking would need ~4 GB of wheels.
-        run: python -m compileall -q analysis connected_accounts core creator llm longform multilingual plugins publish sdk server sources sports stream_workflows transcription video video_editor main.py
+        run: python -m compileall -q analysis connected_accounts core creator llm longform multilingual plugins publish sdk server sources sports stream_workflows transcription video video_editor voice main.py
 
       - name: Install what these checks need
         # NOT requirements.txt — that pulls ~4 GB of PyTorch wheels to run a
@@ -134,7 +134,7 @@ jobs:
           tests/test_caption_render_ffmpeg.py tests/test_fonts_routes.py
           tests/test_creator_description.py tests/test_audio_library_routes.py
           tests/test_library_music_render_ffmpeg.py tests/test_remote_render.py
-          tests/test_project_routes.py
+          tests/test_project_routes.py tests/test_voice_routes.py
 
   sdk-windows:
     name: SDK (Windows)

@@ -277,7 +277,6 @@
   "Include technical details (PC specs, app version, AI model, recent log) - this is what lets someone actually fix it": "Includi i dettagli tecnici (specifiche del PC, versione dell'app, modello IA, log recente): queste informazioni sono indispensabili per poter risolvere il problema",
   "Translate these languages first - Export writes the text you have reviewed.": "Prima traduci queste lingue — Esporta userà il testo che hai revisionato.",
   "Off - original captions": "Disattivato — sottotitoli originali",
-  "Dubbing needs one extra local package (Piper). Install it with: pip install piper-tts - then restart the app. Voices download per language, about 60 MB each, and stay on your PC.": "Il doppiaggio richiede un pacchetto locale aggiuntivo (Piper). Installalo con: pip install piper-tts — poi riavvia l'app. Le voci vengono scaricate per ogni lingua, occupano circa 60 MB ciascuna e restano sul tuo PC.",
   "saved - Export will use your version.": "salvata — Esporta userà la tua versione.",
   "discarded - translate again for a fresh version.": "scartata — traduci di nuovo per ottenere una nuova versione.",
   "videos at a time - start these, then add more when one finishes.": "video alla volta — avvia questi, poi aggiungine altri quando uno termina.",

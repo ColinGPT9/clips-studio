@@ -85,3 +85,13 @@ nvidia-ml-py>=12.575.51,<14
 # Voices are NOT bundled: ~60 MB each across 15 languages, downloaded on
 # demand into data/voices/ the first time a language is dubbed.
 piper-tts>=1.5.0,<2
+# ---- The built-in voice ------------------------------------------------
+# Kokoro, inside the engine, on the CPU (voice/engines/kokoro.py): the voice
+# Settings → Voice calls "Built-in". Runs on the onnxruntime above; brings
+# espeakng-loader (the espeak-ng library and its data, 18 MB) and phonemizer.
+# Pinned exactly: the measured languages, and "the same seed gives the same
+# bytes", were checked against this version (docs/editor-suite/api/
+# stepV1-voice.md). Its two model files are NOT installed by pip: they are
+# fetched by scripts/fetch_kokoro.py into models/kokoro/ and bundled into the
+# installer, so nothing is downloaded while the app runs.
+kokoro-onnx==0.6.1

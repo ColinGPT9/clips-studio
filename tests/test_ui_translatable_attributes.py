@@ -31,6 +31,7 @@ FILES = (
     "components/ExportProgress.tsx",
     "components/RemakeDialog.tsx",
     "components/FreeMusicPicker.tsx",
+    "components/VoiceCard.tsx",
 )
 
 ATTRIBUTE = re.compile(r"""\b(?:placeholder|title|aria-label)\s*=\s*(['"])(.*?)\1""", re.DOTALL)

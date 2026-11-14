@@ -216,6 +216,8 @@ The guarantee is the same argv and files for the same inputs, and bit-exact outp
 
 ## ED12 · Voicebox ships as the voice engine
 
+> **Replaced on 2026-11-12 by ED23 (at the end of this file).** Voicebox is not shipped. What follows is kept as the record of the first choice and of what was known then.
+
 **Date:** 2026-11-05 · **Steps:** V1, V2 · Colin's choice
 
 **Context:** The voice-over tool (V2) and the promo videos (ED17) need a local voice that is safe for monetised videos. Colin asked which of Voicebox and VoiceStudio is better to ship in the Microsoft Store build. The audio research had ranked audio.cpp first, for both voice and sound, and Voicebox second, as a voice sidecar. Facts found on 2026-11-05:
@@ -388,3 +390,40 @@ Rules: footage is only Colin's own or CC0 sample video, never other creators' st
 **Rejected:** Turning `-0.0` into `0.0` everywhere, including inside objects kept as given (an imported clip must come back exactly as it was saved, ED21); dropping the unknown watermark keys silently (a caller would think they were saved); checking every string in every kept object for something that looks like a path (guesswork).
 
 **Undo:** `ops._savable`, `ops.WATERMARK_KEYS` and the `+ 0.0` in `ops._in_range` and `ops._numbers` are each a few lines; `patch._same_types` is one line.
+
+## ED23 · One voice layer: Kokoro built in, Voicebox and VoiceStudio optional
+
+**Date:** 2026-11-12 · **Steps:** V1, V2 · Colin's choice, replacing ED12's engine
+
+**Context:** ED12 chose to ship Voicebox's voice server inside Clips Kitty. Before building it, a spike ran that server on Colin's PC. It works, but shipping it costs far more than planned:
+- 490 MiB on disk, and it unpacks 1.24 GiB into the temp folder at every start, which takes 16 to 43 seconds before it answers;
+- 1.4 to 1.9 GB of memory;
+- the program is not signed, and its switch for closing with the app (`--parent-pid`) does nothing in v0.5.0;
+- it gives no word timings.
+
+The Kokoro voice that Voicebox uses by default was already in the repo as an optional script (kokoro-onnx, MIT; the model is Apache-2.0), and runs on the ONNX Runtime the engine already ships.
+
+**Decision:** In Colin's words: "make it work with the app on all functions and make it so people can use voicebox or voicestudio as they please. but ship with the lighterweight kokoro as base and people can choose to upgrade for optional features".
+- One voice layer (`voice/`) that everything that speaks goes through: dubbing, the narration script, and `POST /voice/speak` for the voice-over tool (V2) and the promo kit.
+- **Built in:** Kokoro, inside the engine, on the CPU, default voice `af_heart`, for the languages measured to come out right through kokoro-onnx (English, Spanish, French, Hindi, Italian, Portuguese). Piper stays, unchanged, for the other dubbing languages. Kokoro's two model files are fetched at build time, checked by SHA-256 and bundled; nothing is downloaded while the app runs.
+- **Optional, the person's own copy:** Voicebox (`127.0.0.1:17493`), VoiceStudio (the address in its `backend.json`, else `127.0.0.1:3900`) or any other local voice app with OpenAI's speech route, picked in Settings → Voice. Clips Kitty never ships, downloads or starts them, uses only voices that already exist there, and only ever contacts this PC.
+- When the chosen voice app is closed, the job stops and says why. The built-in voice stands in only if the person allowed it.
+- Word timings come from the app's own Whisper, run on the finished speech.
+
+**Why:**
+- Size and speed: about 356 MiB added and 2.6 s to the first sound, against 490 MiB plus 1.24 GiB of temp and 16 to 43 s. The speaking speed is the same (3.5 times faster than realtime on Colin's PC).
+- No second program to start, stop, sign or explain to the Store.
+- Licence: the built-in voice is cleared for videos that earn money (Apache-2.0 model, MIT runtime). ED13 holds: a voice that is not cleared carries a "not for monetised videos" tag, and nothing non-commercial is bundled.
+- People who want more voices or cloning get them from the app they chose, and its licences stay in that app.
+
+**Trade-offs accepted:**
+- The built-in voice speaks six languages. Japanese and Chinese need dictionaries that are a large new dependency, so Chinese stays on Piper and Japanese has no built-in voice.
+- No voice cloning inside Clips Kitty.
+- VoiceStudio changes about 170 times a day, so only its standard speech route is used, and it was tested against a stand-in server only.
+- For a local voice app Clips Kitty can't identify, no licence tag is shown, and the tooltip says the licence is the person's to check.
+- With no voice picked, a dub in the six languages now uses the built-in voice instead of Piper's default. A dub with a Piper voice picked is exactly as before (snapshot test).
+- The text front end (phonemizer and eSpeak NG) is GPL-3.0, as Piper's already is; that fits an AGPL-3.0 app and is named in NOTICE.
+
+**Rejected:** Shipping Voicebox (ED12; the costs above); shipping VoiceStudio (ED12's reasons stand); starting the person's Voicebox for them (its lifetime is theirs); calling the voice apps from the app's window (both refuse a browser's origin, so the engine calls them, with no Origin header); adding the Japanese and Chinese dictionaries now (248 MiB and 30 MiB in Voicebox's bundle).
+
+**Undo:** The layer is its own package, and dubbing's Piper path is untouched behind it. Removing `voice/`, `server/voice_api.py`, the Kokoro entries in `clips-studio.spec` and `requirements.txt`, and the Settings → Voice card puts dubbing back on Piper alone.

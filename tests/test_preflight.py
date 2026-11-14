@@ -340,6 +340,60 @@ def test_disk_check_survives_a_missing_directory(tmp_path):
     assert check.name == "disk"
 
 
+def test_a_missing_built_in_voice_warns_without_blocking(monkeypatch, tmp_path):
+    """Clipping needs no voice, so its absence never stops a creator, and a
+    checkout is told the one command that fetches it."""
+    from voice import kokoro_files
+    from voice.engines import kokoro
+
+    monkeypatch.setattr(kokoro, "installed", lambda: True)
+    monkeypatch.setattr(kokoro_files, "find", lambda: None)
+    check = preflight.check_voice()
+    assert check.name == "voice" and not check.ok and not check.blocking
+    assert check.detail == "Voice files missing." and check.fix == "Run: python scripts/fetch_kokoro.py"
+
+    # An installed copy has no command line to send anyone to.
+    monkeypatch.setattr(preflight.sys, "frozen", True, raising=False)
+    fix = preflight.check_voice().fix
+    assert "python" not in fix and "pip" not in fix and fix
+
+
+def test_the_voice_check_looks_at_sizes_and_reads_no_file(monkeypatch, tmp_path):
+    """The check runs when the app opens: it must not hash 354 MB. A file of
+    the wrong size is reported; the SHA-256 check happens before loading."""
+    from voice import kokoro_files
+    from voice.engines import kokoro
+
+    monkeypatch.setattr(kokoro, "installed", lambda: True)
+    monkeypatch.setattr(kokoro_files, "find", lambda: tmp_path)
+    monkeypatch.setattr(kokoro_files, "sha256", lambda path: pytest.fail("the check hashed a file"))
+    small = tuple((name, label, url, sha, 3) for name, label, url, sha, _size in kokoro_files.FILES)
+    monkeypatch.setattr(kokoro_files, "FILES", small)
+    for name, *_rest in small:
+        (tmp_path / name).write_bytes(b"abc")
+    check = preflight.check_voice()
+    assert check.ok and check.detail == "Built-in voice ready" and not check.fix
+
+    (tmp_path / small[0][0]).write_bytes(b"abcd")
+    check = preflight.check_voice()
+    assert not check.ok and not check.blocking and small[0][0] in check.detail
+
+
+def test_a_copy_without_the_voice_runtime_says_so(monkeypatch):
+    from voice.engines import kokoro
+
+    monkeypatch.setattr(kokoro, "installed", lambda: False)
+    check = preflight.check_voice()
+    assert not check.ok and not check.blocking and "not installed" in check.detail
+
+
+def test_the_voice_check_never_takes_the_others_down(monkeypatch, tmp_path):
+    monkeypatch.setattr(preflight, "check_voice", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+    pf = preflight.run({"paths": {"data_dir": str(tmp_path)}, "model": "gemma:7b"})
+    names = {c.name for c in pf.checks}
+    assert "voice" not in names and {"ffmpeg", "gpu", "disk"} <= names
+
+
 def test_ready_ignores_non_blocking_failures():
     """No GPU and a full-ish disk should not stop someone clipping."""
     pf = preflight.Preflight(
