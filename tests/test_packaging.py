@@ -140,6 +140,60 @@ def test_voice_turns_needs_nothing_the_bundle_leaves_out():
         )
 
 
+def test_the_built_in_voice_ships_whole():
+    """The built-in voice (voice/engines/kokoro.py, editor suite step V1) is
+    imported only when something speaks, and needs five things an installed
+    copy only has when the spec names them: the voice layer itself, the
+    kokoro_onnx runtime with its config.json, the espeak-ng library and data
+    inside espeakng_loader, the phonemizer bridge, and the two model files
+    where core.binaries.kokoro_dir() looks. Without any one of them the voice
+    works on a development machine and in no installed copy."""
+    from voice import kokoro_files
+
+    text = SPEC.read_text(encoding="utf-8")
+    assert 'collect_submodules("voice")' in text, "the spec no longer bundles the voice package"
+    collected = re.search(r"for package in \((.*?)\):\s+pkg_datas", text, re.S)
+    assert collected, "the spec's collect_all list has moved"
+    for package in ("kokoro_onnx", "espeakng_loader", "phonemizer", "onnxruntime", "piper"):
+        assert f'"{package}"' in collected.group(1), f"the spec no longer collects {package}"
+    # kokoro_onnx reads its own version from its metadata when it starts.
+    assert 'copy_metadata("kokoro-onnx")' in text, "the spec no longer ships kokoro-onnx's metadata"
+    assert '_kokoro = ROOT / "models" / "kokoro"' in text and '(str(_kokoro / _file), "kokoro")' in text, (
+        "the spec no longer puts the voice files in kokoro/, where core.binaries.kokoro_dir() looks"
+    )
+    for name in (kokoro_files.MODEL_FILE, kokoro_files.VOICES_FILE):
+        assert f'"{name}"' in text, f"the spec no longer bundles models/kokoro/{name}"
+    binaries = (SPEC.parent / "core" / "binaries.py").read_text(encoding="utf-8")
+    assert '_search_roots("kokoro")' in binaries
+
+
+def test_the_built_in_voice_is_fetched_at_build_time_and_never_committed():
+    """Nothing is downloaded while the app runs, so the build must fetch the
+    two files, pip must install the runtime, and git must not hold 354 MB."""
+    build = (SPEC.parent / "scripts" / "build_installer.py").read_text(encoding="utf-8")
+    assert '"fetch_kokoro.py"' in build, "the installer build no longer fetches the built-in voice"
+    assert (SPEC.parent / "scripts" / "fetch_kokoro.py").is_file()
+    requirements = (SPEC.parent / "requirements.txt").read_text(encoding="utf-8")
+    assert re.search(r"^kokoro-onnx==0\.6\.1$", requirements, re.M), (
+        "requirements.txt no longer pins the kokoro-onnx the voice was measured with"
+    )
+    # libsndfile is LGPL and not needed: the layer writes WAV itself.
+    assert not re.search(r"^soundfile\b", requirements, re.M)
+    ignored = (SPEC.parent / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "/models/" in ignored, "models/kokoro/ would be committed"
+
+
+def test_the_voice_layer_needs_nothing_the_bundle_leaves_out():
+    """soundfile, scipy, torch, librosa and requests' absence must not matter:
+    the layer is the standard library, numpy, onnxruntime and kokoro_onnx."""
+    for path in sorted((SPEC.parent / "voice").rglob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        for package in ("soundfile", "scipy", "sklearn", "torchaudio", "librosa", "torch", "requests", "httpx"):
+            assert not re.search(rf"^\s*(?:import|from)\s+{package}\b", source, re.M), (
+                f"{path.relative_to(SPEC.parent)} imports {package}, which the voice layer must not need"
+            )
+
+
 def test_pipelines_get_the_whole_standard_library():
     """Pipelines run on the engine's own Python (_clipskitty_script_host.py),
     and PyInstaller packs only the modules the engine imports. Without the

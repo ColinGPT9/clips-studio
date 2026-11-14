@@ -12,6 +12,19 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Added
 
+- **A built-in voice, and your own voice apps.** Clips Kitty now has its own voice for
+  English, Spanish, French, Hindi, Italian and Portuguese. It runs on your PC with no
+  account and no internet, and its voices may be used in videos that earn money. Dubbing
+  uses it for those languages unless you pick another voice; the other dubbing languages
+  keep the voices they had. In Settings → Voice you can instead use your own Voicebox,
+  VoiceStudio or another voice app running on this PC, for more voices or a copy of your
+  own voice. Clips Kitty doesn't install or start those apps, and only ever talks to
+  this PC. If your voice app is closed, a dub stops and says so instead of using a voice
+  you didn't pick. A voice that may not be used in videos that earn money carries a
+  "not for monetised videos" tag.
+- **A dub that wasn't made no longer says "Exported".** If the voice you picked can't speak,
+  the dub ends as failed and tells you why. The same if it stops part-way or sends silence:
+  you never get a dub that goes quiet after the first sentences.
 - **Export in other sizes, qualities and formats** (#177, #203). Settings → Export sets
   what the Export button makes. Original, the default, still saves each clip exactly
   as Clips Kitty made it. Custom makes a new file from 720p to 2160p, in another shape

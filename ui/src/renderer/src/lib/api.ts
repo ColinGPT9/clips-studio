@@ -40,6 +40,9 @@ import type {
   Translation,
   UsedSuggestions,
   Video,
+  VoiceList,
+  VoiceOption,
+  VoiceStatus,
   Watch,
   WatchItem,
   WatchPlatform,
@@ -98,6 +101,25 @@ async function sessionHeaders(): Promise<Record<string, string>> {
   const secret = await (window.studio?.pluginSession?.() ?? Promise.resolve('')).catch(() => '')
   if (secret) headers['X-Clips-Kitty-Session'] = secret
   return headers
+}
+
+/** A call to the voice routes (Settings → Voice), which the engine guards
+ *  with the session secret. Their errors carry a plain line meant to be shown
+ *  as it is ("Open Voicebox to use it."), so that line is the Error's text. */
+async function voiceRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, { ...init, headers: await sessionHeaders() })
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { detail?: unknown } | null
+    const detail = body?.detail
+    const message =
+      typeof detail === 'string'
+        ? detail
+        : typeof (detail as { message?: unknown } | undefined)?.message === 'string'
+          ? (detail as { message: string }).message
+          : ''
+    throw new Error(message || `${res.status} ${path}`)
+  }
+  return res.json() as Promise<T>
 }
 
 /** Which preset an export uses: the one saved in Settings → Export
@@ -564,11 +586,36 @@ export const api = {
       method: 'DELETE'
     }),
 
+  /** The dubbing voices for a language, from the engine chosen in Settings →
+   *  Voice. `message` is the line to show when that voice app is closed. */
   voicesFor: (language: string) =>
     request<{
-      voices: { id: string; name: string; country: string; quality: string }[]
+      voices: VoiceOption[]
       default: string | null
+      engine?: string
+      message?: string
     }>(`/voices?language=${encodeURIComponent(language)}`),
+  // Settings → Voice: the built-in voice, or the person's own voice app.
+  // The engine talks to that app; this window never does.
+  voice: () => voiceRequest<VoiceStatus>('/voice'),
+  /** Save any of the voice choices; what is left out stays as it is. */
+  setVoice: (changes: {
+    engine?: string
+    voices?: Record<string, string | null>
+    custom_address?: string
+    fallback_to_builtin?: boolean
+  }) => voiceRequest<VoiceStatus>('/voice/engine', { method: 'POST', body: JSON.stringify(changes) }),
+  /** The chosen engine's voices for a language. */
+  voiceList: (language: string) =>
+    voiceRequest<VoiceList>(`/voice/voices?language=${encodeURIComponent(language)}`),
+  /** "Hear this voice": a short sample, as a URL an audio player can load. */
+  voiceSample: async (language: string, voice?: string | null) => {
+    const got = await voiceRequest<{ url: string }>(
+      `/voice/preview?language=${encodeURIComponent(language)}` +
+        (voice ? `&voice=${encodeURIComponent(voice)}` : '')
+    )
+    return `${API_BASE}${got.url}`
+  },
   // A plain URL, not a blob: the app's CSP allows media from the API only.
   voicePreviewUrl: (language: string, voice?: string) =>
     `${API_BASE}/voices/preview?language=${encodeURIComponent(language)}` +

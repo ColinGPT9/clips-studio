@@ -228,6 +228,65 @@ def _speak(text: str, voice: str, voices_dir: Path, out: Path, rate: float = 1.0
     return out.exists() and out.stat().st_size > 0
 
 
+def _names_another_engine(voice_id: str | None) -> bool:
+    """Whether a voice id belongs to an engine other than Piper
+    ("kokoro:af_heart"). A Piper id has no such prefix."""
+    from voice.base import split
+
+    return split(voice_id)[0] not in ("", "piper")
+
+
+def _note_problem(problems: list[str] | None, language: str, why: str) -> None:
+    if problems is not None:
+        from multilingual.languages import english_name
+
+        problems.append(f"{english_name(language)} was not dubbed: {why}")
+
+
+def _fit(layer, text: str, wav: Path, slot: float) -> bool:
+    """One sentence through the voice layer, with the same timing fit as
+    Piper's: spoken once, measured, and spoken again at another pace only
+    when it misses its slot (and only by a voice that has a pace)."""
+    if not layer.say(text, wav):
+        return False
+    spoken = _duration(wav)
+    if spoken > 0 and not (0.9 <= spoken / slot <= 1.1):
+        rate = max(RATE_MIN, min(RATE_MAX, slot / spoken))
+        if layer.paced:
+            # A second take that fails is a failed sentence: the first take
+            # is not passed off as the one that was asked for.
+            return bool(layer.say(text, wav, length_scale=rate))
+        _retime(wav, rate)
+    return True
+
+
+def _has_words(text: str) -> bool:
+    """Whether there is anything in a sentence to say aloud (a line of
+    dots or music notes has nothing, and no voice is at fault for it)."""
+    return any(ch.isalnum() for ch in text)
+
+
+def _retime(wav: Path, rate: float) -> None:
+    """Make a finished take `rate` times as long (the same number Piper is
+    handed as its pace) by changing its tempo, not its pitch. For a voice
+    that has no pace of its own (Voicebox); the take is kept as it was when
+    FFmpeg can't."""
+    fitted = wav.with_name(f"{wav.stem}.fit.wav")
+    try:
+        r = subprocess.run(
+            [ffmpeg(), "-y", "-v", "error", "-nostdin", "-i", str(wav.resolve()),
+             "-filter:a", f"atempo={1.0 / rate:.4f}", "-c:a", "pcm_s16le", str(fitted.resolve())],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if r.returncode == 0 and fitted.exists() and fitted.stat().st_size > 44:
+            os.replace(fitted, wav)
+    except OSError:
+        pass
+    finally:
+        if fitted.exists():
+            discard(fitted)
+
+
 def _utterances(lines: list[dict]) -> list[tuple[str, float, float]]:
     """Caption lines regrouped into spoken sentences with their time span."""
     from multilingual.translate import _group_sentences
@@ -249,28 +308,81 @@ def dub(
     work_dir: Path,
     voice_id: str | None = None,
     workers: int | None = None,
+    data_dir: Path | None = None,
+    problems: list[str] | None = None,
 ) -> Path | None:
     """A copy of `base_video` speaking `lines` in `language`, or None.
 
     voice_id picks WHICH voice ("es_MX-claude-high", or "fr_FR-upmc-medium#1"
-    for a specific speaker inside a multi-speaker voice)."""
+    for a specific speaker inside a multi-speaker voice; "kokoro:af_heart" or
+    another id the voice layer lists, voice/base.py).
+
+    data_dir is where the person's voice choices are kept (Settings → Voice,
+    voice/settings.py). With it, the voice layer says who speaks: a chosen
+    Piper voice, or a language the built-in Kokoro voice does not speak, is
+    Piper exactly as below; otherwise the built-in voice or the person's own
+    voice app. Without it (and with no voice id naming another engine) this
+    is Piper as it always was, and the layer is not consulted.
+
+    problems, when given, collects in plain words why a voice the person
+    picked could not speak (their voice app closed during the job, the
+    built-in voice missing), so the job can say so instead of finishing as if
+    the dub had been made. When that voice (the built-in one or a voice app;
+    Piper is as it was) fails on any sentence or answers with silence, no
+    dub is written for the language at all."""
     from multilingual.voices import resolve
 
-    if not available() or not supported(language):
-        return None
-    voice = ensure_voice(language, voices_dir, voice_id)
-    if voice is None:
-        return None
-    _name, speaker = resolve(voice_id, language)
+    layer = None
+    if data_dir is not None or _names_another_engine(voice_id):
+        from voice import VoiceError, can_dub, dub_plan
+
+        try:
+            layer, routed = dub_plan(data_dir, language, voice_id, voices_dir)
+        except VoiceError as e:
+            if e.code != "no_voice":
+                print(f"      ({e})")
+                _note_problem(problems, language, str(e))
+            elif can_dub(data_dir, language):
+                # The voice that was picked (the person's voice app, or a
+                # voice id) has nothing for this language. A language no
+                # voice at all speaks is said by the caller instead.
+                from multilingual.languages import english_name
+
+                print(f"      ({english_name(language)} was not dubbed: {e})")
+            return None
+        # The person's default Piper voice for this language (Settings →
+        # Voice), when the request names none. With nothing saved this is
+        # None, and Piper's usual voice speaks as it always did.
+        voice_id = voice_id or routed
+
+    if layer is None:
+        if not available() or not supported(language):
+            return None
+        voice = ensure_voice(language, voices_dir, voice_id)
+        if voice is None:
+            return None
+        _name, speaker = resolve(voice_id, language)
     utterances = _utterances(lines)
     if not utterances:
         return None
 
     work_dir.mkdir(parents=True, exist_ok=True)
+    # Why the picked voice (the built-in one, or the person's voice app)
+    # could not speak a sentence. One is enough to stop this language's dub:
+    # a dub with sentences missing is not written as if it were whole.
+    unspoken: list[str] = []
 
     def synth(job: tuple[int, tuple[str, float, float]]) -> tuple[Path, float] | None:
         i, (text, start, end) = job
         wav = work_dir / f"{language}_{i:03d}.wav"
+        if layer is not None:
+            if unspoken:
+                return None  # the dub is already lost; don't keep asking
+            if _fit(layer, text, wav, max(0.4, end - start)):
+                return (wav, start)
+            if _has_words(text):
+                unspoken.append(layer.failed or "The voice could not say a sentence.")
+            return None
         if not _speak(text, voice, voices_dir, wav, speaker=speaker):
             return None
         slot = max(0.4, end - start)
@@ -294,6 +406,19 @@ def dub(
     with ThreadPoolExecutor(max_workers=lanes) as pool:
         done = list(pool.map(synth, enumerate(utterances)))  # map keeps order
     pieces: list[tuple[Path, float]] = [p for p in done if p is not None]
+    if unspoken:
+        # The voice failed part-way (the person's voice app closed or
+        # answered with an error or with silence, the built-in voice
+        # stopped). Nothing is mixed: the job says why and ends as failed.
+        from multilingual.languages import english_name
+
+        for i in range(len(utterances)):
+            take = work_dir / f"{language}_{i:03d}.wav"
+            if take.exists():
+                discard(take)
+        print(f"      ({english_name(language)} was not dubbed: {unspoken[0]})")
+        _note_problem(problems, language, unspoken[0])
+        return None
     if not pieces:
         return None
 

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "Clips Kitty editor suite",
-  "updated": "2026-11-12",
+  "updated": "2026-11-13",
   "about": "Machine-readable tracker for the editor suite. STATUS.md is the readable view of this file; when they disagree, this file wins. Acceptance criteria are copied from the plan's Proof column; step 0 also carries the checks from the plan's section on keeping plain auto-clipping identical. depends_on is read from the plan's text (which earlier step's output a step uses): the plan gives the run order, not a dependency list.",
   "now": "1",
   "stop_after_phase": 2,
@@ -1404,44 +1404,231 @@
     },
     {
       "id": "V1",
-      "title": "Voice service (Voicebox)",
+      "title": "One voice layer: Kokoro built in, Voicebox and VoiceStudio optional",
       "size": "M",
-      "scope": "Voice service with Voicebox. Starts with a 1-day spike: run its pinned CPU server headless from inside our package. The server isn't published on its own, so it's taken from the pinned release installer, SHA-256-checked, into vendor/voicebox/. Clips Kitty starts and stops it like Ollama, on loopback, with --parent-pid and its own data dir. Our PyTorch is untouched. POST /voice/speak returns a WAV plus word times (a Whisper alignment if Voicebox gives none). Voices: Kokoro af_heart by default, plus Qwen3-TTS and Chatterbox. Non-commercial models are hidden. A Settings → Voice card. From here on, the promo agent uses this.",
+      "scope": "Revised 2026-11-12 (DECISIONS.md ED23, replacing ED12's engine). One voice layer (voice/) that everything that speaks goes through: dubbing, scripts/narrate_local.py, and POST /voice/speak for step V2 and the promo kit. Built in: Kokoro (kokoro-onnx on the engine's ONNX Runtime, CPU, default voice af_heart) for English, Spanish, French, Hindi, Italian and Portuguese, with its two model files fetched at build time, checked by SHA-256 and bundled; Piper, unchanged, for the other dubbing languages. Optional, the person's own running copy: Voicebox (127.0.0.1:17493), VoiceStudio (backend.json, else 127.0.0.1:3900) or any local voice app with POST /v1/audio/speech at a loopback address. Nothing is shipped, downloaded or started for the optional ones, and only this PC is ever contacted. Word times come from the app's Whisper. A Settings → Voice card.",
       "closes": [],
       "depends_on": [
         "0"
       ],
-      "status": "todo",
+      "status": "done",
       "user_visible": true,
       "acceptance": [
-        "Speaks with no GPU and no AI",
-        "Same text gives the same WAV on CPU",
-        "Word times within ±80 ms of a Whisper check",
-        "−16 LUFS",
-        "The server exits when the app closes",
-        "No port clash",
-        "The core environment is unchanged (torch/CUDA check)",
+        "Speaks with no GPU, no AI and no network",
+        "The same text and seed give the same WAV on the same PC",
+        "Only loopback addresses are contacted; anything else is refused with a plain message",
+        "Nothing is downloaded at runtime: no Voicebox, no VoiceStudio, no model",
+        "A closed voice app stops the job with a plain reason, unless the person allowed the built-in voice to stand in",
+        "A dub with a Piper voice picked makes the same speech calls and ffmpeg mix as before (snapshot)",
+        "A plain clipping run loads nothing of the voice layer",
+        "A voice not cleared for monetised videos carries a tag; nothing non-commercial is bundled",
         "Packaged-build check at the milestone"
       ],
       "files": [
-        "scripts/fetch_voicebox.py (new)",
-        "core/binaries.py",
-        "ui/src/main/index.ts",
-        "voice/ (new)",
-        "server/api.py",
-        "ui/src/renderer/src/pages/Settings.tsx",
-        "clips-studio.spec",
-        "ui/electron-builder.yml",
-        "docs/msstore-submission-sheet.md",
-        "NOTICE"
+        "voice/__init__.py, base.py, settings.py, net.py, wav.py, align.py, kokoro_files.py, engines/kokoro.py, engines/piper.py, engines/voicebox.py, engines/openai_local.py (new)",
+        "server/voice_api.py (new; GET /voice, POST /voice/engine, GET /voice/voices, POST /voice/speak, GET /voice/preview, GET /voice/audio/{file}), server/api.py (installs it; /voices, /voices/preview and /languages go through the layer)",
+        "scripts/fetch_kokoro.py (new), scripts/build_installer.py (fetches the built-in voice), scripts/narrate_local.py (speaks through the layer)",
+        "core/binaries.py (kokoro_dir), core/preflight.py (check_voice, never blocking)",
+        "multilingual/dub.py, multilingual/publish.py, server/jobs.py (dubbing through the layer; the translate job checks the chosen voice app first)",
+        "requirements.txt (kokoro-onnx==0.6.1), requirements-narration.txt, clips-studio.spec (kokoro_onnx, espeakng_loader, phonemizer, the voice package, the two model files), .gitignore, NOTICE",
+        "tests/test_voice_layer.py, test_voice_connectors.py, test_voice_routes.py, test_voice_kokoro_real.py, test_voice_dub_piper_snapshot.py, voice_fakes.py, tests/snapshots/dub_piper.json (new), tests/test_packaging.py, tests/test_preflight.py",
+        ".github/workflows/ci.yml (tests/test_voice_routes.py in the Plugin platform job)",
+        "ui/src/renderer/src/components/VoiceCard.tsx (new: Settings → Voice, after the AI card: the four choices, the reachability line in the engine's words, the address of another local voice app, standing in, the default voice for each language, Hear this voice, the not for monetised videos tag), pages/Settings.tsx, components/MultilingualExport.tsx (the default voice preselected, the engine's line when the voice app is closed, only a picked voice is sent, the pip install hint removed), components/SetupWizard.tsx (the voice check's label), lib/api.ts (voice, setVoice, voiceList, voiceSample), lib/types.ts",
+        "tests/test_ui_voice.py (new), tests/test_ui_translatable_attributes.py (the card added)",
+        "docs/editor-suite/api/stepV1-voice.md (new), DECISIONS.md (ED23), STATUS.md, USER-GUIDE.md (AI voices), docs/LOCAL_NARRATION.md, docs/developers/api-reference.md (regenerated), CHANGELOG.md"
       ],
       "notes": [
         "No issue: it serves the promo videos and step V2",
-        "The Store build is CPU-only; Voicebox's GPU add-on is skipped",
-        "Voicebox becomes a 4th background process, which goes into the Store submission notes; the listing discloses the AI voice (Store policy 11.16)"
+        "Scope revised on 2026-11-12 after the Voicebox spike (490 MiB, 1.24 GiB of temp at every start, 16 to 43 s to start, unsigned, --parent-pid broken, no word times). The first scope shipped Voicebox's server (ED12); the owner chose the lighter built-in Kokoro with Voicebox and VoiceStudio as optional apps (ED23)",
+        "Measured on the owner's PC (kokoro-onnx 0.6.1, CPU): first sound after 2.6 s (12.8 s the very first time), 3.5 times faster than realtime, 428 MB loaded and 962 MB at peak, about 356 MiB added to an installed copy",
+        "Languages measured by speaking and transcribing back: en, es, fr, hi, it, pt come out right; ja and zh do not through kokoro-onnx (they need pyopenjtalk/unidic and jieba/pypinyin), so zh stays on Piper and ja has no built-in voice",
+        "No extra background process and nothing new for the Store notes beyond one line: a built-in voice, and an optional connection to local voice apps the person installed. The listing discloses the AI voice (Store policy 11.16)",
+        "New routes carry the INTERNAL stability label and need the X-Clips-Kitty-Session header and the app's own Origin, like the project routes; GET /voice/audio/{file} takes a random 128-bit name instead, because a player cannot send a header",
+        "Changed on purpose: with no voice picked, a dub in the six languages uses the built-in voice when its files are there. soundfile is no longer needed: the layer writes the same PCM_16 bytes itself",
+        "Engine side built 2026-11-13 in two sittings (a usage-limit stop between them). The Voicebox v0.5.0 server from the spike was run once for a real connector test and stopped with /shutdown; VoiceStudio was tested against a stand-in server only",
+        "Open: nobody has listened to the built-in voices; the same-seed promise was checked on one PC; the installed build with the spec's new entries has not been built",
+        "QC fix round 1 2026-11-13 (V1-D1 to V1-D12). Choices: a dub is not stopped up front when the chosen voice app has no voice for one language (the other languages still dub; the log and the dialog say which was left out); the level fix is in the dub's speaker, not in kokoro.speak, so a seeded request and scripts/narrate_local.py give the bytes they gave; the older GET /voices/preview stays unguarded because the player cannot send a header, and is limited to the chosen app's voices instead",
+        "Black-box fix round 2026-11-13 (V1-D13 fixed; V1-D14 is an existing fault, left as it is): the tester's S1 and S2 were blocked by the sandbox, whose system Python has no kokoro-onnx; blackbox/launch.py now runs the engine with the step's virtual environment (system packages plus kokoro-onnx 0.6.1). Files: voice/__init__.py, voice/engines/kokoro.py, multilingual/dub.py, multilingual/publish.py, server/jobs.py, ui/src/renderer/src/components/MultilingualExport.tsx, tests/test_voice_layer.py, tests/test_voice_routes.py, tests/test_ui_voice.py, docs/editor-suite/api/stepV1-voice.md, docs/editor-suite/USER-GUIDE.md, CHANGELOG.md"
       ],
       "results": [],
-      "defects": []
+      "defects": [
+        {
+          "id": "V1-D1",
+          "date": "2026-11-13",
+          "found_by": "QC",
+          "summary": "Serious. A Piper voice saved as the default in Settings → Voice was ignored by a dub that names no voice (the dubbing dialog sends only voices picked in the dialog): Piper's usual voice spoke instead. Fixed: voice.dub_plan hands dubbing the routed Piper voice, and multilingual/dub.py uses it when the request names none. With nothing saved the calls are the recorded ones (tests/test_voice_dub_piper_snapshot.py).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D2",
+          "date": "2026-11-13",
+          "found_by": "QC and Review",
+          "summary": "Serious. With Voicebox chosen and open, a dub into a language it has no voice for made no dubbed file and said nothing; the job ended as complete. Fixed: dub() prints '<Language> was not dubbed: <why>' whenever the picked voice (the person's voice app, or a named voice) has nothing for the language; a language no voice at all speaks is still said by publish. GET /voices answers 'Voicebox has no voice for Spanish.' as its message when the open app lists nothing, the dubbing dialog shows one such line for each picked language, and Voicebox's list is empty for a language Voicebox does not take. The job is not stopped up front, since the other languages can still be dubbed. Not changed: the built-in voice does not stand in for such a language even with standing in allowed (the owner's call).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D3",
+          "date": "2026-11-13",
+          "found_by": "QC",
+          "summary": "A dub request naming a Kokoro voice for a language Kokoro does not speak (API callers only) was skipped silently. Fixed with V1-D2: the log says '<Language> was not dubbed: The built-in voice does not speak this language'.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D4",
+          "date": "2026-11-13",
+          "found_by": "QC",
+          "summary": "The CI Python job's 'Compile every module' step did not list the voice package. Fixed: added.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D5",
+          "date": "2026-11-13",
+          "found_by": "QC and Review",
+          "summary": "A CLIPS_STUDIO_VOICEBOX_URL that is not this PC made voicebox.voices() and speak() raise the raw NotLocal error (still refused, nothing contacted). Fixed: a VoiceError with code not_local.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D6",
+          "date": "2026-11-13",
+          "found_by": "QC and Review",
+          "summary": "The older, unguarded GET /voices/preview could be asked for a voice of any voice app and would contact that app on this PC. Fixed: it takes built-in voices and voices of the app chosen in Settings → Voice; a voice of another app is refused with 400 and the app is not contacted. GET /voices is unchanged (it lists the chosen engine's voices).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D7",
+          "date": "2026-11-13",
+          "found_by": "QC",
+          "summary": "Whether the built-in voice works in an installed copy is unverified: no installer was built, and tests/test_packaging.py reads the spec's text only. NOTICE now names joblib (BSD-3-Clause, which phonemizer needs and scikit-learn already brought). To do at the first packaging the owner asks for: speak one sentence in the installed copy before release.",
+          "routed_to": "Engineering",
+          "status": "open"
+        },
+        {
+          "id": "V1-D8",
+          "date": "2026-11-13",
+          "found_by": "QC",
+          "summary": "The removed 'pip install piper-tts' hint was still an unused key in the fr, it, pt, ru and zh locale files. Fixed: removed from all five.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D9",
+          "date": "2026-11-13",
+          "found_by": "Review",
+          "summary": "A dub spoken by the built-in Kokoro voice came out about 10 LU quieter than the same dub spoken by Piper (-22.4 against -12.3 LUFS on one clip), because the mix applies one fixed gain and Kokoro speaks about 8 dB lower. Fixed: in a dub, a sentence from Kokoro or a voice app is brought to full level before the mix, as Piper's already is (voice.wav.to_full_level, at most 10 times); the Piper path and the mix arguments are untouched, and speech outside a dub keeps the voice's own level. Measured after: -15.7 LUFS for the Kokoro dub, -12.4 for Piper. Nobody has listened.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D10",
+          "date": "2026-11-13",
+          "found_by": "Review",
+          "summary": "A dub spoken by Voicebox was never fitted to its slot (Voicebox has no pace), so a long sentence ran on past it. Fixed: a take from a voice without a pace has its tempo changed by FFmpeg's atempo, inside the same 0.72 to 1.45 range a re-spoken take has. Checked with FFmpeg on a made-up take and against the stand-in Voicebox; not run against the real Voicebox again.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D11",
+          "date": "2026-11-13",
+          "found_by": "Review",
+          "summary": "The start-up check said 'Built-in voice ready' for a model file of the right size that the SHA-256 check refuses to load, and the refusal named a command line even in an installed copy. Fixed: the start-up check uses what the SHA-256 check already found (it still reads nothing itself, so before anything has spoken it goes by size); in an installed copy the messages say 'Install Clips Kitty again to put them back.' and name no command.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D12",
+          "date": "2026-11-13",
+          "found_by": "Review",
+          "summary": "POST /voice/speak answered with whatever was sent as the voice when it was not a known id, although Piper's usual voice for the language had spoken. Fixed: the answer names the Piper voice that spoke (piper.spoken_by, the same fallback as multilingual.voices.resolve).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D13",
+          "date": "2026-11-13",
+          "found_by": "Black-box",
+          "summary": "X1. With Kokoro's files there but its Python package missing, the dubbing dialog and the Voice card still listed the Kokoro voices; a dub with one ended as done ('Exported') with no dubbed file, the reason only in the job's log. Fixed: kokoro.voices() lists nothing while the voice can't speak; voice.check_dub stops the job up front when a named (or saved) built-in voice can't speak; a picked voice that stops speaking during the job is collected (dub()'s and publish()'s problems list) and the job ends as failed with '<Language> was not dubbed: <why>'. Piper's own path is unchanged.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D14",
+          "date": "2026-11-13",
+          "found_by": "Black-box",
+          "summary": "X2. The clip's own language (English for an English clip) can be picked in the dubbing dialog, is promised as clip.en.dubbed.mp4 and then left out without a word; alone, Export never becomes clickable. Checked in the sandbox on the base build (008d69a): exactly the same there (publish.py has always left the source language out). Not from this step, so nothing was changed for it; it goes on the owner's list.",
+          "routed_to": "Owner",
+          "status": "existing fault, not changed"
+        },
+        {
+          "id": "V1-D15",
+          "date": "2026-11-13",
+          "found_by": "Review",
+          "summary": "Serious. A voice app that stopped answering part-way through a dub (Voicebox closed, or answering with an error after the first sentence) gave a finished dub with only the first sentence spoken, and the job reported no problem. Fixed, for the built-in voice and every voice app: when the picked voice fails on any sentence (also on the second take that fits a sentence to its slot), dub() mixes nothing, removes the takes, prints and collects '<Language> was not dubbed: <why>', and the job ends as failed; the sentences after the first failure are not asked for. A caption with no letter or digit that a voice makes nothing of is left out and is not a failure. Piper's own path is unchanged (snapshot test). The reviewer's script (attacks3.py S1, S2) now answers None with the reason.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D16",
+          "date": "2026-11-13",
+          "found_by": "Review",
+          "summary": "A voice app that answers with a valid but silent WAV gave a fully silent dub with no message. Fixed: in a dub, a take quieter than a thousandth of full level (the line the built-in voice already draws for itself) is a failed sentence, '<App> sent silence instead of speech.' (voice.wav.is_silent, DubSpeaker.say), so the dub is not written and the job fails. POST /voice/speak and a sample are not checked this way. attacks3.py S3 now answers None with the reason.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D17",
+          "date": "2026-11-13",
+          "found_by": "QC",
+          "summary": "tests/test_voice_layer.py's SHA-256 test relied on two quick writes of the same size getting different modification times (the checksum is remembered by size and time), which an older Linux kernel may not give. Fixed in the test: the file's time is moved on by hand after the second write. Not reproduced (no Linux on this PC).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D18",
+          "date": "2026-11-13",
+          "found_by": "QC and Review",
+          "summary": "The built-in voice's model (about 400 MB) was never let go once loaded. Fixed for translate jobs: server/jobs.py calls kokoro.unload() when a translate job ends, also when it fails or is cancelled, and only if the voice was loaded. After a sample or POST /voice/speak with no translate job after it, the model stays loaded until the app closes (no idle timer was added).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D19",
+          "date": "2026-11-13",
+          "found_by": "QC",
+          "summary": "POST /voice/speak with words:true handed the app's online transcription setting to the aligner, so with online transcription turned on the spoken WAV would have gone to that service. Fixed: the route always passes online=None; word times use the Whisper on this PC only.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D20",
+          "date": "2026-11-13",
+          "found_by": "Review",
+          "summary": "POST /voice/engine saved any voice id as a language's default; a Kokoro voice saved for German made every German dub with no picked voice skip. Fixed: the route refuses (400 no_voice, nothing saved) a default whose engine does not speak the language (Kokoro outside its six, Piper outside its catalogue's languages, Voicebox outside its language list; VoiceStudio and another local app are taken as given), and a default like that in a hand-edited file is passed over when routing.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "V1-D21",
+          "date": "2026-11-13",
+          "found_by": "Review",
+          "summary": "With Voicebox chosen, a language Voicebox has no voice for is not dubbed and the job still ends as done; the reason is in the dubbing dialog and the job log. Before the person switched engines Piper dubbed it. Not changed: whether the job should stop is the owner's call.",
+          "routed_to": "Owner",
+          "status": "open, owner's call"
+        },
+        {
+          "id": "V1-D22",
+          "date": "2026-11-13",
+          "found_by": "QC and Review",
+          "summary": "For the owner's list, by design (ED23): a dub with no voice picked in English, Spanish, French, Hindi, Italian or Portuguese is spoken by the built-in Kokoro voice instead of Piper's default, and by Piper's default again when the Kokoro files are missing or fail their check. Also by design and now said in docs/LOCAL_NARRATION.md: scripts/narrate_local.py reads British voices with British sounds (a different WAV than before for those voices; the default af_heart is the same bytes) and takes only voices of the six offered languages. NOTICE now credits the SIWIS French speech data (CC BY 4.0, the ff_siwis voice) and Koniwa (CC BY 3.0, the Japanese voices in the pack).",
+          "routed_to": "Owner",
+          "status": "by design, not changed"
+        }
+      ]
     },
     {
       "id": "5",

@@ -1,3 +1,4 @@
-# Optional, CPU-only host narration. Install in a separate environment.
+# Kept for older instructions. The built-in voice is part of the app now:
+# requirements.txt installs kokoro-onnx, and scripts/narrate_local.py speaks
+# through the app's voice layer (voice/). soundfile is no longer needed.
 kokoro-onnx==0.6.1
-soundfile==0.13.1

@@ -24,6 +24,7 @@ import {
   t
 } from '../lib/i18n'
 import AICard from '../components/AICard'
+import VoiceCard from '../components/VoiceCard'
 import UploadPostCard from '../components/UploadPostCard'
 import DiscordCard from '../components/DiscordCard'
 import ClipUpdatesCard from '../components/ClipUpdatesCard'
@@ -792,6 +793,9 @@ export default function Settings(): JSX.Element {
       {/* Where the AI and transcription run: this PC first, or a cloud
           provider on the user's own key for PCs that cannot run them. */}
       <AICard onOpenModels={() => window.dispatchEvent(new Event('open-models'))} />
+      {/* Who speaks a dub or a voice-over: the built-in voice, or the
+          person's own voice app on this PC. */}
+      <VoiceCard />
 
       <SetupCard />
 

@@ -66,6 +66,13 @@ def translate_only(
     return out
 
 
+def _can_dub(data_dir, code: str) -> bool:
+    """Whether any voice could have dubbed this language (voice/)."""
+    from voice import can_dub
+
+    return can_dub(data_dir, code)
+
+
 def publish(
     lines: list[dict],
     languages: list[str],
@@ -88,6 +95,7 @@ def publish(
     data_dir: Path | None = None,
     pre_translated: dict[str, dict] | None = None,
     style: dict | None = None,
+    problems: list[str] | None = None,  # filled with why a picked voice could not dub
 ) -> list[str]:
     """Write subtitle files for each language. Returns the paths written.
 
@@ -247,12 +255,17 @@ def publish(
                     voices_dir, out_dir / ".ml_work",
                     voice_id=(voice_choice or {}).get(code),
                     workers=dub_workers,
+                    # Where the person's voice choices are kept: the voice
+                    # layer (voice/) says who speaks. A chosen Piper voice
+                    # is Piper exactly as before.
+                    data_dir=data_dir,
+                    problems=problems,
                 )
                 step(f"Dubbed {english_name(code)}", 3)
                 if spoken is not None:
                     written.append(str(spoken))
                     print(f"      Dubbed audio written: {english_name(code)}")
-                elif not dubber.supported(code):
+                elif not _can_dub(data_dir, code):
                     print(f"      ({english_name(code)} has no voice available — subtitles only)")
         except Exception as e:  # one language failing must not stop the rest
             print(f"      ({english_name(code)} failed: {e})")

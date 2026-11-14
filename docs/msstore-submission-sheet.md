@@ -188,6 +188,8 @@ out-of-memory error.
 No account or login is needed to use the app. There is no Clips Kitty
 account or server at any point.
 
+Dubbing uses a built-in AI voice that runs on the device; optionally it can use a local voice app the user installed themselves, on this PC only.
+
 The app can optionally publish a finished clip to the user's own YouTube
 channel. It is off by default and must be switched on in Settings, and it
 requires the user to create their own free Google Cloud API key first, so a

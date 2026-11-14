@@ -223,7 +223,46 @@ Your own music file still works the same way as before. A clip has one or the ot
 
 ## AI voices
 
-Coming in step V1
+Clips Kitty has a voice of its own. It speaks when you dub a clip into another language, and the voice-over tool will use it when that arrives. It runs on your PC and needs no account and no internet.
+
+### The built-in voice
+
+The built-in voice speaks English, Spanish, French, Hindi, Italian and Portuguese, with several voices for most of them. For the other dubbing languages (Arabic, Bengali, Chinese, German, Indonesian, Russian, Turkish, Urdu and Vietnamese), Clips Kitty uses the dubbing voices it has always had.
+
+The built-in voices may be used in videos that earn money.
+
+### Choosing a voice
+
+In **Settings → Voice**:
+
+1. Pick who speaks: **Built-in**, **Voicebox**, **VoiceStudio** or **Another local voice app**.
+2. Pick the voice you want as your usual one.
+3. Click **Hear this voice** to listen to a short sample.
+
+When you dub a clip, the dubbing window offers the same voices, and you can pick a different one for each language. The dubbing window is in **Clip Editor**: click a clip, click **Edit this clip**, then open the **Subtitles** tab and choose **Subtitles + dubbed voice**.
+
+### Using Voicebox, VoiceStudio or another voice app
+
+If you want more voices, or a copy of your own voice, you can use a voice app you installed yourself. Clips Kitty doesn't come with these apps and doesn't install or start them.
+
+- **Voicebox** or **VoiceStudio:** open the app, then pick it in Settings → Voice. Clips Kitty lists the voices you already made there. It never adds, changes or deletes anything in the app.
+- **Another local voice app:** pick it and type the app's address, for example `http://127.0.0.1:8880`. It has to be an app running on this PC.
+
+The app has to be open while Clips Kitty speaks. If it's closed, the card says so (for example **Open Voicebox to use it**). A dub you start then stops straight away and tells you why, so you never get a different voice than the one you picked. If you'd rather carry on with the built-in voice while your app is closed, you can allow that in the card.
+
+If your voice app has no voice for a language you dub into (for example only English voices, and a dub into Spanish), that language isn't dubbed and gets subtitles only. The dubbing window says so before you start (for example **Voicebox has no voice for Spanish.**), and the job's log says it again.
+
+### Voices and videos that earn money
+
+Some voices may not be used in videos that earn money. Clips Kitty marks those with a small **not for monetised videos** tag. VoiceStudio's usual voice is one of them. For another local voice app, Clips Kitty can't tell, so check with the app the voice comes from.
+
+### Good to know
+
+- The first sentence takes a few seconds while the voice loads. After that it speaks faster than you can listen.
+- The built-in voice doesn't speak Japanese. Chinese is spoken by the older dubbing voice.
+- Voicebox has no speed setting, so a dubbed sentence that runs long isn't spoken again faster, as it is with the built-in voices. Clips Kitty speeds the finished sentence up a little instead (or slows a short one down), without changing how high or low the voice sounds.
+- A voice you save as your usual one in Settings → Voice is the voice of your dubs in that language, unless you pick another in the dubbing window.
+- If the voice you picked can't speak when the dub is made, the dub ends as failed and tells you why. It never says it exported a dubbed video that wasn't made.
 
 ## The new editor (beta)
 

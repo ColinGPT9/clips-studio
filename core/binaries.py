@@ -174,6 +174,38 @@ def yolo_weights(name: str) -> str:
     return name
 
 
+# The built-in voice's two files. Named here, not imported from
+# voice/kokoro_files.py (which holds their checksums): this module is loaded
+# by every clipping run, and a clipping run loads nothing of the voice layer.
+# tests/test_voice_kokoro_real.py keeps the two lists the same.
+KOKORO_FILES = ("kokoro-v1.0.onnx", "voices-v1.0.bin")
+
+
+def kokoro_dir() -> Path | None:
+    """The folder holding the built-in voice's two files, or None.
+
+    The same reasoning as whisper_model(): the installed app carries them
+    (clips-studio.spec puts them in kokoro/) so nothing is downloaded while
+    it runs, and a checkout keeps them in models/kokoro/, where
+    scripts/fetch_kokoro.py puts them. CLIPS_STUDIO_KOKORO_DIR names another
+    folder. Only says where the files are: voice/kokoro_files.py checks each
+    against its SHA-256 before the voice loads it.
+    """
+    roots: list[Path] = []
+    override = os.environ.get("CLIPS_STUDIO_KOKORO_DIR")
+    if override:
+        roots.append(Path(override))
+    roots += _search_roots("kokoro")
+    roots.append(Path(__file__).resolve().parent.parent / "models" / "kokoro")
+    for root in roots:
+        try:
+            if all((root / name).is_file() for name in KOKORO_FILES):
+                return root
+        except OSError:
+            continue
+    return None
+
+
 def haar_cascade(filename: str) -> str | None:
     """An absolute path to a bundled OpenCV Haar cascade, or None.
 

@@ -8,7 +8,7 @@ import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleContr
 import GlossaryEditor from './GlossaryEditor'
 import { formatEta } from '../lib/jobProgress'
 import { useEvents } from '../lib/useEvents'
-import type { CaptionLine, CaptionStyle, TranslationPreview } from '../lib/types'
+import type { CaptionLine, CaptionStyle, TranslationPreview, VoiceOption } from '../lib/types'
 
 /** Language names in the language the INTERFACE is set to: "Spanish" in an
  *  English UI, "español" in a Spanish one. Intl ships these with the OS, so
@@ -79,9 +79,19 @@ export default function MultilingualExport({
       return {}
     }
   })
+  // Each language's voices from the engine chosen in Settings → Voice: the
+  // list, the voice used when none is picked here, and the line to show when
+  // that voice app is closed.
   const [voiceList, setVoiceList] = useState<
-    Record<string, { id: string; name: string; country: string; quality: string }[]>
+    Record<string, { voices: VoiceOption[]; default: string | null; message: string }>
   >({})
+  // A voice remembered from before counts only while the list still has it
+  // (after another voice app is chosen in Settings, it does not).
+  const pickedVoice = (c: string): string => {
+    const got = voiceList[c]
+    return got && !got.voices.some((v) => v.id === voiceFor[c]) ? '' : (voiceFor[c] ?? '')
+  }
+  const shownVoice = (c: string): string => pickedVoice(c) || voiceList[c]?.default || ''
   // Translation is a separate first step now: the text is reviewed here
   // before anything is written. `reloadKey` re-reads it once a job lands.
   const [waiting, setWaiting] = useState(false)
@@ -178,7 +188,12 @@ export default function MultilingualExport({
       .forEach((c) => {
         api
           .voicesFor(c)
-          .then((r) => setVoiceList((prev) => ({ ...prev, [c]: r.voices })))
+          .then((r) =>
+            setVoiceList((prev) => ({
+              ...prev,
+              [c]: { voices: r.voices, default: r.default, message: r.message ?? '' }
+            }))
+          )
           .catch(() => {})
       })
   }, [picked, canDub, dubIn, langs])
@@ -209,6 +224,18 @@ export default function MultilingualExport({
   }, [])
 
 
+
+  // What Settings → Voice's engine says when its voice app is closed
+  // ("Open Voicebox to use it."), once, whichever languages are picked; or
+  // one line for each picked language it has no voice for.
+  const voiceMessages = [
+    ...new Set(picked.map((c) => voiceList[c]?.message).filter((m): m is string => !!m))
+  ]
+  // Only the older built-in voices are fetched the first time they speak.
+  const listed = picked.filter((c) => voiceList[c])
+  const downloadsVoice =
+    listed.length === 0 ||
+    listed.some((c) => voiceList[c].voices.find((v) => v.id === shownVoice(c))?.engine === 'piper')
 
   const hasQwen = installed.some((n) => n.startsWith('qwen'))
   const useQwen = async (): Promise<void> => {
@@ -319,7 +346,7 @@ export default function MultilingualExport({
         // language's subtitles in it, and that is what it previews.
         burn: true,
         dub: dubIn,
-        voices: voiceFor,
+        voices: Object.fromEntries(picked.map((c) => [c, pickedVoice(c)]).filter(([, v]) => v)),
         style
       })
       watchJob(res.job_id, 'export')
@@ -605,23 +632,25 @@ export default function MultilingualExport({
                 <span className="text-muted w-20 shrink-0">{displayName(c, c)}</span>
                 <select
                   className="input !w-56 !py-1 text-xs"
-                  value={voiceFor[c] ?? ''}
+                  value={shownVoice(c)}
                   onChange={(e) => {
                     const next = { ...voiceFor, [c]: e.target.value }
                     setVoiceFor(next)
                     localStorage.setItem('multilingual-voices', JSON.stringify(next))
                   }}
                 >
-                  <option value="">{t('Default voice')}</option>
-                  {(voiceList[c] ?? []).map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.name} · {v.country} · {v.quality}
+                  {!voiceList[c]?.default && <option value="">{t('Default voice')}</option>}
+                  {(voiceList[c]?.voices ?? []).map((v) => (
+                    <option key={v.id} value={v.id} disabled={v.ready === false}>
+                      {[v.name, v.country, v.quality, v.commercial_ok === false && t('not for monetised videos')]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </option>
                   ))}
                 </select>
                 <button
                   className="px-2 py-0.5 rounded-md bg-raised text-muted hover:text-ink disabled:opacity-50"
-                  onClick={() => play(c, voiceFor[c] || undefined)}
+                  onClick={() => play(c, shownVoice(c) || undefined)}
                   title={t('Hear this voice')}
                 >
                   ▶ {t('Listen')}
@@ -649,9 +678,16 @@ export default function MultilingualExport({
               </button>
             </div>
           )}
-          <p className="text-muted/70">
-            {t('The first play downloads that voice (~60 MB), so it can take a moment.')}
-          </p>
+          {voiceMessages.map((m) => (
+            <p key={m} className="text-xs text-warn">
+              {t(m)}
+            </p>
+          ))}
+          {downloadsVoice && (
+            <p className="text-muted/70">
+              {t('The first play downloads that voice (~60 MB), so it can take a moment.')}
+            </p>
+          )}
         </div>
       )}
       {dubIn && picked.some((c) => !langs.find((l) => l.code === c)?.can_dub) && (
@@ -663,13 +699,6 @@ export default function MultilingualExport({
             .join(', ')}
           {' — '}
           {t('those languages get subtitles only.')}
-        </p>
-      )}
-      {!canDub && (
-        <p className="text-xs text-muted">
-          {t(
-            'Dubbing needs one extra local package (Piper). Install it with: pip install piper-tts - then restart the app. Voices download per language, about 60 MB each, and stay on your PC.'
-          )}
         </p>
       )}
       {notice && <p className="text-xs text-muted">{notice}</p>}

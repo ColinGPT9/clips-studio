@@ -28,7 +28,8 @@ const LABEL: Record<string, string> = {
   whisper: 'Transcription',
   transcription: 'Transcription',
   gpu: 'Graphics card',
-  disk: 'Free space'
+  disk: 'Free space',
+  voice: 'Voice'
 }
 
 function CheckRow({ check }: { check: PreflightCheck }): JSX.Element {

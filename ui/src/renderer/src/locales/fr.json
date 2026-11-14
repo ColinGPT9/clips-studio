@@ -313,7 +313,6 @@
   "why it helps": "en quoi cela serait utile",
   "Translate these languages first - Export writes the text you have reviewed.": "Traduisez d’abord ces langues : l’export utilisera le texte que vous aurez relu.",
   "Off - original captions": "Désactivé — sous-titres d’origine",
-  "Dubbing needs one extra local package (Piper). Install it with: pip install piper-tts - then restart the app. Voices download per language, about 60 MB each, and stay on your PC.": "Le doublage nécessite un paquet supplémentaire installé en local (Piper). Installez-le avec : pip install piper-tts, puis redémarrez l’application. Les voix sont téléchargées par langue (environ 60 Mo chacune) et restent sur votre ordinateur.",
   "saved - Export will use your version.": "enregistrées — l’export utilisera votre version.",
   "discarded - translate again for a fresh version.": "abandonnées — relancez la traduction pour obtenir une nouvelle version.",
   "videos at a time - start these, then add more when one finishes.": "vidéos à la fois — lancez leur traitement, puis ajoutez-en d’autres lorsqu’une vidéo est terminée.",

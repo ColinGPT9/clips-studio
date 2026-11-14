@@ -16,7 +16,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all, collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
 
 ROOT = Path(SPECPATH)
 
@@ -39,13 +39,31 @@ hiddenimports = []
 #   nvidia.cublas — cuBLAS 12 (cublas64_12.dll), loaded by name by
 #                  CTranslate2 at its first GPU run; PyTorch's CUDA 13 build
 #                  only has cuBLAS 13 (transcription/transcriber.py, #111)
+#   kokoro_onnx  — the built-in voice's runtime (voice/engines/kokoro.py),
+#                  imported only when something speaks; its config.json is
+#                  read from its own package directory
+#   espeakng_loader — the espeak-ng library and its phoneme data (18 MB),
+#                  found by kokoro_onnx through this package's own directory
+#   phonemizer   — the espeak bridge kokoro_onnx calls, imported by name
 for package in ("yt_dlp", "yt_dlp_ejs", "ultralytics", "faster_whisper", "ctranslate2",
                 "curl_cffi", "piper", "onnxruntime", "rapidocr_onnxruntime",
-                "shapely", "pyclipper", "nvidia.cublas"):
+                "shapely", "pyclipper", "nvidia.cublas",
+                "kokoro_onnx", "espeakng_loader", "phonemizer"):
     pkg_datas, pkg_binaries, pkg_hidden = collect_all(package)
     datas += pkg_datas
     binaries += pkg_binaries
     hiddenimports += pkg_hidden
+
+# kokoro_onnx asks for its own version number when it starts
+# (importlib.metadata.version("kokoro-onnx")), which fails in a frozen build
+# unless the package's metadata ships: the built-in voice would work on a
+# development machine and in no installed copy.
+try:
+    datas += copy_metadata("kokoro-onnx")
+except Exception:
+    # A build machine without kokoro-onnx: the voice layer then reports the
+    # built-in voice as not installed and dubbing keeps Piper.
+    pass
 
 # uvicorn picks its event loop, HTTP parser and websocket implementation at
 # startup by importing strings, so every backend has to be pulled in.
@@ -62,6 +80,9 @@ hiddenimports += collect_submodules("stream_workflows")
 hiddenimports += collect_submodules("websockets")
 # Clipping campaigns (campaigns/): every import of it sits inside a function.
 hiddenimports += collect_submodules("campaigns")
+# The voice layer (voice/): every import of it sits inside a function, and
+# its engines are imported only when something speaks.
+hiddenimports += collect_submodules("voice")
 # Cloud AI adapters (llm/providers/adapters/): adapter_for imports each by the
 # name its provider spec gives, which the analyser can't follow. 2.0.0 shipped
 # without them and saving any cloud key failed with a 500 (#135).
@@ -262,6 +283,17 @@ if _panns.exists():
 for _voice in ("pyannote_segmentation_3.onnx", "wespeaker_resnet34_lm.onnx"):
     if (ROOT / "models" / _voice).exists():
         datas += [(str(ROOT / "models" / _voice), ".")]
+
+# The built-in voice's two files (Kokoro-82M for ONNX Runtime, 310 MB, and
+# its voice pack, 27 MB), fetched by scripts/fetch_kokoro.py, for
+# voice/engines/kokoro.py. core.binaries.kokoro_dir() looks for a kokoro/
+# folder next to the executable. Without both, an installed copy says the
+# voice files are missing and dubbing keeps Piper; nothing is ever downloaded
+# while the app runs.
+_kokoro = ROOT / "models" / "kokoro"
+for _file in ("kokoro-v1.0.onnx", "voices-v1.0.bin"):
+    if (_kokoro / _file).exists():
+        datas += [(str(_kokoro / _file), "kokoro")]
 
 # FFmpeg, fetched by scripts/fetch_ffmpeg.py. core.binaries looks for an
 # ffmpeg/ folder next to the executable.

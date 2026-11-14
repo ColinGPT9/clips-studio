@@ -342,7 +342,10 @@ class Worker(threading.Thread):
                 elif job["type"] == "render":
                     self._rerender_clip(db, payload)
                 elif job["type"] == "translate":
-                    self._translate_clips(db, payload)
+                    try:
+                        self._translate_clips(db, payload)
+                    finally:
+                        _release_voice()
                 else:
                     raise ValueError(f"Unknown job type {job['type']!r}")
                 db.finish_job(job["id"], "done")
@@ -553,6 +556,8 @@ class Worker(threading.Thread):
         written: list[str] = []
 
         n_clips = len(payload["clip_ids"])
+        voice_checked = False
+        dub_problems: list[str] = []
 
         def reporter(index: int):
             """Per-clip progress folded into one 0..1 bar across the batch, so
@@ -637,6 +642,17 @@ class Worker(threading.Thread):
             # other languages (core/remake.py). Nothing else reads the mark.
             from core.remake import note_language_export
 
+            if payload.get("dub") and not voice_checked:
+                # Once per job, before anything is written: when the person
+                # chose their own voice app (Settings → Voice) and it is not
+                # running, the job stops here and says why, rather than
+                # dubbing in a voice nobody picked. With the built-in voice
+                # chosen this contacts nothing.
+                from voice import check_dub
+
+                for note in check_dub(data_dir, languages, payload.get("voices") or {}):
+                    print(f"      {note}")
+                voice_checked = True
             note_language_export(db, clip, languages)
             written += publish.publish(
                 lines, languages, folder, stem, llm,
@@ -656,9 +672,16 @@ class Worker(threading.Thread):
                 pre_translated=pre,
                 style=payload.get("style") or None,
                 on_progress=on_progress,
+                problems=dub_problems,
             )
         if stage != "translate":
             print(f"      Multilingual publish complete: {len(written)} file(s) in {folder}")
+        if dub_problems:
+            # A voice the person picked could not speak (their voice app was
+            # closed during the job, say). The other files are written; the
+            # job says what is missing rather than finishing as if all was
+            # made.
+            raise RuntimeError(" ".join(dict.fromkeys(dub_problems)))
 
     def _source_language(self, video_id: str, data_dir: Path) -> str:
         try:
@@ -1091,6 +1114,20 @@ class Worker(threading.Thread):
             # follows the clip instead of losing it (#147).
             broadcaster.publish({"type": "clip_replaced", "old": clip["id"], "new": new_row["id"],
                                  "video_id": video_id})
+
+
+def _release_voice() -> None:
+    """Let the built-in voice's model go when a translate job ends (about
+    400 MB), so later clipping runs do not carry it. Only when a dub loaded
+    it: a job that never spoke imports nothing here. Never raises."""
+    import sys
+
+    kokoro = sys.modules.get("voice.engines.kokoro")
+    if kokoro is not None:
+        try:
+            kokoro.unload()
+        except Exception:
+            pass
 
 
 def _mark_suggestions(candidate, payload: dict, saved: dict, rendered: dict, window: tuple,

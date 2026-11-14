@@ -272,7 +272,6 @@
   "Include technical details (PC specs, app version, AI model, recent log) - this is what lets someone actually fix it": "Приложить технические данные (характеристики компьютера, версию приложения, модель ИИ и последний журнал) — без них проблему трудно исправить",
   "Translate these languages first - Export writes the text you have reviewed.": "Сначала переведите выбранные языки — при экспорте будет использован проверенный вами текст.",
   "Off - original captions": "Выкл. — исходные субтитры",
-  "Dubbing needs one extra local package (Piper). Install it with: pip install piper-tts - then restart the app. Voices download per language, about 60 MB each, and stay on your PC.": "Для озвучки нужен дополнительный локальный пакет Piper. Установите его командой pip install piper-tts и перезапустите приложение. Голоса загружаются отдельно для каждого языка, занимают около 60 МБ и хранятся на компьютере.",
   "saved - Export will use your version.": "— изменения сохранены; при экспорте будет использован ваш вариант.",
   "discarded - translate again for a fresh version.": "— перевод удалён; запустите его заново, чтобы получить новый вариант.",
   "videos at a time - start these, then add more when one finishes.": "видео одновременно — запустите их, а когда одно завершится, добавьте ещё.",

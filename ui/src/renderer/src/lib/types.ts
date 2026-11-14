@@ -743,6 +743,62 @@ export interface Preflight {
   checks: PreflightCheck[]
 }
 
+/** One of the four choices in Settings → Voice (GET /voice): the built-in
+ *  voice, or a voice app the person runs on this PC. */
+export interface VoiceEngine {
+  id: 'builtin' | 'voicebox' | 'voicestudio' | 'custom'
+  /** English; shown through t(). */
+  name: string
+  optional: boolean
+  /** Whether it can speak right now. `message` says what to do when not. */
+  ready: boolean
+  code: string
+  message: string
+  address: string
+  version: string
+  languages: string[]
+  /** Who answers for a voice's licence; for the engine's tooltip. */
+  licence_note: string
+  kokoro?: { ready: boolean; message: string; languages: string[] }
+  piper?: { ready: boolean; languages: string[] }
+}
+
+export interface VoiceStatus {
+  engine: VoiceEngine['id']
+  engines: VoiceEngine[]
+  settings: {
+    engine: VoiceEngine['id']
+    voices: Record<string, string>
+    custom_address: string
+    custom_model: string
+    fallback_to_builtin: boolean
+  }
+}
+
+/** A voice to choose. The id says which engine speaks it. */
+export interface VoiceOption {
+  id: string
+  name: string
+  country: string
+  quality: string
+  language?: string
+  engine?: string
+  /** true = cleared for videos that earn money, false = not cleared (show
+   *  the "not for monetised videos" tag), null = not known (show nothing). */
+  commercial_ok?: boolean | null
+  /** Voicebox only: false = Voicebox has not downloaded this voice's model. */
+  ready?: boolean
+}
+
+/** GET /voice/voices. A closed voice app is an empty list and a `message`. */
+export interface VoiceList {
+  engine: string
+  voices: VoiceOption[]
+  default: string | null
+  message: string
+  code: string
+}
+
 /** One entry in Settings → AI: this PC (local, first) or a cloud provider on
  *  the user's own key. Never carries a key: `key_tail` is the last four. */
 export interface AIProvider {
