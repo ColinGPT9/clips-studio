@@ -17,6 +17,11 @@ at the end of this file: it is standard library only (what it asks the rest
 of the app it asks inside a function, in env.py and importer.py), loading it
 loads no heavy library, and the job worker and the clip database never
 import it.
+
+Editor suite step 6 adds the new editor's media code (video_editor/media/:
+serving files, proxies, peaks, thumbnails, the editor cache). Nothing
+core/pipeline.py loads may import it either, and it has the same kind of
+rules, at the very end of this file.
 """
 
 import ast
@@ -28,22 +33,26 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PIPELINE = ROOT / "core" / "pipeline.py"
 FORBIDDEN = "video_editor.project"
+MEDIA = "video_editor.media"
+BOTH = (FORBIDDEN, MEDIA)
 
 
-def _forbidden(name: str) -> bool:
-    return name == FORBIDDEN or name.startswith(FORBIDDEN + ".")
+def _forbidden(name: str, roots=(FORBIDDEN,)) -> bool:
+    return any(name == root or name.startswith(root + ".") for root in roots)
 
 
-def project_imports(source: str) -> list[str]:
-    """Every import of video_editor.project (or below it) in `source`."""
+def project_imports(source: str, roots=(FORBIDDEN,)) -> list[str]:
+    """Every import of video_editor.project (or below it) in `source`; of
+    each package in `roots`, when given."""
+    leaves = {root.rpartition(".")[2] for root in roots}
     found = []
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
-            found += [f"line {node.lineno}: import {a.name}" for a in node.names if _forbidden(a.name)]
+            found += [f"line {node.lineno}: import {a.name}" for a in node.names if _forbidden(a.name, roots)]
         elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
             names = [a.name for a in node.names]
-            if _forbidden(node.module) or (
-                    node.module == "video_editor" and any(n in ("project", "*") for n in names)):
+            if _forbidden(node.module, roots) or (
+                    node.module == "video_editor" and any(n in leaves | {"*"} for n in names)):
                 found.append(f"line {node.lineno}: from {node.module} import {', '.join(names)}")
         elif isinstance(node, ast.Call) and node.args:
             # importlib.import_module("video_editor.project"), __import__("...")
@@ -51,7 +60,7 @@ def project_imports(source: str) -> list[str]:
             called = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
             first = node.args[0]
             if (called in ("import_module", "__import__") and isinstance(first, ast.Constant)
-                    and isinstance(first.value, str) and _forbidden(first.value)):
+                    and isinstance(first.value, str) and _forbidden(first.value, roots)):
                 found.append(f"line {node.lineno}: {called}({first.value!r})")
     return found
 
@@ -98,7 +107,7 @@ def _imported_names(root: Path, path: Path) -> set[str]:
     return names
 
 
-def reachable_modules(root: Path, start: Path) -> dict[Path, list[str]]:
+def reachable_modules(root: Path, start: Path, roots=(FORBIDDEN,)) -> dict[Path, list[str]]:
     """Every repo module `start` loads through imports, with the chain that reaches it.
 
     Importing a.b.c also runs a/__init__.py and a/b/__init__.py, so those are
@@ -110,7 +119,7 @@ def reachable_modules(root: Path, start: Path) -> dict[Path, list[str]]:
     while queue:
         path = queue.popleft()
         for name in sorted(_imported_names(root, path)):
-            if _forbidden(name):
+            if _forbidden(name, roots):
                 continue
             parts = name.split(".")
             for depth in range(1, len(parts) + 1):
@@ -121,11 +130,12 @@ def reachable_modules(root: Path, start: Path) -> dict[Path, list[str]]:
     return chain
 
 
-def reachable_offenders(root: Path, start: Path) -> list[str]:
-    """Each import of the project model in a module `start` loads, with its chain."""
+def reachable_offenders(root: Path, start: Path, roots=(FORBIDDEN,)) -> list[str]:
+    """Each import of the project model (of each package in `roots`) in a
+    module `start` loads, with its chain."""
     offenders = []
-    for path, via in reachable_modules(root, start).items():
-        for line in project_imports(path.read_text(encoding="utf-8")):
+    for path, via in reachable_modules(root, start, roots).items():
+        for line in project_imports(path.read_text(encoding="utf-8"), roots):
             offenders.append(f"{' -> '.join(via)}: {line}")
     return offenders
 
@@ -311,5 +321,105 @@ def test_the_worker_and_the_database_never_import_the_package():
         for folder in ("core", "server", "video", "video_editor", "analysis", "plugins", "publish", "campaigns")
         for path in (ROOT / folder).rglob("*.py")
         if PACKAGE not in path.parents and project_imports(path.read_text(encoding="utf-8")))
-    assert importers == ["server/projects_api.py"]
+    # Since step 6, importing a file for editing copies it in through the
+    # store (inside the function that does it).
+    assert importers == ["server/projects_api.py", "video_editor/media/importing.py"]
 
+
+# ---- the media code (editor suite step 6) --------------------------------------------------------
+
+MEDIA_PACKAGE = ROOT / "video_editor" / "media"
+MEDIA_FILES = ("__init__.py", "cache.py", "fileio.py", "importing.py", "peaks.py", "probe.py", "proxy.py",
+               "resolver.py", "thumbs.py")
+# What the media code asks the rest of the app, each inside the function
+# that needs it.
+MEDIA_ASKS = {
+    "importing.py": {"video_editor.project"},
+    "peaks.py": {"core.binaries", "video.export_presets", "numpy"},
+    "probe.py": {"core.binaries"},
+    "resolver.py": {"core.paths", "video.audio_library"},
+    "thumbs.py": {"core.binaries", "video.export_presets"},
+}
+
+
+def test_the_pipeline_never_imports_the_media_code():
+    found = project_imports(PIPELINE.read_text(encoding="utf-8"), BOTH)
+    assert not found, "core/pipeline.py imports the editor's media code:\n" + "\n".join(found)
+
+
+def test_nothing_the_pipeline_loads_imports_the_media_code():
+    offenders = reachable_offenders(ROOT, PIPELINE, BOTH)
+    assert not offenders, "Plain auto-clipping would load the editor's media code:\n" + "\n".join(offenders)
+
+
+def test_the_pipeline_never_reaches_what_deletes_or_serves_editor_media():
+    names = {_module_name(ROOT, path) for path in reachable_modules(ROOT, PIPELINE, BOTH)}
+    for module in ("core.housekeeping", "server.media_api", "server.editor_lane", "server.api", "core.remake"):
+        assert module not in names, f"core/pipeline.py loads {module}"
+
+
+def test_the_guard_catches_the_media_code_too():
+    for source in ("import video_editor.media", "from video_editor.media import cache",
+                   "from video_editor import media", "def f():\n    from video_editor.media.peaks import compute\n",
+                   "importlib.import_module('video_editor.media.resolver')"):
+        assert project_imports(source, BOTH), source
+        assert not project_imports(source), f"counted as the project model: {source}"
+
+
+def test_the_media_package_is_these_files():
+    assert sorted(p.name for p in MEDIA_PACKAGE.glob("*.py")) == sorted(MEDIA_FILES)
+
+
+def test_the_media_package_is_standard_library_only():
+    def asked(names: set[str]) -> set[str]:
+        return {n for n in _outside(names) | {n for n in names if _forbidden(n)} if not _forbidden(n, (MEDIA,))}
+
+    for name in MEDIA_FILES:
+        top, inner = _imports(MEDIA_PACKAGE / name)
+        assert asked(top) == set(), f"{name} imports {asked(top)} at its top"
+        assert asked(inner) == MEDIA_ASKS.get(name, set()), name
+
+
+def test_loading_the_media_package_loads_nothing_heavy():
+    code = "; ".join((
+        "import sys",
+        f"sys.path.insert(0, {str(ROOT)!r})",
+        "from video_editor.media import cache, fileio, importing, peaks, probe, proxy, resolver, thumbs",
+        "heavy = [m for m in ('numpy', 'cv2', 'torch', 'PIL', 'fastapi', 'pydantic', 'core.pipeline',"
+        " 'server.jobs', 'video_editor.project') if m in sys.modules]",
+        "print('loaded:', heavy)",
+    ))
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "loaded: []", out.stdout
+
+
+def test_only_the_media_routes_and_storage_import_the_media_code():
+    importers = sorted(
+        path.relative_to(ROOT).as_posix()
+        for folder in ("core", "server", "video", "video_editor", "analysis", "plugins", "publish", "campaigns",
+                       "remote_render", "sources", "transcription", "creator", "voice")
+        if (ROOT / folder).is_dir()
+        for path in (ROOT / folder).rglob("*.py")
+        if MEDIA_PACKAGE not in path.parents and project_imports(path.read_text(encoding="utf-8"), (MEDIA,)))
+    assert importers == ["core/housekeeping.py", "server/api.py", "server/media_api.py"]
+    for rel in ("core/housekeeping.py", "server/api.py"):
+        top, _inner = _imports_any(ROOT / rel)
+        assert not {n for n in top if _forbidden(n, (MEDIA,))}, f"{rel} imports the media code at its top"
+
+
+def _imports_any(path: Path) -> tuple[set[str], set[str]]:
+    """(the modules a file imports at its top, the ones it imports inside a
+    function), for a file that may use relative imports."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+
+    def names(node) -> set[str]:
+        if isinstance(node, ast.Import):
+            return {a.name for a in node.names}
+        if isinstance(node, ast.ImportFrom) and node.module:
+            return {node.module} | {f"{node.module}.{a.name}" for a in node.names}
+        return set()
+
+    top = set().union(*(names(n) for n in tree.body)) if tree.body else set()
+    inner = set().union(*(names(n) for n in ast.walk(tree) if n not in tree.body))
+    return top, inner

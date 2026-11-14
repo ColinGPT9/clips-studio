@@ -100,15 +100,24 @@ class StepIn(BaseModel):
     expected_revision: StrictInt
 
 
-def install(app, *, db, data_dir: Path, session_secret: str) -> None:
+def session_guard(session_secret: str, data_dir: Path,
+                  refused: str = "Projects can only be opened from the Clips Kitty app on this PC."):
+    """The check every project route makes, as a FastAPI dependency: the
+    session header, then an Origin of this PC's own (local_origin). The
+    media routes (server/media_api.py) use it for what changes something."""
+
     def guard(request: Request) -> None:
         if not session.matches(session_secret, request.headers.get(session.HEADER)):
             raise HTTPException(403, f"This needs the {session.HEADER} header. The desktop app sends it; a "
                                      f"script finds it in {session.path(data_dir)}.")
         if not local_origin(request.headers.get("origin"), request.headers.get("host")):
-            raise HTTPException(403, "Projects can only be opened from the Clips Kitty app on this PC.")
+            raise HTTPException(403, refused)
 
-    guarded = [Depends(guard)]
+    return guard
+
+
+def install(app, *, db, data_dir: Path, session_secret: str) -> None:
+    guarded = [Depends(session_guard(session_secret, data_dir))]
 
     def sent(payload) -> Response:
         """The answer written once, as JSON. A project's document is plain

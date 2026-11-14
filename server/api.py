@@ -940,6 +940,16 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     projects_api.install(app, db=db, data_dir=data_dir, session_secret=desktop_session)
 
+    # The new editor's media (video_editor/media/, editor suite step 6): the
+    # source files in byte ranges, proxies, waveform peaks and thumbnail
+    # sheets in data/media_cache/, and importing a file for editing. Engine
+    # only, no screen uses them yet. Installed before GET /media/{clip_id}
+    # below, so its own /media/... addresses are matched first.
+    from server import media_api
+
+    media_api.install(app, db=db, data_dir=data_dir, session_secret=desktop_session, lane=editor_lane,
+                      config=config)
+
     # Settings → Voice and speech on request (voice/, editor suite step V1):
     # the built-in voice, or the person's own Voicebox, VoiceStudio or other
     # local voice app. Guarded like the project routes.
@@ -1634,10 +1644,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         old previews. Never removes a clip or a source the library still
         references."""
         from core import housekeeping
+        from video_editor.media import cache as media_cache
 
         d = db()
         try:
-            result = housekeeping.clean(d, data_dir)
+            result = housekeeping.clean(d, data_dir, cache_cap=media_cache.cap_bytes(config))
         finally:
             d.close()
         print(f"  Housekeeping: freed {result['bytes_freed']/1e9:.2f} GB "

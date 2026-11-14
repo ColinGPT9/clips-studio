@@ -79,7 +79,7 @@ from pathlib import Path
 
 from core import cancel, in_use
 from core.paths import cached_source, discard, within
-from core.state import LANGUAGE_EXPORT, UNMARKED_CLIPS, _now, as_made
+from core.state import LANGUAGE_EXPORT, UNMARKED_CLIPS, _now, as_made, pinned_video_ids
 
 # The job options a Make clips again carries over from the video's last run:
 # JobIn's (server/api.py) less the link and force, what belonged to whoever
@@ -1387,7 +1387,9 @@ class Run:
         """The video's own copy, kept under a second name while the run
         worked (_keep_source): back under its own name if the run deleted it
         (the video is still in the library and has no copy), or the second
-        name goes."""
+        name goes. A video one of the new editor's projects uses
+        (pinned_video_ids) gets its copy back too, even when it left the
+        library meanwhile."""
         if self.source_kept is None:
             return
         copy, second = self.source_kept
@@ -1395,6 +1397,8 @@ class Run:
         if not second.is_file():
             return
         known = self._real.conn.execute("SELECT 1 FROM videos WHERE video_id = ?", (self.video_id,)).fetchone()
+        if known is None and self.video_id in pinned_video_ids(self._real.conn):
+            known = True
         if known is not None and cached_source(copy.parent, self.video_id) is None:
             _rename(second, copy)
             print("      Make clips again: this video's own copy was put back, as the run had deleted it")

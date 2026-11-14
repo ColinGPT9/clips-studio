@@ -1247,6 +1247,29 @@ def test_the_download_is_deleted_once_its_clips_are_published(env):
     assert env.item("newnewnew01")["source_freed"] == 1
 
 
+def test_a_download_a_project_uses_is_kept_until_no_project_does(env):
+    """Editor suite step 6: a project pins its sources (core/state.py
+    pinned_video_ids). The video is not marked freed, so once the project
+    no longer names it, it is freed like any other."""
+    from media_helpers import add_project
+
+    env.client.patch("/automation", json={"delete_sources": True})
+    publishing_watch(env)
+    source = download(env)
+    pid = env.run(lambda d: add_project(d.conn, {"m1": ("video", {"type": "video", "video_id": "newnewnew01"})}))
+    finished_with_clips(env)
+    env.later(5)
+    assert source.exists() and env.item("newnewnew01")["source_freed"] == 0
+
+    def forget(d):
+        d.conn.execute("DELETE FROM projects WHERE id = ?", (pid,))
+        d.conn.commit()
+
+    env.run(forget)
+    env.later(5)
+    assert not source.exists() and env.item("newnewnew01")["source_freed"] == 1
+
+
 def test_the_download_is_kept_unless_asked(env):
     publishing_watch(env)
     source = download(env)

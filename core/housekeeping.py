@@ -15,12 +15,25 @@ file on the other until the next start. Source downloads for videos you
 still have are NOT scratch and are reported separately: the editor,
 re-rendering and translated burns all read them, so removing one costs you
 those features until the video is downloaded again.
+
+A video one of the new editor's projects uses (core/state.py
+pinned_video_ids) is never an orphan download, even when it has left the
+library: the project still plays it. A Vertical Live video's own download
+(<video id>__vertical.<ext>) is that video's, for both rules: it used to be
+taken for an orphan and freed even while its video was in the library.
+
+The new editor's cache (data/media_cache/, video_editor/media/cache.py) is
+a group of its own. Its orphan folders (the source is gone and no project
+names it) are reclaimable; clean() removes them and holds the cache to its
+size cap, least recently used first. Nothing else here looks inside it,
+and nothing in it is ever taken for a clip or a download.
 """
 
 import re
 from pathlib import Path
 
 from core import in_use
+from core.state import pinned_video_ids, project_media
 
 # Staging files written next to a clip during rendering. The pipeline
 # deletes them on success; these are the ones a failure left behind.
@@ -33,6 +46,16 @@ _SCRATCH_SUFFIXES = (".source.mp4", ".edited.mp4", ".plain.mp4", ".cropped.mp4")
 # other, until the next start puts it right.
 _ASIDE = re.compile(r"^(?P<first>.+)\.clip-\d+$")
 _KEPT = ".remaking"
+
+
+# sources/vertical.py SUFFIX: a Vertical Live video's own download is
+# <video id>__vertical.<ext>, and it is that video's as much as <video id>.<ext>.
+_VERTICAL = "__vertical"
+
+
+def _video_of(stem: str) -> str:
+    """The video a download's name (without its extension) belongs to."""
+    return stem[: -len(_VERTICAL)] if stem.endswith(_VERTICAL) and len(stem) > len(_VERTICAL) else stem
 
 
 def _size(paths) -> int:
@@ -48,6 +71,7 @@ def _size(paths) -> int:
 def survey(db, data_dir: Path) -> dict:
     """What is on disk, split into what is safe to delete and what is not."""
     known_videos = {r["video_id"] for r in db.conn.execute("SELECT video_id FROM videos")}
+    pinned = pinned_video_ids(db.conn)
     known_clips = {
         str(Path(r["path"]).resolve()).lower()
         for r in db.conn.execute("SELECT path FROM clips WHERE path IS NOT NULL AND path <> ''")
@@ -69,6 +93,7 @@ def survey(db, data_dir: Path) -> dict:
         "render_leftovers": [],
         "orphan_clips": [],
         "previews": [],
+        "editor_cache": [],
     }
 
     downloads = data_dir / "downloads"
@@ -79,7 +104,7 @@ def survey(db, data_dir: Path) -> dict:
             # yt-dlp leftovers from an interrupted download.
             if f.suffix == ".part" or ".part-Frag" in f.name:
                 groups["partial_downloads"].append(f)
-            elif f.stem not in known_videos and not (
+            elif _video_of(f.stem) not in known_videos and _video_of(f.stem) not in pinned and not (
                     f.stem.endswith(_KEPT) and f.stem[: -len(_KEPT)] in known_videos):
                 groups["orphan_downloads"].append(f)
 
@@ -115,6 +140,12 @@ def survey(db, data_dir: Path) -> dict:
     if previews.is_dir():
         groups["previews"] = [f for f in previews.iterdir() if f.is_file()]
 
+    # The editor cache's orphan folders, every file in them.
+    from video_editor.media import cache as media_cache
+
+    for folder in media_cache.orphans(data_dir, project_media(db.conn)):
+        groups["editor_cache"] += [p for p in folder.rglob("*") if p.is_file()]
+
     # Held: in use, though no row points at it yet (core/in_use.py). Nothing
     # is held outside a Make clips again run, and then nothing is left out.
     held = in_use.files_held()
@@ -126,19 +157,25 @@ def survey(db, data_dir: Path) -> dict:
     # Source downloads still in use — reported, never auto-deleted.
     kept = [
         f for f in (downloads.iterdir() if downloads.is_dir() else [])
-        if f.is_file() and f.stem in known_videos
+        if f.is_file() and (_video_of(f.stem) in known_videos or _video_of(f.stem) in pinned)
     ]
     return {
         "reclaimable": reclaimable,
         "reclaimable_bytes": sum(g["bytes"] for g in reclaimable.values()),
         "sources": {"files": len(kept), "bytes": _size(kept)},
+        # The whole editor cache, kept to its cap (its orphans are above).
+        "editor_cache": media_cache.survey(data_dir),
         "_groups": groups,
     }
 
 
-def clean(db, data_dir: Path) -> dict:
-    """Delete everything survey() classed as reclaimable. Returns the totals
-    actually freed — never touches clips or sources the database knows."""
+def clean(db, data_dir: Path, *, cache_cap: int | None = None) -> dict:
+    """Delete everything survey() classed as reclaimable, and hold the
+    editor cache to `cache_cap` bytes (its default cap when None). Returns
+    the totals actually freed — never touches clips or sources the database
+    knows, or a download a project uses."""
+    from video_editor.media import cache as media_cache
+
     found = survey(db, data_dir)
     freed, removed = 0, 0
     for paths in found["_groups"].values():
@@ -150,6 +187,24 @@ def clean(db, data_dir: Path) -> dict:
                 removed += 1
             except OSError:
                 pass  # locked or already gone: skip, never fail the sweep
+
+    # The editor cache: the orphan folders emptied above go (never one a
+    # job or a stream has taken since, cache.hold), then empty folders left
+    # by earlier sweeps (never a job's work folder or one just made:
+    # cache.remove_empty), then the cap.
+    base = media_cache.root(data_dir)
+    orphan_folders = set()
+    for p in found["_groups"]["editor_cache"]:
+        try:
+            orphan_folders.add(base / p.relative_to(base).parts[0])
+        except (ValueError, IndexError):
+            pass  # not under the cache folder: never taken for one of its folders
+    media_cache.remove_folders(sorted(orphan_folders))
+    media_cache.remove_empty(data_dir)
+    capped = media_cache.enforce_cap(
+        data_dir, media_cache.DEFAULT_CAP_BYTES if cache_cap is None else cache_cap)
+    removed += capped["files_removed"]
+    freed += capped["bytes_freed"]
 
     # Clip folders left completely empty once their leftovers are gone.
     clips = data_dir / "clips"

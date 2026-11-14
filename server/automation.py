@@ -1190,15 +1190,24 @@ class ChannelWatcher(threading.Thread):
         """Delete a watched video's download once its clips are published, when
         asked to. Clips, transcripts and the library entry stay; only the
         several-gigabyte source goes, which an always-on PC would otherwise
-        pile up until the disk is full."""
+        pile up until the disk is full.
+
+        A video one of the new editor's projects uses is kept (pinned,
+        core/state.py pinned_video_ids), and not marked: once no project
+        names it, it is freed like any other."""
         if self._downloads is None or d.get_flag(DELETE_SOURCES_KEY, "0") != "1":
             return
         from core.paths import cached_source, discard
 
+        pinned = None
         for item in d.watch_items(states=("queued",)):
             if item["source_freed"] or item["publish_state"] not in ("done", "off"):
                 continue
             if _job_status(d, item) != "done":
+                continue
+            if pinned is None:
+                pinned = d.pinned_video_ids()
+            if item["video_id"] in pinned:
                 continue
             source = cached_source(self._downloads, item["video_id"])
             if source is None:

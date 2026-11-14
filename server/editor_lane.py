@@ -28,6 +28,15 @@ Progress goes out through the app's events (server/events.py) as
 {"type": "export", "export": <the job, as public() shows it>}: when it is
 queued, when it starts, about twice a second while it runs, and when it is
 done, failed or cancelled.
+
+**Tasks** (editor suite step 6): the new editor's media work (a proxy, the
+waveform peaks, the thumbnail sheets, a large import) runs here too, one at a
+time with the exports, in the order asked. A task is a function given a
+TaskContext (run an FFmpeg, report progress, check for a cancel); it writes
+its own files, under temporary names. Its events are {"type": "media_job",
+"job": <public()>}. jobs(), get() and cancel() answer for exports only, so
+GET /export/jobs and Make clips again see what they always did; tasks() and
+find() are the tasks'.
 """
 
 from __future__ import annotations
@@ -76,7 +85,7 @@ def _kill(proc) -> None:
 @dataclass
 class LaneJob:
     id: int
-    kind: str                    # export (previews come in later steps)
+    kind: str                    # export, or a task's kind (proxy, peaks, thumbs, import)
     clip_id: int | None
     source: Path
     folder: Path
@@ -92,9 +101,26 @@ class LaneJob:
     started_at: str | None = None
     finished_at: str | None = None
     cancel_requested: bool = False
+    work: Callable[[TaskContext], dict] | None = None      # a task's function; None for an export
+    key: str = ""                                          # what a task makes, so it is made once
 
     def public(self) -> dict:
         """The job as the API and the events show it."""
+        if self.work is not None:
+            return {
+                "job_id": self.id,
+                "kind": self.kind,
+                "key": self.key,
+                "name": self.name,
+                "status": self.status,
+                "cancelling": self.cancel_requested and self.status == "running",
+                "fraction": round(self.fraction, 4),
+                "result": dict(self.result) if self.result else None,
+                "error": self.error,
+                "created_at": self.created_at,
+                "started_at": self.started_at,
+                "finished_at": self.finished_at,
+            }
         return {
             "export_id": self.id,
             "kind": self.kind,
@@ -196,13 +222,47 @@ class EditorLane(threading.Thread):
         self._emit(job)
         return self.get(job.id)
 
-    def cancel(self, job_id: int, *, wait: float = 5.0) -> dict | None:
+    def submit_task(self, kind: str, key: str, work: Callable[[TaskContext], dict], *, name: str = "",
+                    on_done: Callable[[dict], None] | None = None) -> dict:
+        """Queue a task: `work(ctx)` runs on the lane and returns its result.
+        When a task with the same `key` is waiting or running, that one is
+        returned instead: a thing is made once."""
+        with self._cond:
+            for job in self._jobs.values():
+                if job.work is not None and job.key == key and job.status in ("queued", "running"):
+                    return job.public()
+            job = LaneJob(id=self._next_id, kind=kind, clip_id=None, source=Path(), folder=Path(), name=name,
+                          preset={}, on_done=on_done, work=work, key=key)
+            self._next_id += 1
+            self._jobs[job.id] = job
+            self._queue.append(job.id)
+            self._prune()
+            self._cond.notify_all()
+        self._emit(job)
+        return self.get(job.id, kind=None)
+
+    def tasks(self) -> list[dict]:
+        """Every task the lane remembers, newest first."""
+        with self._cond:
+            return [self._jobs[i].public() for i in sorted(self._jobs, reverse=True) if self._jobs[i].work]
+
+    def find(self, key: str) -> dict | None:
+        """The newest task with this key, or None."""
+        with self._cond:
+            for i in sorted(self._jobs, reverse=True):
+                job = self._jobs[i]
+                if job.work is not None and job.key == key:
+                    return job.public()
+        return None
+
+    def cancel(self, job_id: int, *, wait: float = 5.0, kind: str | None = "export") -> dict | None:
         """Cancel a job: a waiting one is dropped, a running one's FFmpeg is
         killed and its partial file removed. Waits up to `wait` seconds for
-        a running one to be finished with. None for an unknown id."""
+        a running one to be finished with. None for an unknown id (or one
+        that is not an export, unless `kind` is None)."""
         with self._cond:
             job = self._jobs.get(job_id)
-            if job is None:
+            if job is None or not self._is(job, kind):
                 return None
             proc = None
             if job.status == "queued":
@@ -222,17 +282,25 @@ class EditorLane(threading.Thread):
             with self._cond:
                 while job.status == "running" and time.monotonic() < deadline:
                     self._cond.wait(timeout=max(0.01, deadline - time.monotonic()))
-        return self.get(job_id)
+        return self.get(job_id, kind=None)
 
-    def get(self, job_id: int) -> dict | None:
+    @staticmethod
+    def _is(job: LaneJob, kind: str | None) -> bool:
+        if kind is None:
+            return True
+        return (job.work is None) if kind == "export" else (job.work is not None and job.kind == kind)
+
+    def get(self, job_id: int, kind: str | None = "export") -> dict | None:
+        """A job as public() shows it: an export, unless `kind` says
+        otherwise (None for any job)."""
         with self._cond:
             job = self._jobs.get(job_id)
-            return job.public() if job else None
+            return job.public() if job and self._is(job, kind) else None
 
     def jobs(self) -> list[dict]:
-        """Every job the lane remembers, newest first."""
+        """Every export the lane remembers, newest first."""
         with self._cond:
-            return [self._jobs[i].public() for i in sorted(self._jobs, reverse=True)]
+            return [self._jobs[i].public() for i in sorted(self._jobs, reverse=True) if self._jobs[i].work is None]
 
     def _take(self, *, block: bool) -> LaneJob | None:
         with self._cond:
@@ -256,6 +324,9 @@ class EditorLane(threading.Thread):
     # ---- running a job -----------------------------------------------------
 
     def _run(self, job: LaneJob) -> None:
+        if job.work is not None:
+            self._run_task(job)
+            return
         self._emit(job)
         partial = job.folder / f"{job.name}.exporting-{uuid.uuid4().hex[:8]}.mp4"
         work = self.work_root / f"job-{job.id}"
@@ -295,6 +366,46 @@ class EditorLane(threading.Thread):
             self._prune()
             self._cond.notify_all()
         self._emit(job)
+
+    def _run_task(self, job: LaneJob) -> None:
+        self._emit(job)
+        status, result, error = "failed", None, None
+        try:
+            self._check_cancel(job)
+            result = job.work(TaskContext(self, job))
+            status = "done"
+        except export_presets.Cancelled:
+            status = "cancelled"
+        except Exception as e:
+            if job.cancel_requested:
+                status = "cancelled"
+            else:
+                error = str(e).strip()[:500] or type(e).__name__
+                print(f"Editor {job.kind} {job.id} failed: {error}")
+        finally:
+            with self._cond:
+                self._proc = None
+        with self._cond:
+            job.status, job.result, job.error, job.finished_at = status, result, error, _now()
+            if status == "done":
+                job.fraction = 1.0
+            self._current = None
+            self._prune()
+            self._cond.notify_all()
+        if job.on_done is not None:
+            try:
+                job.on_done(job.public())
+            except Exception as e:
+                print(f"Editor {job.kind} {job.id}: after-task step failed: {e}")
+        self._emit(job)
+
+    def _task_process(self, job: LaneJob, proc) -> None:
+        """A task's own process (not through run_ffmpeg): cancel() kills it."""
+        with self._cond:
+            self._proc = proc
+            late = job.cancel_requested
+        if late:
+            _kill(proc)
 
     def _check_cancel(self, job: LaneJob) -> None:
         if job.cancel_requested:
@@ -336,7 +447,10 @@ class EditorLane(threading.Thread):
 
     def _emit(self, job: LaneJob) -> None:
         with self._cond:
-            event = {"type": "export", "export": job.public()}
+            if job.work is not None:
+                event = {"type": "media_job", "job": job.public()}
+            else:
+                event = {"type": "export", "export": job.public()}
         try:
             self._publish(event)
         except Exception:
@@ -397,3 +511,27 @@ class EditorLane(threading.Thread):
         if removed:
             print(f"Editor lane: removed {removed} unfinished export(s) left by the last run")
         return removed
+
+
+class TaskContext:
+    """What a task is given: `run(argv, duration=...)` runs one FFmpeg at
+    below-normal priority (its -progress output as progress, killed by a
+    cancel), `started(proc)` makes a process the task started itself
+    cancellable the same way, `progress(fraction)` reports, `check()` raises
+    export_presets.Cancelled once a cancel was asked for."""
+
+    def __init__(self, lane: EditorLane, job: LaneJob):
+        self._lane, self.job = lane, job
+        self._run = lane._runner(job)
+
+    def run(self, argv: list[str], *, duration: float = 0.0) -> tuple[int, str]:
+        return self._run(argv, duration=duration, on_progress=self.progress)
+
+    def started(self, proc) -> None:
+        self._lane._task_process(self.job, proc)
+
+    def progress(self, fraction: float) -> None:
+        self._lane._progress(self.job, fraction, {})
+
+    def check(self) -> None:
+        self._lane._check_cancel(self.job)

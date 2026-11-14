@@ -135,6 +135,8 @@ jobs:
           tests/test_creator_description.py tests/test_audio_library_routes.py
           tests/test_library_music_render_ffmpeg.py tests/test_remote_render.py
           tests/test_project_routes.py tests/test_voice_routes.py
+          tests/test_media_routes.py tests/test_media_peaks.py tests/test_media_thumbs_proxy.py
+          tests/test_media_cache.py tests/test_media_probe.py
 
   sdk-windows:
     name: SDK (Windows)

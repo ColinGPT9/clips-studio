@@ -39,7 +39,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import sqlite3
 import time
 import uuid
@@ -487,35 +486,47 @@ def asset_path(data_dir, sha256: str, ext: str = "") -> Path:
     return assets_dir(data_dir) / sha256[:2] / f"{sha256}{ext if _EXT.fullmatch(ext or '') else ''}"
 
 
-def add_asset(conn, data_dir, source, *, kind: str, name: str = "", facts: dict | None = None, now=None) -> dict:
+def add_asset(conn, data_dir, source, *, kind: str, name: str = "", facts: dict | None = None, now=None,
+              progress=None) -> dict:
     """Copy a file into the project media (data/media/assets/) and record
     it. `facts` is what is known about it ({"duration_us", "width", "height",
     "fps": {"num", "den"}, "has_audio"}). Returns its row; the file it
-    already holds, when this one was imported before."""
+    already holds, when this one was imported before.
+
+    The file is read once, in blocks: hashed as it is copied to a temporary
+    name, which becomes the asset's file (or goes, when the same file is
+    already there). `progress(done, total)` is called after each block
+    (bytes); whatever it raises stops the copy, and nothing is kept."""
     if kind not in MEDIA_KINDS:
         raise StoreError(f"A media file is one of {', '.join(MEDIA_KINDS)}.")
     source = Path(source)
-    digest, size = hashlib.sha256(), 0
-    with open(source, "rb") as f:
-        for block in iter(lambda: f.read(1 << 20), b""):
-            digest.update(block)
-            size += len(block)
-    sha256 = digest.hexdigest()
-    found = asset(conn, sha256)
-    ext = source.suffix.lower() if _EXT.fullmatch(source.suffix.lower()) else ""
-    target = asset_path(data_dir, sha256, found["ext"] if found else ext)
-    if not target.is_file():
-        target.parent.mkdir(parents=True, exist_ok=True)
-        tmp = target.with_name(f"{target.name}.{uuid.uuid4().hex[:8]}.part")
-        try:
-            shutil.copyfile(source, tmp)
+    folder = assets_dir(data_dir)
+    folder.mkdir(parents=True, exist_ok=True)
+    tmp = folder / f".incoming-{uuid.uuid4().hex[:12]}.part"
+    try:
+        digest, size = hashlib.sha256(), 0
+        with open(source, "rb") as f:
+            total = os.fstat(f.fileno()).st_size
+            with open(tmp, "wb") as out:
+                for block in iter(lambda: f.read(1 << 20), b""):
+                    digest.update(block)
+                    out.write(block)
+                    size += len(block)
+                    if progress is not None:
+                        progress(size, total)
+        sha256 = digest.hexdigest()
+        found = asset(conn, sha256)
+        ext = source.suffix.lower() if _EXT.fullmatch(source.suffix.lower()) else ""
+        target = asset_path(data_dir, sha256, found["ext"] if found else ext)
+        if not target.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
             os.replace(tmp, target)
-        finally:
-            # Never let the tidying replace the error being raised (#74).
-            try:
-                tmp.unlink(missing_ok=True)
-            except OSError:
-                pass
+    finally:
+        # Never let the tidying replace the error being raised (#74).
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
     if found is not None:
         return found
     facts = facts or {}
