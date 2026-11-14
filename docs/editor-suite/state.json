@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "Clips Kitty editor suite",
-  "updated": "2026-11-13",
+  "updated": "2026-11-14",
   "about": "Machine-readable tracker for the editor suite. STATUS.md is the readable view of this file; when they disagree, this file wins. Acceptance criteria are copied from the plan's Proof column; step 0 also carries the checks from the plan's section on keeping plain auto-clipping identical. depends_on is read from the plan's text (which earlier step's output a step uses): the plan gives the run order, not a dependency list.",
   "now": "1",
   "stop_after_phase": 2,
@@ -1955,7 +1955,7 @@
         "1",
         "5"
       ],
-      "status": "todo",
+      "status": "done",
       "user_visible": false,
       "acceptance": [
         "206 Range with correct bytes",
@@ -1964,17 +1964,206 @@
         "Peaks ≤90 s and thumbnails ≤3 min for 2 h on CPU"
       ],
       "files": [
-        "server/api.py",
-        "server/editor_lane.py",
-        "core/housekeeping.py",
-        "server/automation.py:1181"
+        "video_editor/media/__init__.py, resolver.py, fileio.py, probe.py, proxy.py, peaks.py, thumbs.py, cache.py, importing.py (new; standard library only, numpy optional in peaks.py)",
+        "server/media_api.py (new; 12 routes, installed by server/api.py before GET /media/{clip_id}), server/api.py (installs it; passes the cache cap to Storage's clean-up)",
+        "server/editor_lane.py (tasks beside exports: submit_task, tasks, find, TaskContext; jobs/get/cancel answer for exports only)",
+        "server/projects_api.py (the guard is now session_guard(), reused by the media routes; project routes unchanged)",
+        "core/state.py (project_media, pinned_video_ids: plain SQL over projects.doc, Python reading as a fallback)",
+        "core/housekeeping.py (pinned downloads kept; editor_cache group; clean() removes orphan cache folders and applies the cap)",
+        "server/automation.py (_free_disk skips a pinned video), core/remake.py (_restore_source keeps a pinned video's copy)",
+        "video_editor/project/store.py (add_asset hashes and copies in one pass, with progress)",
+        "tests/media_helpers.py, test_media_fileio.py, test_media_resolver.py, test_media_probe.py, test_media_peaks.py, test_media_thumbs_proxy.py, test_media_cache.py, test_media_pinning.py, test_media_routes.py, test_editor_lane_tasks.py (new); tests/test_automation.py (one test), tests/test_editor_import_guard.py (the media code's rules)",
+        "docs/editor-suite/api/step6-media.md (new), DECISIONS.md (ED24, ED25, ED26), STATUS.md, docs/developers/api-reference.md (regenerated)",
+        ".github/workflows/ci.yml (tests/test_media_routes.py, test_media_peaks.py, test_media_thumbs_proxy.py, test_media_cache.py and test_media_probe.py in the Plugin platform job)",
+        "CHANGELOG.md (one Fixed line: Free up no longer deletes Vertical Live downloads, 6-D9)"
       ],
       "notes": [
         "#144: foundation",
-        "Proxies are made only when needed (DECISIONS.md ED7)"
+        "Proxies are made only when needed (DECISIONS.md ED7)",
+        "Media ids are kind:value (video, clip, asset, library, project:<project>:<media>); a route never takes a path except POST /media/import",
+        "Read routes take the session header or a per-media token in the address (ED24); changing routes the header and the step 5 Origin check",
+        "A project's file source outside the data folder is not served; import refuses \\\\server\\share paths (ED25)",
+        "Pinning: every app clean-up path that deletes a source video now keeps a video a project names; core/pipeline.py's replacement of an unreadable or AV1 copy is unchanged on purpose (plain runs identical)",
+        "Windows: a streaming file can be renamed and deleted, and a new file written under its name; os.replace onto the streaming name is still refused by MoveFileExW (documented, tested)",
+        "Engine only. The one change a person can see is the 6-D9 fix (Free up keeps Vertical Live downloads), with one changelog line. The editor_cache Storage label, user guide and changelog lines wait for step 8 (6-D2), since no screen makes a cache before then. The contract is docs/editor-suite/api/step6-media.md",
+        "Built 2026-11-14 by Engineering; QC and the review ran the same day (2 serious, both fixed in fix round 1, 6-D1 to 6-D17); the re-check is next",
+        "2026-11-14: re-check after fix round 1 passed (QC and review, no serious defect); performance passed (plain clipping within -0.9% to +2.0%, identical output). The small findings are listed in step6-media.md \"Left for steps 7 and 8\", to be fixed early in step 8."
       ],
-      "results": [],
-      "defects": []
+      "results": [
+        {
+          "date": "2026-11-14",
+          "agent": "Engineering",
+          "check": "206 Range with correct bytes",
+          "outcome": "pass",
+          "evidence": "tests/test_media_routes.py: a-b, a-, -n, an end past the end, 0-0 against 1 MiB of known bytes; 416 with bytes */size; several ranges, another unit and b<a give the whole file; HEAD; If-None-Match 304; If-Range current and stale. tests/test_media_fileio.py: the parser on every form"
+        },
+        {
+          "date": "2026-11-14",
+          "agent": "Engineering",
+          "check": "The cache survives clean-up",
+          "outcome": "pass",
+          "evidence": "tests/test_media_cache.py and test_media_routes.py: Storage's survey and Free up leave a live cache folder whole and remove only orphan folders (source gone, no project names it); no other group ever lists a media_cache file; the cap removes the least recently used product first and never one in use"
+        },
+        {
+          "date": "2026-11-14",
+          "agent": "Engineering",
+          "check": "On Windows a file can be replaced while it streams",
+          "outcome": "partial",
+          "evidence": "tests/test_media_fileio.py and test_media_routes.py (Windows only, run on Colin's PC): while a response is half sent, the source is renamed, deleted and a new file written under its name, and the response still sends the old bytes whole. os.replace of another file onto the streaming name is refused by Windows 10 (MoveFileExW); moving the old file aside first works (tested)"
+        },
+        {
+          "date": "2026-11-14",
+          "agent": "Engineering",
+          "check": "Peaks <=90 s and thumbnails <=3 min for 2 h on CPU",
+          "outcome": "pass",
+          "evidence": "Generated 2 h source (1280x720 30 fps H.264 250 kbps, 2 s GOP, AAC 96 kbps, 320 MB), 12-thread PC: peaks 2.9 s with numpy, 6.7 s standard library (same bytes); thumbnails 7.3 s (480 tiles, 5 sheets, keyframes only). 1.83 MB of peaks at 64 a second. A 64 KiB Range through the route 4.5-4.7 ms at any offset (TestClient, median of 5)"
+        },
+        {
+          "date": "2026-11-14",
+          "agent": "Engineering",
+          "check": "Plain auto-clipping unchanged",
+          "outcome": "pass",
+          "evidence": "tests/test_render_argv_snapshots.py passes without --update-snapshots (51 cases, own call); scripts/golden_renders.py --check: 4 of 4 identical; tests/test_editor_import_guard.py: core/pipeline.py reaches neither video_editor.project nor video_editor.media"
+        }
+      ],
+      "defects": [
+        {
+          "id": "6-D1",
+          "date": "2026-11-14",
+          "found_by": "QC",
+          "summary": "A project's {\"type\": \"file\"} source was served from anywhere in the data folder, state.db and saved sign-ins included (only session holders could reach it). Fixed: only a file whose name and resolved file end in a sound or video extension is served (resolver.FILE_SOURCE_EXTS, ED26); tests/test_media_resolver.py and test_media_routes.py.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "6-D2",
+          "date": "2026-11-14",
+          "found_by": "QC",
+          "summary": "Settings -> Storage would show the editor_cache group under its raw key once orphan cache folders exist. Not changed now: no screen makes a cache before step 8, so it can't show yet. Step 8 adds the label with the 'Clear editor cache' button, and one user guide and one changelog line.",
+          "routed_to": "Engineering",
+          "status": "open"
+        },
+        {
+          "id": "6-D3",
+          "date": "2026-11-14",
+          "found_by": "QC",
+          "summary": "Only tests/test_media_routes.py ran in CI's Plugin platform job, so the numpy and FFmpeg media tests skipped everywhere. Fixed: test_media_peaks, test_media_thumbs_proxy, test_media_cache and test_media_probe added to that job (not yet run on Linux).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "6-D4",
+          "date": "2026-11-14",
+          "found_by": "QC",
+          "summary": "GET/HEAD api_route gave duplicate OpenAPI operation ids (media_source, media_proxy, media_thumb_sheet). Fixed: HEAD is its own route with include_in_schema=False; test_the_openapi_schema_has_no_duplicate_operation_ids.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "6-D5",
+          "date": "2026-11-14",
+          "found_by": "QC",
+          "summary": "A file that got shorter mid-stream ended the body below its announced Content-Length. Fixed: FileStream raises SourceShrank, so the server drops the connection and the client asks again; test_a_file_that_gets_shorter_while_it_streams_drops_the_connection.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "6-D6",
+          "date": "2026-11-14",
+          "found_by": "QC",
+          "summary": "Every Range request listed the downloads folder to resolve a video, a cost that grows with the library. Fixed differently from the suggestion: the resolver tries the download's few possible names (constant time) and lists the folder only when none is there; no cache of resolved paths, so a project's media change is seen at once.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "6-D7",
+          "date": "2026-11-14",
+          "found_by": "QC",
+          "summary": "housekeeping.clean() removed empty cache folders without checking holds, racing a folder being made. Fixed with 6-D10: cache.remove_empty, and folder_for holds a new folder until its source.json is written.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "6-D8",
+          "date": "2026-11-14",
+          "found_by": "QC",
+          "summary": "Waveform and thumbnail tasks share one first-come queue with exports, and GET peaks/thumbs start work. Documented choices (step6-media.md, Choices 7 and 12); for step 8 to revisit if a long export holds the editor back.",
+          "routed_to": "Engineering",
+          "status": "open"
+        },
+        {
+          "id": "6-D9",
+          "date": "2026-11-14",
+          "found_by": "Review",
+          "summary": "Serious. video:<id> did not find a Vertical Live download (<id>__vertical.<ext>), and Storage took it for an orphan download, so Free up deleted it even when a project named it (and, an older fault, even while its video was in the library). Fixed: the resolver falls back to <id>__vertical; housekeeping counts <id>__vertical as the video <id> for the library and the pin (ED26, changelog line). test_a_vertical_live_download, test_a_vertical_live_download_is_its_videos, test_a_vertical_live_source_is_served; the review's a3_pinning.py passes.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "6-D10",
+          "date": "2026-11-14",
+          "found_by": "Review",
+          "summary": "Serious. Free up removed a running thumbnails job's empty work folder (thumbs.part-xxxx) in a held cache folder, so the job failed and answered 500 until retry=true. Fixed: the empty-folder sweep moved to cache.remove_empty, which skips held folders, temporary names and folders changed in the last minute; clean() removes the surveyed orphan folders through remove_folders (holds checked). test_free_up_never_takes_a_running_jobs_empty_work_folder, test_empty_folders_go_only_when_free_and_not_new; the review's a8_clean_tmpdir.py and a8b_clean_during_thumbs.py pass.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "6-D11",
+          "date": "2026-11-14",
+          "found_by": "Review",
+          "summary": "Parallel first requests for a new media failed on Windows (404 or 500) when os.replace onto source.json/info.json met another request's open handle (WinError 5). Fixed: write_json(once=True) takes the file already there as written, and other writes retry the rename five times. test_a_shared_file_another_request_holds_is_taken_as_written; the review's a6 race now gives only 200 and 202 (60 requests), a5's 8 parallel asks all 202.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "6-D12",
+          "date": "2026-11-14",
+          "found_by": "Review",
+          "summary": "parse_range took Latin-1 superscript digits (str.isdigit), so 'bytes=²-' answered 500. Fixed: ASCII digits only; test_a_range_with_digits_that_are_not_ascii_is_ignored sends the raw bytes; the review's a1b_parse.py and a2_windows_stream.py ranges pass.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "6-D13",
+          "date": "2026-11-14",
+          "found_by": "Review",
+          "summary": "On Windows os.replace onto a streaming name is refused, and an in-place overwrite while streaming is served under the old ETag (FILE_SHARE_WRITE). Not changed: documented in step6-media.md; no app path replaces or overwrites a source in place, and dropping FILE_SHARE_WRITE would block such a writer instead.",
+          "routed_to": "Engineering",
+          "status": "wont_fix"
+        },
+        {
+          "id": "6-D14",
+          "date": "2026-11-14",
+          "found_by": "Review",
+          "summary": "An .m3u8 playlist was imported as an asset and made FFmpeg read the files it named, outside the data folders. Fixed: probe.describe refuses list formats (hls, concat, dash, sdp, rtp, rtsp, tee, ffmetadata) for every media route, and FFprobe and this step's FFmpeg run with -protocol_whitelist file (ED26). test_a_list_of_other_files_is_not_media, test_a_playlist_is_refused_by_the_real_ffprobe, test_a_playlist_is_not_imported; the review's a7b_playlist.py gives 400.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "6-D15",
+          "date": "2026-11-14",
+          "found_by": "Review",
+          "summary": "A different file with the same size, mtime_ns and first and last MiB gets the old cache folder. Accepted and documented: it needs a modification time set back on purpose, and hashing the middle costs a read of the whole file per new source.",
+          "routed_to": "Engineering",
+          "status": "wont_fix"
+        },
+        {
+          "id": "6-D16",
+          "date": "2026-11-14",
+          "found_by": "Review",
+          "summary": "Same as 6-D2 (the Storage card has no label for editor_cache), found by reading Settings.tsx. Also: clean() applies the cap even when the card's button is disabled; the button only calls clean() when pressed, so nothing runs unasked. For step 8.",
+          "routed_to": "Engineering",
+          "status": "open"
+        },
+        {
+          "id": "6-D17",
+          "date": "2026-11-14",
+          "found_by": "Review",
+          "summary": "Same as 6-D4 (duplicate OpenAPI operation ids for the GET/HEAD routes). Fixed with 6-D4.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        }
+      ]
     },
     {
       "id": "7",

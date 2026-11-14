@@ -4,7 +4,7 @@
 
 API version **1** (`GET /health` → `api_version`). The engine listens on `http://127.0.0.1:8765`. How to call it, with examples and the gotchas, is in [`docs/API.md`](../API.md); what the labels promise is in [API](api.md).
 
-286 routes: **60 stable**, **47 experimental**, 179 internal.
+298 routes: **60 stable**, **47 experimental**, 191 internal.
 
 | Label | Promise |
 |---|---|
@@ -229,7 +229,7 @@ Everything else. Grouped by the first part of the path; the module is where it i
 | `/feedback` | `GET /feedback/diagnostics`<br>`POST /feedback/submit` | `server.api` |
 | `/fonts` | `GET /fonts`<br>`GET /fonts/{file}` | `server.fonts_api` |
 | `/jobs` | `POST /jobs/{job_id}/move` | `server.api` |
-| `/media` | `GET /media/preview/{clip_id}` | `server.api` |
+| `/media` | `POST /media/cache/clear`<br>`GET /media/cache/size`<br>`POST /media/import`<br>`GET /media/import/{job_id}`<br>`GET /media/preview/{clip_id}`<br>`GET /media/source/{media_id}`<br>`GET /media/{media_id}/info`<br>`GET /media/{media_id}/peaks`<br>`GET /media/{media_id}/proxy`<br>`POST /media/{media_id}/proxy`<br>`POST /media/{media_id}/proxy/cancel`<br>`GET /media/{media_id}/thumbs`<br>`GET /media/{media_id}/thumbs/{sheet}` | `server.api`, `server.media_api` |
 | `/models` | `GET /models/pulls`<br>`DELETE /models/{tag:path}` | `server.api` |
 | `/projects` | `POST /projects`<br>`DELETE /projects/{project_id}`<br>`GET /projects/{project_id}`<br>`POST /projects/{project_id}/ops`<br>`POST /projects/{project_id}/redo`<br>`GET /projects/{project_id}/revisions`<br>`POST /projects/{project_id}/undo` | `server.projects_api` |
 | `/publish` | `POST /publish/{job_id}/cancel` | `server.youtube_api` |

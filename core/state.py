@@ -669,6 +669,78 @@ PROJECT_TABLES = (
 )
 
 
+# What the new editor's projects name (editor suite step 6). A project's
+# media are in its document (projects.doc, written by
+# video_editor/project/model.py as plain JSON): media.<id>.source is
+# {"type": "video", "video_id"}, {"type": "asset", "sha256"},
+# {"type": "library", "id"} or {"type": "file", "path"}. Read here with plain
+# SQL (SQLite's JSON functions) so that nothing that deletes files has to
+# load the project package; core/pipeline.py never calls this.
+_PROJECT_MEDIA_SQL = (
+    "SELECT json_extract(m.value, '$.source.type') AS type, "
+    "json_extract(m.value, '$.source.video_id') AS video_id, "
+    "json_extract(m.value, '$.source.sha256') AS sha256, "
+    "json_extract(m.value, '$.source.id') AS library, "
+    "json_extract(m.value, '$.source.path') AS path "
+    "FROM projects AS p, json_each(p.doc, '$.media') AS m"
+)
+
+
+def _media_of_document(text) -> list[dict]:
+    """The media sources of one saved document, read in Python: for an
+    SQLite without its JSON functions, or a database with a damaged
+    document (which makes the whole SQL read fail). A document that can't
+    be read names nothing here; its project's video_id still pins."""
+    try:
+        doc = json.loads(text)
+    except (TypeError, ValueError):
+        return []
+    media = doc.get("media") if isinstance(doc, dict) else None
+    out = []
+    for entry in (media.values() if isinstance(media, dict) else []):
+        source = entry.get("source") if isinstance(entry, dict) else None
+        if isinstance(source, dict):
+            out.append({"type": source.get("type"), "video_id": source.get("video_id"),
+                        "sha256": source.get("sha256"), "library": source.get("id"), "path": source.get("path")})
+    return out
+
+
+def project_media(conn) -> dict[str, set[str]]:
+    """Everything the projects name: {"video": video ids, "asset": sha256s,
+    "library": library ids, "file": paths}. A project made from a clip names
+    its clip's video too (projects.video_id). Empty when there are no
+    projects, or no projects table."""
+    found: dict[str, set[str]] = {"video": set(), "asset": set(), "library": set(), "file": set()}
+    try:
+        rows = [dict(r) for r in conn.execute(_PROJECT_MEDIA_SQL).fetchall()]
+    except sqlite3.OperationalError:
+        try:
+            rows = [m for (text,) in conn.execute("SELECT doc FROM projects").fetchall()
+                    for m in _media_of_document(text)]
+        except sqlite3.OperationalError:
+            return found        # no projects table: an older database opened read-only
+    keys = {"video": "video_id", "asset": "sha256", "library": "library", "file": "path"}
+    for row in rows:
+        key = keys.get(row.get("type"))
+        value = row.get(key) if key else None
+        if isinstance(value, str) and value:
+            found[row["type"]].add(value)
+    try:
+        found["video"].update(v for (v,) in conn.execute(
+            "SELECT DISTINCT video_id FROM projects WHERE video_id <> ''").fetchall() if v)
+    except sqlite3.OperationalError:
+        pass
+    return found
+
+
+def pinned_video_ids(conn) -> set[str]:
+    """The videos a project names: the app's own clean-up never deletes
+    their downloads (the delete after publishing, Storage's clean-up, Make
+    clips again). A person deleting one by hand still can; the project is
+    kept and its media is missing (editor suite step 5)."""
+    return project_media(conn)["video"]
+
+
 class StateDB:
     def __init__(self, db_path: Path):
         db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1085,6 +1157,13 @@ class StateDB:
         self.conn.execute("DELETE FROM rejections WHERE video_id = ?", (video_id,))
         self.conn.execute("DELETE FROM videos WHERE video_id = ?", (video_id,))
         self.conn.commit()
+
+    def pinned_video_ids(self) -> set[str]:
+        """The videos the new editor's projects name (pinned_video_ids)."""
+        return pinned_video_ids(self.conn)
+
+    def video_pinned(self, video_id: str) -> bool:
+        return str(video_id or "") in pinned_video_ids(self.conn)
 
     def delete_clip(self, clip_id: int) -> str | None:
         """Remove ONE clip and its dependent rows. Returns the clip's file

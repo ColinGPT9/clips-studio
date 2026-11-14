@@ -168,6 +168,9 @@ Kitty after you change it.
 
 ### Fixed
 
+- **Free up no longer deletes Vertical Live downloads.** Settings → Storage counted a
+  video's Vertical Live download as a download with no video, so Free up deleted it even
+  while the video was still in your library. It now counts as that video's download.
 - **Captions clear in the quiet parts of a clip** (#228). A caption used to stay on
   screen through a pause when the words either side of it were in the same caption. Now
   a pause of more than 0.8 seconds ends the caption and the next word starts a new one,

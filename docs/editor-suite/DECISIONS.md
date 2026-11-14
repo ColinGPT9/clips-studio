@@ -427,3 +427,66 @@ The Kokoro voice that Voicebox uses by default was already in the repo as an opt
 **Rejected:** Shipping Voicebox (ED12; the costs above); shipping VoiceStudio (ED12's reasons stand); starting the person's Voicebox for them (its lifetime is theirs); calling the voice apps from the app's window (both refuse a browser's origin, so the engine calls them, with no Origin header); adding the Japanese and Chinese dictionaries now (248 MiB and 30 MiB in Voicebox's bundle).
 
 **Undo:** The layer is its own package, and dubbing's Piper path is untouched behind it. Removing `voice/`, `server/voice_api.py`, the Kokoro entries in `clips-studio.spec` and `requirements.txt`, and the Settings → Voice card puts dubbing back on Piper alone.
+
+## ED24 · The editor's media addresses carry a token, so <video> and <img> can use them
+
+**Date:** 2026-11-14 · **Steps:** 6, 8 · taken while building step 6
+
+**Context:** The plan asks for the session header and an Origin check on every media route that changes something. The routes that read (the source, the proxy, the thumbnail sheets) are loaded by `<video>` and `<img>` elements, which can't send a header. Such an element on any web page sends no Origin either, so the Origin rule alone would let any page play, show and measure a person's videos through the engine.
+
+**Decision:**
+- A read route takes the session header (a `fetch()` from the app) or the media's own token in the address: `?t=` with an HMAC-SHA256 of the media id under the session secret, 128 bits.
+- `GET /media/{id}/info` gives the addresses with their tokens.
+- Every read route also refuses an Origin that is not this PC's own.
+- Changing routes take only the header, with the same Origin check as the project routes, through the same helper.
+
+**Why:**
+- A page on another origin can't make a token: the secret is new at every start and never leaves this PC. Without a token it gets 403, whatever element it uses.
+- A token names one media, so a leaked address opens that one file until the app restarts.
+
+**Rejected:**
+- The Origin rule alone, which lets any page play the files.
+- Putting the session secret itself in addresses, where one leak opens everything.
+- A cookie, which the packaged window (a page loaded from a file) can't set for 127.0.0.1.
+- Short-lived tokens, which would break a long editing session's `<video>` mid-play.
+
+**Undo:** `read_guard` in `server/media_api.py` is the whole rule; the token is only checked there.
+
+## ED25 · Only the app's own folders are served, and import takes only a file on this PC
+
+**Date:** 2026-11-14 · **Steps:** 6, 7, 8 · taken while building step 6
+
+**Context:** Step 5 kept an imported clip's own music file in its project as `{"type": "file", "path"}`, a path anywhere on the PC. Step 6 says nothing outside the app's data folders may be reached whatever an id says. Import for editing is the one route that takes a path, and the app's other picked-file routes refuse network paths (`core/paths.py` `picked_file`). Asking Windows to open `\\server\share` can send the person's sign-in to that server.
+
+**Decision:**
+- The resolver serves a file only when, every link resolved, it is inside the data folder (the library folder for a free sound).
+- A project's `file` source elsewhere answers 404 with a plain sentence. Step 8 offers to import it for editing, which copies it in by sha256.
+- Import refuses `\\server\share` and device paths, as the other routes do. A network drive with a letter is accepted when it answers within 5 seconds, and refused in words when it doesn't. The file is only ever opened for reading.
+
+**Why:** One rule for every id, which a test can check by trying to leave. The import route keeps the app's existing stance on network paths.
+
+**Trade-offs accepted:** A clip made with music from elsewhere on the PC plays that music in the new editor only after it is imported. A file on a network share must be copied to the PC, or reached through a drive letter.
+
+**Undo:** `_checked` and the `file` branch in `video_editor/media/resolver.py`; `check_path` in `video_editor/media/importing.py`.
+
+## ED26 · Vertical Live downloads belong to their video, and a playlist is not media
+
+**Date:** 2026-11-14 · **Steps:** 6, 7, 8 · taken in step 6's first fix round (6-D1, 6-D9, 6-D14)
+
+**Context:** The review found three gaps in what the resolver and Storage take a file to be:
+- A Vertical Live download is `<id>__vertical.<ext>` (`sources/vertical.py`). The resolver didn't find it, and Storage's survey took it for a download with no video, so Free up deleted it even while its video was in the library, and even when a project used it.
+- A project's `{"type": "file"}` source could name any file in the data folder, the database included.
+- A playlist (`.m3u8`) passed FFprobe, was stored as an asset of a few bytes, and made FFmpeg read whatever it named.
+
+**Decision:**
+- `video:<id>` is the plain download when there is one, else the Vertical Live one. Storage counts `<id>__vertical.<ext>` as the video `<id>`'s download, both for "in the library" and for the pin.
+- A `file` source is served only when its name, and the file it leads to, end in a sound or video extension.
+- FFprobe formats that are only a list of other files (`hls`, `concat`, `dash`, `sdp`, `rtp`, `rtsp`, `tee`, `ffmetadata`) are refused by `probe.describe`, so by every route that reads media, and FFprobe and this step's FFmpeg read local files only (`-protocol_whitelist file`).
+
+**Why:** The resolver finds a video's file the way the pipeline and Make clips again do. The other two keep "only media in the app's own folders" true for what a client can write.
+
+**Trade-offs accepted:**
+- Fixing the Vertical Live survey changes what Free up does for everyone, not only for projects: such downloads now count as kept sources. That is an older fault, and the change only ever keeps a file (CHANGELOG, Fixed).
+- A project can't yet say it means the Vertical Live copy of a video that has both.
+
+**Undo:** `_download`/`VERTICAL` in `video_editor/media/resolver.py`, `_video_of` in `core/housekeeping.py`, `FILE_SOURCE_EXTS` in the resolver, `INDIRECT_FORMATS`/`LOCAL_ONLY` in `video_editor/media/probe.py`.
