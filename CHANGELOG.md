@@ -3,8 +3,8 @@
 What changed, written for people who use Clips Studio rather than people who
 read the commits. Dates are release dates.
 
-This project is in **alpha**: versions move fast, and things listed as fixed
-were often broken in a way that only showed up on somebody else's machine.
+Clips Kitty is a stable release, and new versions come often. Things listed as
+fixed were often broken in a way that only showed up on somebody else's machine.
 
 ---
 

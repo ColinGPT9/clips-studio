@@ -5,10 +5,10 @@ is in a release you can install today, not a plan.
 
 ---
 
-## Now: Alpha
+## Now: stable releases
 
-The alpha is public. Its purpose is not to be perfect. It is to find out what
-breaks on machines that are not the developer's.
+Clips Kitty is a stable release. Below is what has shipped and what is still
+outstanding.
 
 **Shipped**
 
@@ -50,7 +50,7 @@ AI improvements and performance work. Start with
 
 ## Later
 
-None of this delays the alpha.
+None of this holds up a release.
 
 - **More sports**: Soccer and Basketball are in; Cricket is next (the Sport menu
   already lists it as coming soon)
