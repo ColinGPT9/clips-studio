@@ -121,8 +121,8 @@ export const LIMITS: { lead: string; body: string }[] = [
 		body: "Clips land in a folder, organised by creator and video, ready to upload wherever you like.",
 	},
 	{
-		lead: "It is alpha",
-		body: "and moves fast. Things break; there is a place to report them.",
+		lead: "It moves fast",
+		body: "with new versions often. If something breaks, there is a place to report it.",
 	},
 ];
 

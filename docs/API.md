@@ -147,7 +147,7 @@ That line is drawn now because it cannot be drawn retroactively. If something
 internal is genuinely useful to you, open an issue asking for it to be
 promoted, rather than pinning yourself to a version.
 
-This is alpha software. The line above is a commitment to *tell you*, not a
+The app moves fast. The line above is a commitment to *tell you*, not a
 guarantee of never changing.
 
 ## Conventions

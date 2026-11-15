@@ -100,9 +100,9 @@ WHAT YOU NEED
 • About 20 GB of disk, plus room for your videos
 • A graphics card is not required, but an NVIDIA one makes it substantially faster
 
-ALPHA SOFTWARE
+ABOUT THIS RELEASE
 
-Clips Kitty is version 2.0. It works, and it is still rough in places. The known issues are listed openly in the repository, and there is a feedback button in the app that files a report for you without needing a GitHub account.
+Clips Kitty is a stable release, version 2. The known issues are listed openly in the repository, and there is a feedback button in the app that files a report for you without needing a GitHub account.
 
 It was built for IRL, just-chatting and talking-head content, which is what it is tested on most. It also clips game streams and reaction videos, and soccer matches. VTubers are not supported.
 ```

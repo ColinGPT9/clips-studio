@@ -26,8 +26,7 @@ Description: |-
   active speaker so a talking head stays in frame, and learns a creator's recurring
   jokes and catchphrases to score their moments better.
 
-  Alpha software: it works, it is rough in places, and the known issues are listed
-  in the repository.
+  Stable releases; the known issues are listed openly in the repository.
 Moniker: clips-kitty
 Tags:
   - ai

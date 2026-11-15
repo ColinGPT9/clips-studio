@@ -154,6 +154,5 @@ The same overview, written in each language the app supports:
 
 ## Status
 
-Alpha. It works and is used daily, but it is early and has rough edges, which
-are listed honestly in the known-issues document rather than discovered by
-users.
+Stable releases, used daily. Known problems are listed honestly in the
+known-issues document rather than left for users to discover.

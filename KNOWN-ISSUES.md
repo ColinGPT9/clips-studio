@@ -1,6 +1,6 @@
 # Known issues
 
-Everything here has actually been observed, most of it while testing the alpha
+Everything here has actually been observed, most of it while testing releases
 on a clean machine. Nothing on this list is speculative, and nothing that has
 been fixed is still listed as broken.
 
