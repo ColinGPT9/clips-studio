@@ -663,9 +663,24 @@ PROJECT_TABLES = (
         status      TEXT NOT NULL DEFAULT '',
         error       TEXT NOT NULL DEFAULT '',
         created_at  TEXT NOT NULL DEFAULT '',
-        updated_at  TEXT NOT NULL DEFAULT ''
+        updated_at  TEXT NOT NULL DEFAULT '',
+        branch      TEXT NOT NULL DEFAULT '',
+        duration_us INTEGER NOT NULL DEFAULT 0,
+        bytes       INTEGER NOT NULL DEFAULT 0,
+        job_id      INTEGER
     )""",
     "CREATE INDEX IF NOT EXISTS project_exports_by_project ON project_exports (project_id)",
+)
+
+# Columns the export compiler (editor suite step 7) added to project_exports:
+# which branch made it ("A" today's re-render, "B" the compiler), the
+# finished file's length and size, and its editor-lane job. A table made
+# before them gets them here.
+PROJECT_EXPORT_COLUMNS = (
+    ("branch", "TEXT NOT NULL DEFAULT ''"),
+    ("duration_us", "INTEGER NOT NULL DEFAULT 0"),
+    ("bytes", "INTEGER NOT NULL DEFAULT 0"),
+    ("job_id", "INTEGER"),
 )
 
 
@@ -1047,6 +1062,10 @@ class StateDB:
             )
         for statement in PROJECT_TABLES:
             self.conn.execute(statement)
+        export_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(project_exports)")}
+        for column, decl in PROJECT_EXPORT_COLUMNS:
+            if column not in export_cols:
+                self.conn.execute(f"ALTER TABLE project_exports ADD COLUMN {column} {decl}")
 
     def _mark_exports_from_before(self) -> None:
         """Once, as clips.first_exported_at is added: the exports made before

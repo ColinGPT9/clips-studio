@@ -554,6 +554,7 @@ def refit_caption_lines(
     new_start: float,
     new_end: float,
     words_per_caption: int = 3,
+    head_until: float | None = None,
 ) -> list[dict]:
     """Saved caption lines carried to a clip whose start or end has moved.
 
@@ -563,7 +564,13 @@ def refit_caption_lines(
     start put all of them out of sync (#120). So the lines shift with the
     start, the ones the clip no longer holds are dropped, and the stretch
     before the first and after the last is captioned from the transcript. A
-    line the user blanked still covers its time, and stays blank."""
+    line the user blanked still covers its time, and stays blank.
+
+    head_until (editor suite step 7, Branch A of the export compiler): the
+    video second the captioned head ends at, in place of `old_start`, for
+    lines that are not shifted (old_start == new_start) but whose clip
+    gained seconds before its old start. Never past the first saved line.
+    None, the default, is the rule as it has always been."""
     duration = new_end - new_start
     shift = old_start - new_start
     kept = []
@@ -588,7 +595,11 @@ def refit_caption_lines(
     # existed gets its missing captions back too.
     last = new_start + kept[-1]["end"]
     words = _words_in_window(segments, new_start, new_end)
-    head = [w for w in words if w["end"] <= old_start]
+    if head_until is None:
+        head = [w for w in words if w["end"] <= old_start]
+    else:
+        until = min(float(head_until), new_start + kept[0]["start"] + _EDGE)
+        head = [w for w in words if w["end"] <= until]
     tail = [w for w in words if w["start"] >= last - _EDGE]
     size = max(1, int(words_per_caption))
     added = []
@@ -628,6 +639,26 @@ def build_captions(
     `canvas` is the output frame (default portrait Shorts; longform passes
     1920x1080 and the style scales to it). Returns the path, or None if
     there is nothing to caption."""
+    text = caption_ass(segments, candidate, style=style, lines=lines, canvas=canvas, language=language,
+                       karaoke_untimed=karaoke_untimed)
+    if text is None:
+        return None
+    output_path.write_text(text, encoding="utf-8")
+    return output_path
+
+
+def caption_ass(
+    segments: list[Segment],
+    candidate: ClipCandidate,
+    style: dict | None = None,
+    lines: list[dict] | None = None,
+    canvas: tuple[int, int] = (1080, 1920),
+    language: str = "en",
+    karaoke_untimed: bool = False,
+) -> str | None:
+    """The ASS file build_captions writes, as text (None: nothing to
+    caption). Writes nothing: the export compiler (editor suite step 7)
+    puts it in its plan."""
     opts = {**DEFAULT_STYLE, **(style or {})}
     # Non-Latin content: swap in a font that has the glyphs (see SCRIPT_FONTS).
     opts["font"] = caption_font_for(language, opts.get("font")) or opts.get("font")
@@ -723,8 +754,7 @@ def build_captions(
 
     if not dialogue:
         return None
-    output_path.write_text(_header(opts, canvas) + "\n".join(dialogue) + "\n", encoding="utf-8")
-    return output_path
+    return _header(opts, canvas) + "\n".join(dialogue) + "\n"
 
 
 # The animations' timings, in ms from the caption's own start.

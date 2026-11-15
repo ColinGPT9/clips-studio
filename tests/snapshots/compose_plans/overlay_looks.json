@@ -1,0 +1,207 @@
+{
+  "project_id": "0123456789abcdef",
+  "revision": 7,
+  "purpose": "export",
+  "preset": {
+    "kind": "original",
+    "resolution": "same",
+    "width": 1080,
+    "height": 1920,
+    "aspect": "same",
+    "aspect_w": 9,
+    "aspect_h": 16,
+    "fill": "crop",
+    "bar_color": "#000000",
+    "quality": "balanced",
+    "rate": "crf",
+    "crf": 23,
+    "bitrate_kbps": 6000,
+    "codec": "h264",
+    "encoder": "auto",
+    "fps": "same",
+    "audio_kbps": 128,
+    "max_mb": null
+  },
+  "canvas": {
+    "width": 1080,
+    "height": 1920,
+    "fps": {
+      "num": 30,
+      "den": 1
+    }
+  },
+  "output": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30.0,
+    "codec": "h264",
+    "encoder": "libx264",
+    "audio_kbps": 128,
+    "max_bytes": null,
+    "passes": 1
+  },
+  "program_us": 8000000,
+  "card_us": 0,
+  "work": "<WORK>",
+  "result": "<WORK>/export.mp4",
+  "video_post": [],
+  "notes": [
+    "The sound of videos on V2 and up is not heard: only V1's own sound and the audio tracks are mixed."
+  ],
+  "stages": [
+    {
+      "id": "cut-001",
+      "kind": "ffmpeg",
+      "commands": [
+        [
+          "ffmpeg",
+          "-hide_banner",
+          "-y",
+          "-v",
+          "error",
+          "-nostdin",
+          "-progress",
+          "pipe:1",
+          "-nostats",
+          "-ss",
+          "9.75",
+          "-t",
+          "8.45",
+          "-i",
+          "<MEDIA>/m1.mp4",
+          "-/filter_complex",
+          "<WORK>/cut-001.graph.txt",
+          "-map",
+          "[vout]",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "12",
+          "-bf",
+          "0",
+          "-g",
+          "60",
+          "-pix_fmt",
+          "yuv420p",
+          "-video_track_timescale",
+          "30000",
+          "-an",
+          "<WORK>/v-001.part.mp4",
+          "-map",
+          "[aout]",
+          "-c:a",
+          "pcm_s16le",
+          "-ar",
+          "48000",
+          "-ac",
+          "2",
+          "-vn",
+          "<WORK>/a-001.part.wav"
+        ]
+      ],
+      "reads": [
+        "<MEDIA>/m1.mp4"
+      ],
+      "writes": [
+        "<WORK>/v-001.mp4",
+        "<WORK>/a-001.wav"
+      ],
+      "temps": {
+        "<WORK>/v-001.mp4": "<WORK>/v-001.part.mp4",
+        "<WORK>/a-001.wav": "<WORK>/a-001.part.wav"
+      },
+      "scripts": {
+        "<WORK>/cut-001.graph.txt": "[0:v]setpts=(PTS-0.25/TB)/1,fps=30/1:start_time=0[s0];\n[s0]split=2[i0bg][i0fg];\n[i0bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,scale=136:240,gblur=sigma=12,scale=1080:1920:flags=bilinear,setsar=1[i0wash];\n[i0fg]scale=1080:1920:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,setsar=1[i0pic];\n[i0wash][i0pic]overlay=(W-w)/2:(H-h)/2[f0];\n[f0]format=yuv420p,tpad=stop=-1:stop_mode=clone,trim=end_frame=240,setpts=PTS-STARTPTS[v0];\n[0:a]asetpts=PTS-STARTPTS,aresample=48000,atrim=start_sample=12000,asetpts=N/SR/TB,aformat=sample_fmts=s16:channel_layouts=stereo,apad,atrim=end_sample=384000,asetpts=N/SR/TB[a0];\n[v0]concat=n=1:v=1:a=0[vout];\n[a0]concat=n=1:v=0:a=1[aout]\n"
+      },
+      "seconds": 8.0,
+      "weight": 8.0,
+      "params": {}
+    },
+    {
+      "id": "final",
+      "kind": "ffmpeg",
+      "commands": [
+        [
+          "ffmpeg",
+          "-hide_banner",
+          "-y",
+          "-v",
+          "error",
+          "-nostdin",
+          "-progress",
+          "pipe:1",
+          "-nostats",
+          "-i",
+          "<WORK>/v-001.mp4",
+          "-f",
+          "concat",
+          "-safe",
+          "0",
+          "-i",
+          "<WORK>/a1.txt",
+          "-loop",
+          "1",
+          "-framerate",
+          "30/1",
+          "-t",
+          "2",
+          "-i",
+          "<MEDIA>/m2.png",
+          "-ss",
+          "49.75",
+          "-t",
+          "4.45",
+          "-i",
+          "<MEDIA>/m1.mp4",
+          "-/filter_complex",
+          "<WORK>/final.graph.txt",
+          "-map",
+          "[vout]",
+          "-map",
+          "[aout]",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "20",
+          "-pix_fmt",
+          "yuv420p",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-ar",
+          "48000",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "-f",
+          "mp4",
+          "<WORK>/export.part.mp4"
+        ]
+      ],
+      "reads": [
+        "<WORK>/v-001.mp4",
+        "<WORK>/a-001.wav",
+        "<MEDIA>/m2.png",
+        "<MEDIA>/m1.mp4"
+      ],
+      "writes": [
+        "<WORK>/export.mp4"
+      ],
+      "temps": {
+        "<WORK>/export.mp4": "<WORK>/export.part.mp4"
+      },
+      "scripts": {
+        "<WORK>/final.graph.txt": "[0:v]setpts=PTS-STARTPTS[b0];\n[2:v]setpts=PTS-STARTPTS+1/TB[os1];\n[os1]scale=1080:1920:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,setsar=1[of1];\n[of1]format=rgba,scale=trunc(iw*0.5/2)*2:trunc(ih*0.5/2)*2,colorchannelmixer=aa=0.6,format=yuva420p[ot1];\n[b0][ot1]overlay=x=(W-w)/2+270:y=(H-h)/2-576:enable='between(t,1,2.999999)':eof_action=pass[b1];\n[3:v]setpts=(PTS-0.25/TB)/2+4/TB,fps=30/1:start_time=4[os2];\n[os2]scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920:(iw-ow)/2:(ih-oh)/2,setsar=1[of2];\n[of2]colorbalance=rm=0.10:bm=-0.10,eq=saturation=1.10:brightness=0.01,format=yuva420p[ot2];\n[b1][ot2]overlay=x=(W-w)/2:y=(H-h)/2:enable='between(t,4,5.999999)':eof_action=pass[b2];\n[b2]trim=end_frame=240[pre];\n[pre]format=yuv420p[pv];\n[1:a]asetpts=PTS-STARTPTS,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=end_sample=384000,asetpts=N/SR/TB[pa];\n[pv]null[vout];\n[pa]anull[aout]\n",
+        "<WORK>/a1.txt": "file '<WORK>/a-001.wav'\n"
+      },
+      "seconds": 8.0,
+      "weight": 16.0,
+      "params": {},
+      "cwd": "<WORK>"
+    }
+  ]
+}

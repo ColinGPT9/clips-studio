@@ -551,22 +551,27 @@ def asset(conn, sha256: str) -> dict | None:
 
 
 def add_export(conn, project_id, revision: int, *, clip_id: int | None = None, path: str = "", preset=None,
-               status: str = "queued", now=None) -> int:
+               status: str = "queued", branch: str = "", job_id: int | None = None, now=None) -> int:
     """Record an export of the project as it was at `revision` (its head).
-    The export compiler (step 7) writes these; nothing here renders."""
+    The export compiler (step 7, server/compose_api.py) writes these: `branch`
+    "A" (today's re-render) or "B" (the compiler), and the lane's `job_id`."""
     now = _seconds(now)
     with _writing(conn):
         _row(conn, project_id)
         cur = conn.execute(
-            "INSERT INTO project_exports (project_id, head, clip_id, path, preset, status, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO project_exports (project_id, head, clip_id, path, preset, status, created_at, updated_at, "
+            "branch, job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (str(project_id), int(revision), None if clip_id is None else int(clip_id), str(path or ""),
-             "" if preset is None else model.canonical(preset), str(status), _stamp(now), _stamp(now)))
+             "" if preset is None else model.canonical(preset), str(status), _stamp(now), _stamp(now),
+             str(branch or ""), None if job_id is None else int(job_id)))
     return int(cur.lastrowid)
 
 
+EXPORT_FIELDS = ("clip_id", "path", "status", "error", "branch", "duration_us", "bytes", "job_id")
+
+
 def set_export(conn, export_id: int, *, now=None, **fields) -> None:
-    allowed = {k: v for k, v in fields.items() if k in ("clip_id", "path", "status", "error")}
+    allowed = {k: v for k, v in fields.items() if k in EXPORT_FIELDS}
     if not allowed:
         return
     now = _seconds(now)

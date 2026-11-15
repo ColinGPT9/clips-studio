@@ -62,6 +62,10 @@ KEEP_FINISHED = 100     # finished jobs GET /export/jobs still shows
 PROGRESS_EVERY = 0.5    # seconds between progress events for one job
 PARTIAL_SUFFIX = re.compile(r"\.exporting-[0-9a-f]{8}\.mp4$")
 STATUSES = ("queued", "running", "done", "failed", "cancelled")
+# Tasks that are exports all the same (editor suite step 7): a project's
+# export runs as a task (it is many FFmpeg commands, not one encode), and is
+# listed, cancelled and announced with the other exports.
+EXPORT_TASKS = ("project_export",)
 
 
 def unique_target(folder: Path, stem: str) -> Path:
@@ -103,10 +107,17 @@ class LaneJob:
     cancel_requested: bool = False
     work: Callable[[TaskContext], dict] | None = None      # a task's function; None for an export
     key: str = ""                                          # what a task makes, so it is made once
+    extra: dict = field(default_factory=dict)              # a project export's own fields (project_id, revision, branch)
+    on_dropped: Callable[[dict], None] | None = None       # a project export cancelled before it started
+
+    @property
+    def is_export(self) -> bool:
+        """An export of a clip (no `work`), or a task that is one (EXPORT_TASKS)."""
+        return self.work is None or self.kind in EXPORT_TASKS
 
     def public(self) -> dict:
         """The job as the API and the events show it."""
-        if self.work is not None:
+        if self.work is not None and not self.is_export:
             return {
                 "job_id": self.id,
                 "kind": self.kind,
@@ -120,6 +131,10 @@ class LaneJob:
                 "created_at": self.created_at,
                 "started_at": self.started_at,
                 "finished_at": self.finished_at,
+                # A project's draft (editor suite step 7): the stage it is
+                # on, and its project and revision.
+                **({"stage": self.step.get("stage")} if self.step.get("stage") else {}),
+                **self.extra,
             }
         return {
             "export_id": self.id,
@@ -143,6 +158,8 @@ class LaneJob:
             "created_at": self.created_at,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
+            **({"stage": self.step.get("stage")} if self.work is not None else {}),
+            **self.extra,
         }
 
 
@@ -222,8 +239,31 @@ class EditorLane(threading.Thread):
         self._emit(job)
         return self.get(job.id)
 
+    def submit_project_export(self, work: Callable[[TaskContext], dict], *, folder, name: str, preset: dict,
+                              clip_id: int | None = None, extra: dict | None = None,
+                              on_done: Callable[[dict], None] | None = None,
+                              on_dropped: Callable[[dict], None] | None = None) -> dict:
+        """Queue a project's export (editor suite step 7): a task listed with
+        the exports (jobs(), get(), cancel(), "export" events). `work(ctx)`
+        makes and registers the file and returns the result. `folder` and
+        `name` say where it goes; `extra` is added to what public() shows.
+        `on_dropped` gets the job when it is cancelled before it started
+        (work never ran, so it couldn't say so itself)."""
+        with self._cond:
+            job = LaneJob(id=self._next_id, kind="project_export", clip_id=clip_id, source=Path(),
+                          folder=Path(folder), name=name, preset=dict(preset or {}), on_done=on_done,
+                          work=work, key=f"project_export:{self._next_id}", extra=dict(extra or {}),
+                          on_dropped=on_dropped)
+            self._next_id += 1
+            self._jobs[job.id] = job
+            self._queue.append(job.id)
+            self._prune()
+            self._cond.notify_all()
+        self._emit(job)
+        return self.get(job.id)
+
     def submit_task(self, kind: str, key: str, work: Callable[[TaskContext], dict], *, name: str = "",
-                    on_done: Callable[[dict], None] | None = None) -> dict:
+                    on_done: Callable[[dict], None] | None = None, extra: dict | None = None) -> dict:
         """Queue a task: `work(ctx)` runs on the lane and returns its result.
         When a task with the same `key` is waiting or running, that one is
         returned instead: a thing is made once."""
@@ -232,7 +272,7 @@ class EditorLane(threading.Thread):
                 if job.work is not None and job.key == key and job.status in ("queued", "running"):
                     return job.public()
             job = LaneJob(id=self._next_id, kind=kind, clip_id=None, source=Path(), folder=Path(), name=name,
-                          preset={}, on_done=on_done, work=work, key=key)
+                          preset={}, on_done=on_done, work=work, key=key, extra=dict(extra or {}))
             self._next_id += 1
             self._jobs[job.id] = job
             self._queue.append(job.id)
@@ -244,14 +284,15 @@ class EditorLane(threading.Thread):
     def tasks(self) -> list[dict]:
         """Every task the lane remembers, newest first."""
         with self._cond:
-            return [self._jobs[i].public() for i in sorted(self._jobs, reverse=True) if self._jobs[i].work]
+            return [self._jobs[i].public() for i in sorted(self._jobs, reverse=True)
+                    if self._jobs[i].work and not self._jobs[i].is_export]
 
     def find(self, key: str) -> dict | None:
         """The newest task with this key, or None."""
         with self._cond:
             for i in sorted(self._jobs, reverse=True):
                 job = self._jobs[i]
-                if job.work is not None and job.key == key:
+                if job.work is not None and not job.is_export and job.key == key:
                     return job.public()
         return None
 
@@ -276,6 +317,11 @@ class EditorLane(threading.Thread):
         if proc is not None:
             _kill(proc)
         if job.status == "cancelled":
+            if job.on_dropped is not None and job.started_at is None:
+                try:
+                    job.on_dropped(job.public())
+                except Exception as e:
+                    print(f"Editor {job.kind} {job.id}: after-cancel step failed: {e}")
             self._emit(job)
         else:
             deadline = time.monotonic() + wait
@@ -288,7 +334,7 @@ class EditorLane(threading.Thread):
     def _is(job: LaneJob, kind: str | None) -> bool:
         if kind is None:
             return True
-        return (job.work is None) if kind == "export" else (job.work is not None and job.kind == kind)
+        return job.is_export if kind == "export" else (job.work is not None and job.kind == kind)
 
     def get(self, job_id: int, kind: str | None = "export") -> dict | None:
         """A job as public() shows it: an export, unless `kind` says
@@ -300,7 +346,7 @@ class EditorLane(threading.Thread):
     def jobs(self) -> list[dict]:
         """Every export the lane remembers, newest first."""
         with self._cond:
-            return [self._jobs[i].public() for i in sorted(self._jobs, reverse=True) if self._jobs[i].work is None]
+            return [self._jobs[i].public() for i in sorted(self._jobs, reverse=True) if self._jobs[i].is_export]
 
     def _take(self, *, block: bool) -> LaneJob | None:
         with self._cond:
@@ -447,7 +493,7 @@ class EditorLane(threading.Thread):
 
     def _emit(self, job: LaneJob) -> None:
         with self._cond:
-            if job.work is not None:
+            if not job.is_export:
                 event = {"type": "media_job", "job": job.public()}
             else:
                 event = {"type": "export", "export": job.public()}
@@ -524,14 +570,17 @@ class TaskContext:
         self._lane, self.job = lane, job
         self._run = lane._runner(job)
 
-    def run(self, argv: list[str], *, duration: float = 0.0) -> tuple[int, str]:
-        return self._run(argv, duration=duration, on_progress=self.progress)
+    def run(self, argv: list[str], *, duration: float = 0.0, cwd=None,
+            on_progress: Callable[[float], None] | None = None) -> tuple[int, str]:
+        """`on_progress` takes the command's own fraction in place of
+        progress() (a task of many commands scales it to its share)."""
+        return self._run(argv, cwd=cwd, duration=duration, on_progress=on_progress or self.progress)
 
     def started(self, proc) -> None:
         self._lane._task_process(self.job, proc)
 
-    def progress(self, fraction: float) -> None:
-        self._lane._progress(self.job, fraction, {})
+    def progress(self, fraction: float, step: dict | None = None) -> None:
+        self._lane._progress(self.job, fraction, step or {})
 
     def check(self) -> None:
         self._lane._check_cancel(self.job)

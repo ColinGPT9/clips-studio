@@ -490,3 +490,135 @@ The Kokoro voice that Voicebox uses by default was already in the repo as an opt
 - A project can't yet say it means the Vertical Live copy of a video that has both.
 
 **Undo:** `_download`/`VERTICAL` in `video_editor/media/resolver.py`, `_video_of` in `core/housekeeping.py`, `FILE_SOURCE_EXTS` in the resolver, `INDIRECT_FORMATS`/`LOCAL_ONLY` in `video_editor/media/probe.py`.
+
+## ED27 · Branch A replaces a clip's options, never shifts them again, and renders the row's hundredths
+
+**Date:** 2026-11-14 · **Steps:** 5, 7 · taken in step 7, part A
+
+**Context:** Step 5's projection gives Branch A a `start`, an `end` and the clip's complete render options, with the edit, the caption lines and the speaker fixes already counted from that `start`. Today's re-render job (`server/jobs.py` `_rerender_clip`) merges the options it is sent into the saved ones and, when the window moved, shifts those three keys from the row's old start. Doing both to Branch A's options would put every cut, mute and caption in the wrong place. Also, the clip row keeps its window to a hundredth of a second, while projection's times are in microseconds.
+
+**Decision:**
+- A new payload key, `render_opts_replace`, makes the job use the sent options as they are: no merge, no shift of `edit`, `caption_lines` or `speaker_edits`. Everything else the job does stays as it is.
+- The window is rounded to the hundredth, so the file is made from the window its row holds. The options' times are kept as sent: at most 5 ms from the rounded start.
+- Seconds a clip gained are captioned from the transcript as Apply captions them. The head is filled only before the first sent line and before the row's old start, so nothing is captioned twice.
+- Speaker fixes that end before a later start are kept, as today's job keeps one past the end. A test proves the caption render ignores them.
+
+**Why:** The projection already did the arithmetic once, so the job must not do it again. Rounding the window rather than the options keeps every option exactly what projection worked out, and keeps the row and the file in agreement.
+
+**Rejected:** rounding inside the projection (a single kept part would then gain a few-millisecond cut at its start and render differently); shifting the options by the rounding (the "second shift" step 5 warned of); dropping speaker fixes outside the clip (today's job keeps them on purpose).
+
+**Undo:** the `replace` branches in `_rerender_clip`, and `head_until` in `video/captions.py` `refit_caption_lines`.
+
+## ED28 · A project's export: Branch B replaces the clip's file and keeps the clip; V1 goes through a mezzanine
+
+**Date:** 2026-11-14 · **Steps:** 7 · taken in step 7, part B
+
+**Context:** Step 7 makes a project into a finished video. A project made from a clip has to land somewhere the person finds it, without losing the clip's place in the library, its posts or its title, and without ever losing the file it had. The compiler also has to join hundreds of cut pieces exactly, in sound and picture, and run on Windows' command-line limit.
+
+**Decision:**
+- Branch A (the project still projects to today's render options, the preset is the clip's own) is today's re-render, run on the editor lane: Apply's result, a new clip id, the project following it.
+- Branch B writes `data/clips/projects/<project id>-r<revision>.mp4`. For a project whose clip exists, the clip's row then points at that file (same id, title, posts and render options) and only then is its old file deleted. A project with no clip gets the file and its `project_exports` row only.
+- An export is always of the project's current revision (409 for another).
+- V1 is cut in chunks to a mezzanine (x264 veryfast CRF 12, no B-frames, one timescale) and joined by stream copy; its sound goes beside it as sample-exact PCM WAV; the final encode is the only visible generation. An AI-framed run goes through `core.framing.frame_intermediate` (the cropper's own encode stays until step 11), with its tracking kept in the media cache.
+- A fitted manual picture's pad is a new `framing.pad` key: `"blur"` (default) or `#RRGGBB`.
+
+**Why:** Replacing the file keeps everything the library and publishing hang off the clip's id, as Apply does; writing the new file first and deleting the old one last means a failure at any point loses nothing. WAV beside the mezzanine avoids the AAC priming that would add up over hundreds of joins.
+
+**Rejected:** adding a new clip per export (the library fills with near-copies, and posts stay on the old one); a lossless mezzanine (ten times the disk); AAC in the mezzanine (drift across joins); exporting an older revision by number (an undone state can't be told from it).
+
+**Trade-offs accepted:**
+- After a Branch B export the clip's saved render options still describe the clip as it was: Apply from the old editor would render that again (step 8 decides what the old editor shows).
+- AI items get one more visible-quality encode (the cropper's) than manual ones until step 11.
+
+**Undo:** `_register_b` in `server/compose_api.py` (the file and the row), `mezz_args` and `_cut_stage` in `video_editor/compose.py`, `pad` in `video_editor/project/ops.py` `_framing`.
+
+## ED29 · Captions are mapped word by word through the timeline; the tail pad is an L-cut
+
+**Date:** 2026-11-14 · **Steps:** 7 · taken in step 7, part C
+
+**Context:** Captions stay in the source's time in a project (step 5), so the export compiler has to place them on the program's timeline through cuts, repeats and speed changes. Today's edits retime whole lines and leave the word highlight's times in the old timeline (plan problem 5). Separately, any cut drops the 0.4 s pad a clip's render adds after its last word (plan problem 4), because the keep ranges are clamped to the unpadded clip.
+
+**Decision:**
+- Every word of a caption line gets its source time (the transcript's when the line lines up with it, else the line's time shared out by word length). A word is kept where its middle plays, so a word in a cut is dropped and a line split by a cut becomes a caption on each side. Times are mapped through the span the word plays in, speed included, and the words' own times go along to the word highlight and karaoke.
+- Where a run of V1 ends in the middle of its last word, the word's sound goes on past the cut, up to its transcript end plus 0.4 s, never into the next word, the video's end or a mute. It fades out under the next item's start, or under the end card for the program's last word. The picture and the timeline don't change.
+- Branch B only. A plain run and Branch A render exactly as before.
+
+**Why:** Word-level mapping is the only rule that keeps the highlight on the word being said after a cut or a speed change, and it needs nothing new in the document. An L-cut keeps the word without moving anything after it, so the export still matches the editor's timeline and every caption, overlay and sound stays where the person put it.
+
+**Rejected:** mapping lines by their start and end (a line across a cut would show cut-out words); lengthening the run's last item by the pad (the program would no longer be what the editor shows; every later item would move); a tail without a transcript (nothing to tell a word's end from).
+
+**Trade-offs accepted:** without an end card, the program's last word is still cut where the timeline ends (the plan's notes say so). A tail needs the captions' media to have a transcript.
+
+**Undo:** `remap_captions`, `tails`, `tail_audio` and their callers in `video_editor/compose.py`.
+
+## ED30 · The export's sound: loudness on the whole mix; a bleep is a 1 kHz tone
+
+**Date:** 2026-11-14 · **Steps:** 7 · taken in step 7, part C
+
+**Context:** Today's render normalises a clip's own voice to -14 LUFS and then mixes the music in, so music can push a clip over the target. A project can hold any number of sounds, and the plan's proof is -14 ±1 LUFS with a true peak of at most -1 dBTP for the finished export. `set_audio_mutes` has a "bleep" mode that no render drew yet.
+
+**Decision:**
+- The export's mix (V1's own sound, the voices, the ducked music and the other sounds, summed with `amix normalize=0`) goes through the master volume and then today's `encoding.LOUDNORM` (single-pass, -14 LUFS, true peak -1.5 dBTP), when the project's `normalize` is on.
+- Ducking stays step 4's: the music ducks under V1's own sound and the voice items, with the free tracks' setting for a library sound and the person's-own-file setting for anything else.
+- A bleep mutes its stretch and plays a 1 kHz sine at -18 dBFS (FFmpeg's sine source's own level) times A1's volume in its place.
+- An item slower than 1x has its sound read early and trimmed by atempo's measured lead (38 ms at 0.5x), so its sound starts with its picture.
+
+**Why:** Measuring the whole mix is what holds every export at the target whatever is on it (measured: -14.0 LUFS on a 60 s project with music, effects and a bleep). A plain tone at a fixed level is the common bleep and is unmistakable, and -18 dBFS keeps it under speech before the loudness pass.
+
+**Rejected:** normalising the voice only, as today (the mix can exceed the target); a two-pass loudnorm now (a measure stage per export; step 10, with the audio panel, decides); a beep at full scale (painful after loudness raises quiet clips).
+
+**Trade-offs accepted:** single-pass loudnorm evens out a long fade a little. Bleep and mute edges fall on audio frames (about 21 ms), as a clip's word mutes do today.
+
+**Undo:** `_final_audio`, `item_audio`, `audio_lead` and `BLEEP_HZ` in `video_editor/compose.py`.
+
+## ED31 · The draft and the still: kept in the editor cache; a still is made in the request
+
+**Date:** 2026-11-14 · **Steps:** 7 · taken in step 7, part C
+
+**Context:** The new editor (step 8) needs a quick render of the whole program (the draft) and a true picture of any moment (the still, "pause shows the truth"). Today's "Update preview" renders at full size inside the request (plan problem 6). The plan asks for a still in at most 600 ms, cached per revision and time, and for nothing of the editor's in `clips/` or `downloads/`.
+
+**Decision:**
+- The draft is the export's plan at 540 on the short side, ultrafast, with no preset and no end card. It runs as a task on the editor lane (`media_job` events, one per revision at a time) and is kept as `data/media_cache/project-<id>/draft/r<rev>-<facts key>.mp4` (the facts key added in fix round 1, 7-D6: a hash of the settings, logo and transcript it was made from); a newer draft replaces it.
+- The still is one FFmpeg of one frame with every layer, made inside the request (not queued behind exports), kept as `data/media_cache/project-<id>/stills/r<rev>-<facts key>-<frame µs>.jpg` (the newest 200 per project).
+- Both are read with the session header or a per-project token in the address (step 6's token, of `project:<id>`), and only for the current revision.
+- An AI item's still uses the tracking an export or draft kept; without it, the middle of the frame, marked approximate and not kept.
+
+**Why:** A still is a fraction of a second of work (0.17 to 0.20 s measured at 1080x1920), and a queue could put minutes of export in front of it. The editor cache already has the cap, Clear and orphan clean-up these need, and a draft or still can always be made again.
+
+**Rejected:** stills on the lane (they would wait behind exports); tracking inside a still request (seconds of GPU for one frame); keeping drafts beside the clips (the clean-ups sweep there, and a draft is not a clip).
+
+**Trade-offs accepted:** Storage's orphan clean-up removes a project's draft and stills (their folder has no source to match), so they are made again after it.
+
+**Undo:** the draft and still routes in `server/compose_api.py`; `draft`, `stills` in `video_editor/media/cache.py` `PRODUCTS`.
+
+## ED32 · A project's exports are never Storage's orphan clips
+
+**Date:** 2026-11-14 · **Steps:** 7 · taken in step 7, fix round 1 (7-D11)
+
+**Context:** Storage's clean-up (`core/housekeeping.py`) deletes every `.mp4` under `data/clips/` that no clip row points at. A manual project's export (`data/clips/projects/<id>-r<rev>.mp4`) is recorded only in `project_exports`, so the clean-up deleted the person's finished video while its row still said "done". A deleted project's export has no row at all.
+
+**Decision:** `data/clips/projects/` is never swept for orphan clips (`housekeeping.PROJECT_EXPORTS`). Only whole exports are ever moved there (each is made in the editor lane's work folder), so there is nothing half-made in it to free.
+
+**Why:** an export is the person's finished work, like a clip; counting `project_exports` rows alone would still free a deleted project's export, which the person may have published or still want.
+
+**Rejected:** counting only the paths in `project_exports` (the deleted-project case); deleting a project's exports with the project (deleting a project should not delete videos made from it without asking).
+
+**Trade-offs accepted:** exports of deleted projects stay on disk until the person removes them; step 8 can offer that on the project's exports list.
+
+**Undo:** the `PROJECT_EXPORTS` skip in `core/housekeeping.survey`.
+
+## ED33 · A Branch B export never replaces a clip's newer file
+
+**Date:** 2026-11-14 · **Steps:** 7 · taken in step 7, fix round 2 (7-D14)
+
+**Context:** Branch B's register step repointed a clip's row at the export and deleted its old file without the clip's lock. If today's Apply had re-rendered the clip's file in place and not yet registered it, the export deleted Apply's fresh file, and Apply's new clip pointed at a missing file.
+
+**Decision:** the register step holds `jobs.clip_lock` (as Apply and Branch A do; a cancel is checked while it waits, before the file moves). Under it the row is read again; the clip is repointed and its old file deleted only if the row still names the file the export started from, with the same size and modification time. Otherwise the newer render wins: the clip is left alone and the export stays a project export in `data/clips/projects/`, recorded in `project_exports`.
+
+**Why:** the person's latest action on the clip (Apply) should not be undone silently by an export queued earlier; the export is still kept and listed.
+
+**Rejected:** following the clip to Apply's new id and replacing that file (it would throw away the newer render).
+
+**Trade-offs accepted:** in that race the export does not become the clip's file; the person sees it in the project's exports.
+
+**Undo:** the lock and the `start_file` check in `server/compose_api.py` `_register_b`.

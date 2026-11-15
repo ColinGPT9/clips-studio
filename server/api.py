@@ -950,6 +950,15 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     media_api.install(app, db=db, data_dir=data_dir, session_secret=desktop_session, lane=editor_lane,
                       config=config)
 
+    # A project's export (video_editor/compose.py, editor suite step 7): a job
+    # on the editor lane, listed with the exports. Engine only, no screen uses
+    # it yet; guarded like the project routes. "default" is Settings → Export's
+    # preset (_saved_export, below).
+    from server import compose_api
+
+    compose_api.install(app, db=db, data_dir=data_dir, session_secret=desktop_session, lane=editor_lane,
+                        worker=worker, config=config, saved_preset=lambda: _saved_export())
+
     # Settings → Voice and speech on request (voice/, editor suite step V1):
     # the built-in voice, or the person's own Voicebox, VoiceStudio or other
     # local voice app. Guarded like the project routes.

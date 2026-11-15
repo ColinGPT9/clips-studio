@@ -178,7 +178,7 @@ SPECS: dict[str, tuple[str, dict]] = {
         "volume": ("num", False, "0 to 2"),
         "fades": ("dict", False, "{in_us, out_us}"),
         "framing": ("dict", False, "{crop} (track, center, letterbox, bias_left, bias_right), {gaming} "
-                                   "(a Gaming layout, or null for off) or {fit, align}"),
+                                   "(a Gaming layout, or null for off) or {fit, align, pad}"),
         "transform": ("dict", False, "{x, y, scale, rotation, opacity}"),
         "color": ("dict", False, "{filter, adjust}"),
         "link": ("any", False, "the id of an item this one belongs with, or null"),
@@ -865,9 +865,9 @@ def _duplicate_items(doc, op, ctx):
 
 
 def _framing(name: str, value: dict, ctx: _Ctx) -> dict:
-    unknown = [k for k in value if k not in ("crop", "gaming", "fit", "align")]
+    unknown = [k for k in value if k not in ("crop", "gaming", "fit", "align", "pad")]
     if unknown:
-        raise OpError(name, "framing", f"has no {unknown[0]!r}. It takes crop, gaming, fit and align.")
+        raise OpError(name, "framing", f"has no {unknown[0]!r}. It takes crop, gaming, fit, align and pad.")
     out: dict = {}
     if "crop" in value:
         if value["crop"] not in CROPS:
@@ -884,6 +884,13 @@ def _framing(name: str, value: dict, ctx: _Ctx) -> dict:
         if value["align"] not in ALIGNS:
             raise OpError(name, "framing", f"align must be one of {', '.join(ALIGNS)}.")
         out["align"] = value["align"]
+    if "pad" in value:
+        # What fills the canvas around a fitted picture (the export compiler,
+        # step 7): the picture itself blurred, or a colour.
+        pad = value["pad"]
+        if not (pad == "blur" or (isinstance(pad, str) and _COLOUR.fullmatch(pad))):
+            raise OpError(name, "framing", "pad must be \"blur\" or a colour as #RRGGBB.")
+        out["pad"] = pad if pad == "blur" else pad.upper()
     return _plain(out)
 
 

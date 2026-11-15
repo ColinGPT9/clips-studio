@@ -1,0 +1,93 @@
+{
+  "project_id": "0123456789abcdef",
+  "revision": 7,
+  "purpose": "still",
+  "preset": {
+    "kind": "original"
+  },
+  "canvas": {
+    "width": 1080,
+    "height": 1920,
+    "fps": {
+      "num": 30,
+      "den": 1
+    }
+  },
+  "output": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30.0,
+    "codec": "mjpeg",
+    "encoder": "mjpeg",
+    "audio_kbps": 0,
+    "max_bytes": null,
+    "passes": 1
+  },
+  "program_us": 8000000,
+  "card_us": 0,
+  "work": "<WORK>",
+  "result": "<WORK>/still.jpg",
+  "video_post": [
+    "subtitles=export.ass"
+  ],
+  "notes": [],
+  "stages": [
+    {
+      "id": "still",
+      "kind": "ffmpeg",
+      "commands": [
+        [
+          "ffmpeg",
+          "-hide_banner",
+          "-y",
+          "-v",
+          "error",
+          "-nostdin",
+          "-progress",
+          "pipe:1",
+          "-nostats",
+          "-ss",
+          "14.483333",
+          "-i",
+          "<MEDIA>/m1.mp4",
+          "-ss",
+          "50.983333",
+          "-i",
+          "<MEDIA>/m1.mp4",
+          "-/filter_complex",
+          "<WORK>/still.graph.txt",
+          "-map",
+          "[vout]",
+          "-frames:v",
+          "1",
+          "-q:v",
+          "2",
+          "-update",
+          "1",
+          "<WORK>/still.part.jpg"
+        ]
+      ],
+      "reads": [
+        "<MEDIA>/m1.mp4",
+        "<MEDIA>/m1.mp4"
+      ],
+      "writes": [
+        "<WORK>/still.jpg"
+      ],
+      "temps": {
+        "<WORK>/still.jpg": "<WORK>/still.part.jpg"
+      },
+      "scripts": {
+        "<WORK>/export.ass": "[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 0\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Hook,Arial Black,96,&H00FFFFFF,&H00FFFFFF,&H00000000,&H7F000000,-1,0,0,0,100,100,0,0,1,9,3,8,60,60,190,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 1,0:00:00.00,0:00:08.00,Hook,,0,0,0,,Look\n",
+        "<WORK>/still.graph.txt": "[0:v]setpts=PTS-STARTPTS[s0];\n[s0]split=2[i0bg][i0fg];\n[i0bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,scale=136:240,gblur=sigma=12,scale=1080:1920:flags=bilinear,setsar=1[i0wash];\n[i0fg]scale=1080:1920:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,setsar=1[i0pic];\n[i0wash][i0pic]overlay=(W-w)/2:(H-h)/2[f0];\n[f0]null[g0];\n[g0]format=yuv420p,setpts=PTS-STARTPTS+4.5/TB[b0];\n[1:v]setpts=PTS-STARTPTS+4.5/TB[os1];\n[os1]scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920:(iw-ow)/2:(ih-oh)/2,setsar=1[of1];\n[of1]colorbalance=rm=0.10:bm=-0.10,eq=saturation=1.10:brightness=0.01,format=yuva420p[ot1];\n[b0][ot1]overlay=x=(W-w)/2:y=(H-h)/2[b1];\n[b1]subtitles=export.ass[sb];\n[sb]scale=out_range=full,format=yuvj420p[vout]\n"
+      },
+      "seconds": 0.033333,
+      "weight": 0.05,
+      "params": {
+        "t_us": 4500000,
+        "frame": 135
+      },
+      "cwd": "<WORK>"
+    }
+  ]
+}
