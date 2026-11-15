@@ -30,6 +30,18 @@ from server.events import broadcaster
 # retries; older ones are pruned so the folder can't grow without limit.
 _KEEP_LOGS = 50
 
+# One re-render of a clip at a time (fix 7-D8): the queue's render jobs run
+# one by one, but the export compiler's Branch A (server/compose_api.py)
+# re-renders a clip from the editor lane's thread. Both take the clip's lock.
+_CLIP_LOCKS: dict[int, threading.Lock] = {}
+_CLIP_LOCKS_GUARD = threading.Lock()
+
+
+def clip_lock(clip_id) -> threading.Lock:
+    """The lock a re-render of this clip holds while it runs."""
+    with _CLIP_LOCKS_GUARD:
+        return _CLIP_LOCKS.setdefault(int(clip_id), threading.Lock())
+
 # (base, weight, label) per pipeline stage, folded into one overall progress
 # figure. Kept identical to the UI's STAGES in ui/src/renderer/src/lib/
 # jobProgress.ts, so the app and an integration's dock never show different
@@ -890,10 +902,30 @@ class Worker(threading.Thread):
                 db.set_video_status(vid, "done")  # the Shorts pass finished
             raise RuntimeError(f"The 9:16 Shorts were made; the 16:9 pass failed: {e}") from e
 
-    def _rerender_clip(self, db: StateDB, payload: dict) -> None:
+    def _rerender_clip(self, db: StateDB, payload: dict, before_register=None, while_waiting=None) -> int | None:
+        """_rerender_clip_now holding the clip's lock (clip_lock): never two
+        re-renders of one clip at once. `while_waiting` (Branch A's cancel
+        check) runs every half second while another holds it."""
+        lock = clip_lock(payload["clip_id"])
+        while not lock.acquire(timeout=0.5):
+            if while_waiting is not None:
+                while_waiting()
+        try:
+            # Called on the class: callers (Branch A, tests) pass an owner that is not a Worker.
+            return Worker._rerender_clip_now(self, db, payload, before_register=before_register)
+        finally:
+            lock.release()
+
+    def _rerender_clip_now(self, db: StateDB, payload: dict, before_register=None) -> int | None:
         """Re-render one clip from the original source video, with optionally
         edited timestamps and/or render options (crop mode, caption style).
-        The clip's user-visible metadata survives the re-render."""
+        The clip's user-visible metadata survives the re-render.
+
+        `before_register` (the export compiler's Branch A, editor suite
+        step 7): called with the rendered file once it is made and before
+        any row is touched; whatever it raises stops the job there, with the
+        clip's rows as they were. Returns the clip's new id (None when the
+        render registered no row). The job queue ignores both."""
         import json as _json
         from types import SimpleNamespace
 
@@ -924,6 +956,17 @@ class Worker(threading.Thread):
 
         start = float(payload.get("start", clip["start_s"]))
         end = float(payload.get("end", clip["end_s"]))
+        # render_opts_replace (editor suite step 7, the export compiler's
+        # Branch A): the job's render_opts ARE the clip's options, made by
+        # video_editor/project/projection.py and already counted from this
+        # job's start. They replace the saved ones (no merge) and are not
+        # shifted again here. The window is kept to the hundredth of a second
+        # the clip's row holds, so the file and its row agree; the options'
+        # times stay as given (at most 5 ms from the rounded start, under a
+        # frame at 60 fps).
+        replace = bool(payload.get("render_opts_replace"))
+        if replace:
+            start, end = round(start, 2), round(end, 2)
         candidate = ClipCandidate(
             start=start, end=end, score=clip["score"], hook=clip["hook"] or "",
             subscores=_json.loads(clip["scores"]) if clip["scores"] else None,
@@ -934,15 +977,18 @@ class Worker(threading.Thread):
         # As saved, for what this render changed in a suggested edit (below).
         saved_opts = copy.deepcopy(render_opts)
         incoming = payload.get("render_opts") or {}
-        if "caption_style" in incoming:
-            merged_style = {**render_opts.get("caption_style", {}), **(incoming["caption_style"] or {})}
-            render_opts["caption_style"] = merged_style
-        render_opts.update({k: v for k, v in incoming.items() if k != "caption_style"})
+        if replace:
+            render_opts = copy.deepcopy(incoming)
+        else:
+            if "caption_style" in incoming:
+                merged_style = {**render_opts.get("caption_style", {}), **(incoming["caption_style"] or {})}
+                render_opts["caption_style"] = merged_style
+            render_opts.update({k: v for k, v in incoming.items() if k != "caption_style"})
         # A clip saved with the removed Highlights post style is made, and
         # saved, without it.
         render_opts = _drop_post_style(render_opts)
         old_window = (float(clip["start_s"]), float(clip["end_s"]))
-        if isinstance(render_opts.get("edit"), dict) and (start, end) != old_window:
+        if not replace and isinstance(render_opts.get("edit"), dict) and (start, end) != old_window:
             # The timeline editor's cuts and mutes count from the clip's start
             # too, in the clip as saved: an edit sent with the new start or
             # end was made on that clip as well. Carried, so each stays on the
@@ -960,11 +1006,20 @@ class Worker(threading.Thread):
             from video.captions import DEFAULT_STYLE, refit_caption_lines
 
             style = render_opts.get("caption_style") or (self.config.get("clips") or {}).get("caption_style")
-            render_opts["caption_lines"] = refit_caption_lines(
-                render_opts["caption_lines"], segments, float(clip["start_s"]), start, end,
-                {**DEFAULT_STYLE, **(style or {})}["words_per_caption"],
-            )
-        if render_opts.get("speaker_edits"):
+            wpc = {**DEFAULT_STYLE, **(style or {})}["words_per_caption"]
+            if replace:
+                # Branch A's lines are counted from `start` already: kept
+                # where they are (no shift), and only the seconds the clip
+                # gained at either end are captioned, as Apply does.
+                render_opts["caption_lines"] = refit_caption_lines(
+                    render_opts["caption_lines"], segments, start, start, end, wpc,
+                    head_until=float(clip["start_s"]),
+                )
+            else:
+                render_opts["caption_lines"] = refit_caption_lines(
+                    render_opts["caption_lines"], segments, float(clip["start_s"]), start, end, wpc,
+                )
+        if render_opts.get("speaker_edits") and not replace:
             # Who a person said is talking where (the editor's Fix speakers) is
             # timed from the clip's start too: carried to wherever it is now,
             # with the caption option on or off. Never cut to the clip, so a
@@ -1037,6 +1092,8 @@ class Worker(threading.Thread):
         final_path, rendered_opts = _render_files(
             source, candidate, segments, clip_dir, self.config, render_opts, content_lang
         )
+        if before_register is not None:
+            before_register(final_path)
         if render_opts.get("gaming") and rendered_opts:
             # Gaming / Reaction: keep what the render decided (the webcam it
             # used, split or game-only), so the editor can show it next time.
@@ -1114,6 +1171,7 @@ class Worker(threading.Thread):
             # follows the clip instead of losing it (#147).
             broadcaster.publish({"type": "clip_replaced", "old": clip["id"], "new": new_row["id"],
                                  "video_id": video_id})
+        return int(new_row["id"]) if new_row else None
 
 
 def _release_voice() -> None:

@@ -40,7 +40,15 @@ from pathlib import Path
 
 DIR = "media_cache"
 SOURCE, INFO = "source.json", "info.json"
-PRODUCTS = ("proxy.mp4", "proxy.m4a", "peaks.bin", "thumbs")
+# "tracking" (editor suite step 7): the export compiler's face-tracking results
+# for AI-framed items (video_editor/compose.py), one JSON file per stretch it
+# tracked, with an index.json the cap reads as the folder's "used" mark.
+# "draft" and "stills" (step 7 too): a project's draft and its stills, in a
+# folder of the project's own (data/media_cache/project-<id>/, made by
+# server/compose_api.py), each with an index.json "used" mark. That folder has
+# no source.json, so Storage's clean-up counts it an orphan: a draft and its
+# stills are made again when they are asked for.
+PRODUCTS = ("proxy.mp4", "proxy.m4a", "peaks.bin", "thumbs", "tracking", "draft", "stills")
 DEFAULT_CAP_BYTES = 5 * 1024 ** 3
 PART = ".part-"
 EDGE = 1024 * 1024              # the first and last megabyte go into a fingerprint

@@ -219,39 +219,7 @@ def apply_image(video_path: Path, cfg: dict, canvas: tuple[int, int], asset_dir:
     logo = _asset_in(asset_dir, name)
     if logo is None:
         raise ValueError(f"branding asset not found in the assets folder: {name!r}")
-    w, h = canvas
-    pad = round(float(cfg.get("padding", 0.04)) * min(w, h))
-    logo_w = max(16, round(float(cfg.get("scale", 0.18)) * w))
-    opacity = max(0.0, min(1.0, float(cfg.get("opacity", 0.85))))
-    if cfg.get("position") == "custom":
-        # Dragged point: x,y are frame fractions for the logo's CENTRE.
-        fx = max(0.0, min(1.0, float(cfg.get("x", 0.5))))
-        fy = max(0.0, min(1.0, float(cfg.get("y", 0.5))))
-        xexpr, yexpr = f"W*{fx:.4f}-w/2", f"H*{fy:.4f}-h/2"
-    elif cfg.get("position") == "moving":
-        # Orbit a small circle at one side, then TELEPORT to the other. The
-        # side is a step function of t — nothing interpolates between them,
-        # so the logo never crosses the middle of the shot.
-        radius = max(2, round(min(w, h) * CIRCLE_FRAC))
-        inset = pad + radius            # keep the whole orbit inside the pad
-        rx, lx = f"(W-w-{inset})", f"{inset}"
-        d = MOVE_DWELL
-        side = f"if(lt(mod(t,{2 * d:g}),{d:g}),{rx},{lx})"   # which edge, now
-        ang = f"(2*PI*t/{d:g})"                              # one turn per stay
-        xexpr = f"{side}+{radius}*cos({ang})"
-        yexpr = f"(H-h)/2+{radius}*sin({ang})"
-    else:
-        xexpr, yexpr = _OVERLAY_XY.get(cfg.get("position", "bottom_right"), _OVERLAY_XY["bottom_right"])
-        xexpr, yexpr = xexpr.format(p=pad), yexpr.format(p=pad)
-
-    logo_chain = f"[1:v]scale={logo_w}:-1:flags=lanczos,format=rgba,colorchannelmixer=aa={opacity:.3f}"
-    rot = float(cfg.get("rotation", 0) or 0)
-    if abs(rot) > 0.1:
-        logo_chain += f",rotate={rot}*PI/180:ow=rotw({rot}*PI/180):oh=roth({rot}*PI/180):c=none"
-    # Commas inside the overlay x/y EXPRESSION (mod/if/…) must be escaped so
-    # the filtergraph parser doesn't read them as filter separators.
-    xe, ye = xexpr.replace(",", "\\,"), yexpr.replace(",", "\\,")
-    graph = f"{logo_chain}[wm];[0:v][wm]overlay={xe}:{ye}"
+    graph = logo_graph(cfg, canvas)
 
     tmp = video_path.with_suffix(".wm.mp4")
     cmd = [
@@ -278,3 +246,52 @@ def apply_image(video_path: Path, cfg: dict, canvas: tuple[int, int], asset_dir:
     discard(tmp)
     if not placed:
         raise RuntimeError(f"watermark: {video_path.name} is open elsewhere and could not be written")
+
+
+def logo_graph(cfg: dict, canvas: tuple[int, int], base: str = "0:v", logo: str = "1:v",
+               tag: str = "wm", out: str | None = None) -> str:
+    """The image watermark's filter graph: the logo (input pad `logo`)
+    scaled to the canvas, faded to its opacity, turned, and laid over `base`
+    at its position (a corner, the centre, a dragged point, or moving from
+    side to side).
+
+    With the defaults it is exactly the graph apply_image has always run,
+    "[1:v]scale=...[wm];[0:v][wm]overlay=x:y" with its output unlabelled.
+    The export compiler (editor suite step 7) names its own pads: `tag`
+    labels the scaled logo and `out`, when given, labels the result. The
+    logo FILE is never named here: apply_image finds it by safe name in the
+    assets folder, and so must any other caller."""
+    w, h = canvas
+    pad = round(float(cfg.get("padding", 0.04)) * min(w, h))
+    logo_w = max(16, round(float(cfg.get("scale", 0.18)) * w))
+    opacity = max(0.0, min(1.0, float(cfg.get("opacity", 0.85))))
+    if cfg.get("position") == "custom":
+        # Dragged point: x,y are frame fractions for the logo's CENTRE.
+        fx = max(0.0, min(1.0, float(cfg.get("x", 0.5))))
+        fy = max(0.0, min(1.0, float(cfg.get("y", 0.5))))
+        xexpr, yexpr = f"W*{fx:.4f}-w/2", f"H*{fy:.4f}-h/2"
+    elif cfg.get("position") == "moving":
+        # Orbit a small circle at one side, then TELEPORT to the other. The
+        # side is a step function of t — nothing interpolates between them,
+        # so the logo never crosses the middle of the shot.
+        radius = max(2, round(min(w, h) * CIRCLE_FRAC))
+        inset = pad + radius            # keep the whole orbit inside the pad
+        rx, lx = f"(W-w-{inset})", f"{inset}"
+        d = MOVE_DWELL
+        side = f"if(lt(mod(t,{2 * d:g}),{d:g}),{rx},{lx})"   # which edge, now
+        ang = f"(2*PI*t/{d:g})"                              # one turn per stay
+        xexpr = f"{side}+{radius}*cos({ang})"
+        yexpr = f"(H-h)/2+{radius}*sin({ang})"
+    else:
+        xexpr, yexpr = _OVERLAY_XY.get(cfg.get("position", "bottom_right"), _OVERLAY_XY["bottom_right"])
+        xexpr, yexpr = xexpr.format(p=pad), yexpr.format(p=pad)
+
+    logo_chain = f"[{logo}]scale={logo_w}:-1:flags=lanczos,format=rgba,colorchannelmixer=aa={opacity:.3f}"
+    rot = float(cfg.get("rotation", 0) or 0)
+    if abs(rot) > 0.1:
+        logo_chain += f",rotate={rot}*PI/180:ow=rotw({rot}*PI/180):oh=roth({rot}*PI/180):c=none"
+    # Commas inside the overlay x/y EXPRESSION (mod/if/…) must be escaped so
+    # the filtergraph parser doesn't read them as filter separators.
+    xe, ye = xexpr.replace(",", "\\,"), yexpr.replace(",", "\\,")
+    graph = f"{logo_chain}[{tag}];[{base}][{tag}]overlay={xe}:{ye}"
+    return f"{graph}[{out}]" if out else graph

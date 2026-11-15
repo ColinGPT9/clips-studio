@@ -130,6 +130,7 @@ jobs:
           tests/test_render_argv_snapshots.py
           tests/test_export_presets_ffmpeg.py tests/test_export_route.py tests/test_woopsocial_smaller_copy.py
           tests/test_remake.py tests/test_remake_routes.py tests/test_remake_worker.py tests/test_rerender_edit_follows.py
+          tests/test_branch_a_replace.py
           tests/test_remake_in_use.py tests/test_remake_files.py tests/test_remake_lasting_marks.py
           tests/test_caption_render_ffmpeg.py tests/test_fonts_routes.py
           tests/test_creator_description.py tests/test_audio_library_routes.py
@@ -137,6 +138,7 @@ jobs:
           tests/test_project_routes.py tests/test_voice_routes.py
           tests/test_media_routes.py tests/test_media_peaks.py tests/test_media_thumbs_proxy.py
           tests/test_media_cache.py tests/test_media_probe.py
+          tests/test_compose_routes.py tests/test_compose_render.py
 
   sdk-windows:
     name: SDK (Windows)

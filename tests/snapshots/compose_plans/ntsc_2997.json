@@ -1,0 +1,196 @@
+{
+  "project_id": "0123456789abcdef",
+  "revision": 7,
+  "purpose": "export",
+  "preset": {
+    "kind": "original",
+    "resolution": "same",
+    "width": 1080,
+    "height": 1920,
+    "aspect": "same",
+    "aspect_w": 9,
+    "aspect_h": 16,
+    "fill": "crop",
+    "bar_color": "#000000",
+    "quality": "balanced",
+    "rate": "crf",
+    "crf": 23,
+    "bitrate_kbps": 6000,
+    "codec": "h264",
+    "encoder": "auto",
+    "fps": "same",
+    "audio_kbps": 128,
+    "max_mb": null
+  },
+  "canvas": {
+    "width": 1080,
+    "height": 1920,
+    "fps": {
+      "num": 30000,
+      "den": 1001
+    }
+  },
+  "output": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 29.97,
+    "codec": "h264",
+    "encoder": "libx264",
+    "audio_kbps": 128,
+    "max_bytes": null,
+    "passes": 1
+  },
+  "program_us": 3003000,
+  "card_us": 0,
+  "work": "<WORK>",
+  "result": "<WORK>/export.mp4",
+  "video_post": [],
+  "notes": [],
+  "stages": [
+    {
+      "id": "cut-001",
+      "kind": "ffmpeg",
+      "commands": [
+        [
+          "ffmpeg",
+          "-hide_banner",
+          "-y",
+          "-v",
+          "error",
+          "-nostdin",
+          "-progress",
+          "pipe:1",
+          "-nostats",
+          "-ss",
+          "9.75",
+          "-t",
+          "2.45",
+          "-i",
+          "<MEDIA>/m1.mp4",
+          "-ss",
+          "19.75",
+          "-t",
+          "1.45",
+          "-i",
+          "<MEDIA>/m1.mp4",
+          "-/filter_complex",
+          "<WORK>/cut-001.graph.txt",
+          "-map",
+          "[vout]",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "12",
+          "-bf",
+          "0",
+          "-g",
+          "60",
+          "-pix_fmt",
+          "yuv420p",
+          "-video_track_timescale",
+          "30000",
+          "-an",
+          "<WORK>/v-001.part.mp4",
+          "-map",
+          "[aout]",
+          "-c:a",
+          "pcm_s16le",
+          "-ar",
+          "48000",
+          "-ac",
+          "2",
+          "-vn",
+          "<WORK>/a-001.part.wav"
+        ]
+      ],
+      "reads": [
+        "<MEDIA>/m1.mp4",
+        "<MEDIA>/m1.mp4"
+      ],
+      "writes": [
+        "<WORK>/v-001.mp4",
+        "<WORK>/a-001.wav"
+      ],
+      "temps": {
+        "<WORK>/v-001.mp4": "<WORK>/v-001.part.mp4",
+        "<WORK>/a-001.wav": "<WORK>/a-001.part.wav"
+      },
+      "scripts": {
+        "<WORK>/cut-001.graph.txt": "[0:v]setpts=(PTS-0.25/TB)/1,fps=30000/1001:start_time=0[s0];\n[s0]split=2[i0bg][i0fg];\n[i0bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,scale=136:240,gblur=sigma=12,scale=1080:1920:flags=bilinear,setsar=1[i0wash];\n[i0fg]scale=1080:1920:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,setsar=1[i0pic];\n[i0wash][i0pic]overlay=(W-w)/2:(H-h)/2[f0];\n[f0]format=yuv420p,tpad=stop=-1:stop_mode=clone,trim=end_frame=60,setpts=PTS-STARTPTS[v0];\n[0:a]asetpts=PTS-STARTPTS,aresample=48000,atrim=start_sample=12000,asetpts=N/SR/TB,aformat=sample_fmts=s16:channel_layouts=stereo,apad,atrim=end_sample=96096,asetpts=N/SR/TB[a0];\n[1:v]setpts=(PTS-0.25/TB)/1,fps=30000/1001:start_time=0[s1];\n[s1]split=2[i1bg][i1fg];\n[i1bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,scale=136:240,gblur=sigma=12,scale=1080:1920:flags=bilinear,setsar=1[i1wash];\n[i1fg]scale=1080:1920:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,setsar=1[i1pic];\n[i1wash][i1pic]overlay=(W-w)/2:(H-h)/2[f1];\n[f1]format=yuv420p,tpad=stop=-1:stop_mode=clone,trim=end_frame=30,setpts=PTS-STARTPTS[v1];\n[1:a]asetpts=PTS-STARTPTS,aresample=48000,atrim=start_sample=12000,asetpts=N/SR/TB,aformat=sample_fmts=s16:channel_layouts=stereo,apad,atrim=end_sample=48048,asetpts=N/SR/TB[a1];\n[v0][v1]concat=n=2:v=1:a=0[vout];\n[a0][a1]concat=n=2:v=0:a=1[aout]\n"
+      },
+      "seconds": 3.003,
+      "weight": 3.003,
+      "params": {}
+    },
+    {
+      "id": "final",
+      "kind": "ffmpeg",
+      "commands": [
+        [
+          "ffmpeg",
+          "-hide_banner",
+          "-y",
+          "-v",
+          "error",
+          "-nostdin",
+          "-progress",
+          "pipe:1",
+          "-nostats",
+          "-i",
+          "<WORK>/v-001.mp4",
+          "-f",
+          "concat",
+          "-safe",
+          "0",
+          "-i",
+          "<WORK>/a1.txt",
+          "-/filter_complex",
+          "<WORK>/final.graph.txt",
+          "-map",
+          "[vout]",
+          "-map",
+          "[aout]",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "20",
+          "-pix_fmt",
+          "yuv420p",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-ar",
+          "48000",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "-f",
+          "mp4",
+          "<WORK>/export.part.mp4"
+        ]
+      ],
+      "reads": [
+        "<WORK>/v-001.mp4",
+        "<WORK>/a-001.wav"
+      ],
+      "writes": [
+        "<WORK>/export.mp4"
+      ],
+      "temps": {
+        "<WORK>/export.mp4": "<WORK>/export.part.mp4"
+      },
+      "scripts": {
+        "<WORK>/final.graph.txt": "[0:v]setpts=PTS-STARTPTS[b0];\n[b0]trim=end_frame=90[pre];\n[pre]format=yuv420p[pv];\n[1:a]asetpts=PTS-STARTPTS,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=end_sample=144144,asetpts=N/SR/TB[pa];\n[pv]null[vout];\n[pa]anull[aout]\n",
+        "<WORK>/a1.txt": "file '<WORK>/a-001.wav'\n"
+      },
+      "seconds": 3.003,
+      "weight": 6.006,
+      "params": {},
+      "cwd": "<WORK>"
+    }
+  ]
+}

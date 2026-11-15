@@ -322,8 +322,11 @@ def test_the_worker_and_the_database_never_import_the_package():
         for path in (ROOT / folder).rglob("*.py")
         if PACKAGE not in path.parents and project_imports(path.read_text(encoding="utf-8")))
     # Since step 6, importing a file for editing copies it in through the
-    # store (inside the function that does it).
-    assert importers == ["server/projects_api.py", "video_editor/media/importing.py"]
+    # store (inside the function that does it). Since step 7, the export
+    # compiler reads the document's time helpers (model) and its routes the
+    # store and the projection.
+    assert importers == ["server/compose_api.py", "server/projects_api.py", "video_editor/compose.py",
+                         "video_editor/media/importing.py"]
 
 
 # ---- the media code (editor suite step 6) --------------------------------------------------------
@@ -402,8 +405,11 @@ def test_only_the_media_routes_and_storage_import_the_media_code():
         if (ROOT / folder).is_dir()
         for path in (ROOT / folder).rglob("*.py")
         if MEDIA_PACKAGE not in path.parents and project_imports(path.read_text(encoding="utf-8"), (MEDIA,)))
-    assert importers == ["core/housekeeping.py", "server/api.py", "server/media_api.py"]
-    for rel in ("core/housekeeping.py", "server/api.py"):
+    # Since step 7 the export resolves its media and keeps its tracking in
+    # the cache (server/compose_api.py; video_editor/compose.py inside a function).
+    assert importers == ["core/housekeeping.py", "server/api.py", "server/compose_api.py", "server/media_api.py",
+                         "video_editor/compose.py"]
+    for rel in ("core/housekeeping.py", "server/api.py", "video_editor/compose.py"):
         top, _inner = _imports_any(ROOT / rel)
         assert not {n for n in top if _forbidden(n, (MEDIA,))}, f"{rel} imports the media code at its top"
 
@@ -423,3 +429,91 @@ def _imports_any(path: Path) -> tuple[set[str], set[str]]:
     top = set().union(*(names(n) for n in tree.body)) if tree.body else set()
     inner = set().union(*(names(n) for n in ast.walk(tree) if n not in tree.body))
     return top, inner
+
+
+# ---- the framing move and the export compiler (editor suite step 7) ------------------------------
+
+FRAMING = ROOT / "core" / "framing.py"
+COMPOSE = "video_editor.compose"
+EDITOR = (FORBIDDEN, MEDIA, COMPOSE)
+
+
+def test_the_pipeline_and_its_framing_never_import_the_editor():
+    """core/framing.py (core/pipeline.py's framing block, moved so the
+    export compiler can frame an AI item the same way) imports none of the
+    project model, the media code or the compiler, and neither does the
+    pipeline, directly or through anything they load."""
+    for start in (PIPELINE, FRAMING):
+        found = project_imports(start.read_text(encoding="utf-8"), EDITOR)
+        assert not found, f"{start.name} imports the new editor:\n" + "\n".join(found)
+        offenders = reachable_offenders(ROOT, start, EDITOR)
+        assert not offenders, f"{start.name} would load the new editor:\n" + "\n".join(offenders)
+
+
+def test_the_walk_reaches_the_framing_and_what_it_frames_with():
+    """The pipeline reaches core.framing, and core.framing the renderers it
+    calls (inside its functions), or the test above passes vacuously."""
+    names = {_module_name(ROOT, path) for path in reachable_modules(ROOT, PIPELINE, EDITOR)}
+    assert "core.framing" in names
+    framed = {_module_name(ROOT, path) for path in reachable_modules(ROOT, FRAMING, EDITOR)}
+    for expected in ("video.cutter", "video.cropper", "video_editor.export", "video.podcast", "gaming.run"):
+        assert expected in framed, f"the walk from core.framing never reached {expected}"
+
+
+def test_the_guard_catches_the_compiler_too():
+    for source in ("import video_editor.compose", "from video_editor.compose import compile",
+                   "from video_editor import compose", "def f():\n    from video_editor import compose\n",
+                   "importlib.import_module('video_editor.compose')"):
+        assert project_imports(source, EDITOR), source
+        assert not project_imports(source, BOTH), f"counted as the project model or media: {source}"
+
+
+def test_only_the_export_routes_import_the_compiler():
+    """Nothing runs the compiler unless an export route is called: only
+    server/compose_api.py imports it (server/api.py installs those routes
+    inside create_app, as it does the media routes)."""
+    importers = sorted(
+        path.relative_to(ROOT).as_posix()
+        for folder in ("core", "server", "video", "video_editor", "analysis", "plugins", "publish", "campaigns",
+                       "remote_render", "sources", "transcription", "creator", "voice", "gaming", "sports")
+        if (ROOT / folder).is_dir()
+        for path in (ROOT / folder).rglob("*.py")
+        if path != ROOT / "video_editor" / "compose.py"
+        and project_imports(path.read_text(encoding="utf-8"), (COMPOSE,)))
+    assert importers == ["server/compose_api.py"]
+    top, _inner = _imports_any(ROOT / "server" / "api.py")
+    assert "server.compose_api" not in top, "server/api.py imports the export routes at its top"
+
+
+# What the compiler asks the rest of the app, each inside the function that
+# needs it; at its top it imports the standard library and the document's
+# time helpers only.
+COMPOSE_ASKS = {"core.framing", "core.models", "video", "video.encoding", "video.export_presets", "video.filters",
+                "video.outro", "video.tracker", "video_editor.media", "video_editor.media.cache",
+                # Part C: the captions, fonts, hook and watermark of step 3 and
+                # before, and step 4's duck settings.
+                "video.captions", "video.fonts", "video_editor", "video_editor.overlay", "video_editor.watermark",
+                "video_editor.export"}
+
+
+def test_the_compiler_imports_the_rest_of_the_app_only_inside_functions():
+    top, inner = _imports_any(ROOT / "video_editor" / "compose.py")
+    outside = {n for n in top if n.split(".")[0] not in sys.stdlib_module_names and n != "__future__"}
+    assert outside == {"video_editor.project", "video_editor.project.model"}, outside
+    asked = {n for n in inner if n.split(".")[0] not in sys.stdlib_module_names}
+    assert asked <= COMPOSE_ASKS | {f"{a}.{b}" for a in COMPOSE_ASKS for b in ("concat", "concat_entry")} | {
+        n for n in asked if n.rsplit(".", 1)[0] in COMPOSE_ASKS}, asked
+
+
+def test_loading_the_compiler_loads_nothing_heavy():
+    code = "; ".join((
+        "import sys",
+        f"sys.path.insert(0, {str(ROOT)!r})",
+        "from video_editor import compose",
+        "heavy = [m for m in ('numpy', 'cv2', 'torch', 'PIL', 'fastapi', 'pydantic', 'core.pipeline', 'core.framing',"
+        " 'core.state', 'server.jobs', 'video.tracker', 'video.cropper') if m in sys.modules]",
+        "print('loaded:', heavy)",
+    ))
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "loaded: []", out.stdout

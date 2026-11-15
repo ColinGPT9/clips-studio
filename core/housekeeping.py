@@ -27,6 +27,12 @@ a group of its own. Its orphan folders (the source is gone and no project
 names it) are reclaimable; clean() removes them and holds the cache to its
 size cap, least recently used first. Nothing else here looks inside it,
 and nothing in it is ever taken for a clip or a download.
+
+A project's exports (data/clips/projects/, server/compose_api.py) are the
+person's finished videos: a manual project's export has no clip row, and
+a deleted project's export no row at all, so this folder is never swept
+for orphan clips (fix 7-D11). Its files are whole exports only: an export
+is made in the editor lane's work folder and moved here when complete.
 """
 
 import re
@@ -38,6 +44,9 @@ from core.state import pinned_video_ids, project_media
 # Staging files written next to a clip during rendering. The pipeline
 # deletes them on success; these are the ones a failure left behind.
 _SCRATCH_SUFFIXES = (".source.mp4", ".edited.mp4", ".plain.mp4", ".cropped.mp4")
+# Where the export compiler keeps project exports, under the data folder
+# (server/compose_api.py PROJECTS_FOLDER): never an orphan clip.
+PROJECT_EXPORTS = ("clips", "projects")
 
 # A Make clips again run (core/remake.py) gives each old clip's file a second
 # name while it works, clip_00010-00070.clip-17.mp4, and its rows point
@@ -123,9 +132,12 @@ def survey(db, data_dir: Path) -> dict:
         ]
 
     clips = data_dir / "clips"
+    exports = Path(str(data_dir.joinpath(*PROJECT_EXPORTS).resolve()).lower())
     if clips.is_dir():
         for f in clips.rglob("*.mp4"):
             key = Path(str(f.resolve()).lower())
+            if exports in key.parents:
+                continue
             aside = _ASIDE.match(key.stem)
             if f.name.endswith(_SCRATCH_SUFFIXES):
                 groups["render_leftovers"].append(f)

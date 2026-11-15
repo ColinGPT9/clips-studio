@@ -28,6 +28,7 @@ def cut_clip(
     vf_extra: str = "",
     normalize: bool = False,
     final: bool = False,
+    encoder: list[str] | None = None,
 ) -> Path:
     """normalize: loudness-normalise the audio. Only for a FINAL clip — this
     also cuts the staging file the tracked path crops from, and normalising
@@ -35,7 +36,15 @@ def cut_clip(
 
     final: this cut IS the clip (horizontal and Vertical Live clips, which
     take one encode): written with final_movflags(), so its first frame is at
-    0 in every app. Not tied to `normalize`, which a clip can switch off."""
+    0 in every app. Not tied to `normalize`, which a clip can switch off.
+
+    encoder: the `-c:v ...` argument block to encode with, in place of the
+    one the settings chose (video_encoder_args()). None, the default, is
+    exactly the command every render has always run, with its one retry on
+    the CPU when a graphics-card encoder refuses the footage. A block given
+    here is used as it is and never retried: the editor's export compiler
+    (editor suite step 7) cuts at its own mezzanine quality this way and
+    decides for itself what a refusal means."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Absolute paths: cwd may be changed for the subtitles filter, which
@@ -51,7 +60,7 @@ def cut_clip(
         # without this the video duration drifts from the audio -> A/V desync.
         "-vsync", "cfr",
         *audio_filter_args(normalize),     # sync, and loudness for a final clip
-        *video_encoder_args(),  # NVENC when available, libx264 otherwise
+        *(video_encoder_args() if encoder is None else encoder),  # NVENC when available, libx264 otherwise
         "-c:a", "aac", "-b:a", "128k",
         *(final_movflags() if final else ["-movflags", "+faststart"]),
     ]
@@ -74,7 +83,7 @@ def cut_clip(
     # one, whatever the cause: pixel format, driver, or a card the probe
     # flattered. Same shape as the CPU fallbacks in core/gpu.py and
     # transcription/transcriber.py.
-    if result.returncode != 0 and using_hardware_encoder():
+    if result.returncode != 0 and encoder is None and using_hardware_encoder():
         print("      GPU encoder refused this clip — retrying on the CPU")
         retry = _swap_encoder(cmd, video_encoder_args(), CPU_ARGS)
         result = subprocess.run(retry, capture_output=True, text=True, cwd=workdir)

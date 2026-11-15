@@ -17,6 +17,7 @@ from analysis.fusion import find_clips
 from analysis.metadata import ClipMetadata, generate_metadata_batch
 from core import cancel, progress
 from core.binaries import ffprobe
+from core.framing import _sport_framing, _try_gaming_render, frame_intermediate
 from core.models import ClipCandidate, RenderedClip, Segment
 from core.outcome import explain_no_clips, summarise_run
 from core.paths import cached_source, discard
@@ -1074,33 +1075,6 @@ def _gaming_prepare(source: Path, candidates: list, clip_dir: Path, config: dict
         return {"gaming": {}}
 
 
-def _try_gaming_render(intermediate: Path, render_path: Path, opts: dict, config: dict,
-                       ass_path: Path | None, vf_extra: str, normalize: bool) -> dict | None:
-    """One clip in the gaming layout (gaming/run.py). None means the standard
-    renderer takes it: a camera filling the frame, or any error at all."""
-    try:
-        from gaming import run as gaming_run
-
-        g = opts.get("gaming")
-        return gaming_run.render(intermediate, render_path, g if isinstance(g, dict) else {}, config,
-                                 ass_path=ass_path, vf_extra=vf_extra, normalize=normalize)
-    except Exception as e:
-        if config.get("clips", {}).get("whole"):
-            # Detection can fail; preserve the entire frame using the existing
-            # fit composition. A render failure propagates instead of cropping.
-            from core.modes import probe_size
-            from gaming import compose, layout
-
-            width, height = probe_size(intermediate)
-            settings = {"preset": "blurred", "cam": None, "game_box": [0, 0, 1, 1], "panels": []}
-            plan = layout.plan(width, height, settings)
-            compose.render(intermediate, render_path, plan, ass_path=ass_path,
-                           vf_extra=vf_extra, normalize=normalize)
-            return {**settings, "layout": plan.kind, "used_preset": plan.preset, "used_cam": None}
-        print(f"      (Gaming layout failed, using the standard layout: {e})")
-        return None
-
-
 def _gaming_scoring_inputs(config: dict, video, db: StateDB, games: list, hype_out: dict,
                            heard: dict | None = None):
     """(the gaming profile, what chat's reactions mark, what the game's sound
@@ -1634,123 +1608,15 @@ def _render_files(
     # disk with them.
     scratch: list[Path] = []
     try:
-        # Vertical Live takes the single-encode branch below, like longform:
-        # the tracked path (intermediate cut, face tracking, TalkNet, layout
-        # decisions, frames through Python) is never entered.
-        if config["clips"].get("vertical", True) and not landscape and not vertical_live:
-            # Cut a horizontal intermediate, track the subject, render 9:16.
-            intermediate = clip_dir / f"{stem}.source.mp4"
-            scratch.append(intermediate)
-            cut_clip(source, padded, intermediate)
-
-            if edit is not None:
-                # Apply manual edits BEFORE tracking, so the tracker and
-                # captions see the final (edited) timeline.
-                from video_editor.export import apply_edits
-
-                edited = clip_dir / f"{stem}.edited.mp4"
-                scratch.append(edited)
-                apply_edits(intermediate, edit, edited)
-                discard(intermediate)
-                intermediate = edited
-
-            if gaming:
-                gaming_kept = _try_gaming_render(intermediate, render_path, opts, config,
-                                                 ass_path, vf_extra, normalize)
-            if gaming_kept is not None:
-                pass  # rendered in the gaming layout (split or game only)
-            elif podcast:
-                # Separate podcast path (video/podcast.py): per shot, one static
-                # crop on the person TalkNet hears talking, moving to a new
-                # speaker inside a long shot; every change SNAPS on its frame,
-                # with no split screen or letterbox. It reuses the tracker's
-                # helpers and score_faces; the stream branch below is untouched.
-                from video import podcast as podcast_mod
-
-                tracking_cfg = config["tracking"]
-                decision = podcast_mod.analyze(
-                    intermediate,
-                    model_name=tracking_cfg["detector"],
-                    sample_fps=tracking_cfg["sample_fps"],
-                )
-                # The editor's Layout buttons still win on a podcast clip.
-                crop_mode = opts.get("crop", "track")
-                if crop_mode == "center":
-                    decision = {"mode": "track", "path": [(0.0, 0.5)]}
-                elif crop_mode == "letterbox":
-                    decision = {"mode": "fit_blur", "region": None}
-                podcast_mod.render_clip(
-                    intermediate, render_path, decision, ass_path=ass_path,
-                    vf_extra=vf_extra, normalize=normalize,
-                )
-            else:
-                from video import cuts, tracker  # lazy: tracker imports torch
-                from video.cropper import render_vertical
-
-                crop_mode = opts.get("crop", "track")
-                # The play's moment, for a sport that frames around it; not
-                # once cuts or a speed change have moved the clip's timeline
-                # (the camera's scale stands).
-                hints = opts.get("sport_moment") if isinstance(opts.get("sport_moment"), dict) else None
-                if hints is not None and edit is not None and (edit.keep is not None
-                                                               or abs(edit.speed - 1) >= 0.01):
-                    hints = {k: v for k, v in hints.items() if k == "scale"} or None
-                sport_framing = (_sport_framing(intermediate,
-                                                {**config, "sport_screen": sport_screen} if sport_screen else config,
-                                                sport_name, hints)
-                                 if sport_name and crop_mode in ("track", "bias_left", "bias_right")
-                                 else None)
-                if sport_framing is not None:
-                    framing_quality = sport_framing.pop("quality", None)
-                if crop_mode == "center":
-                    tracking = {"mode": "track", "path": [(0.0, 0.5)]}
-                elif sport_framing is not None:
-                    # A match (sports/): the ball and the play, not a face.
-                    tracking = sport_framing
-                    if crop_mode in ("bias_left", "bias_right"):
-                        shift = -0.12 if crop_mode == "bias_left" else 0.12
-                        tracking["path"] = [(t, x + shift) for t, x in tracking["path"]]
-                else:
-                    tracking_cfg = config["tracking"]
-                    tracking = tracker.compute_tracking(
-                        intermediate,
-                        model_name=tracking_cfg["detector"],
-                        sample_fps=tracking_cfg["sample_fps"],
-                        force_fit_blur=(crop_mode == "letterbox"),
-                        # On unless set off (ARCHITECTURE.md §5, video/cuts.py).
-                        shot_aware=cuts.shot_aware_on(tracking_cfg),
-                        no_subject=tracking_cfg.get("shot_aware_no_subject", "center"),
-                    )
-                    if crop_mode == "letterbox" and tracking["mode"] == "fit_blur":
-                        # USER-forced letterbox means "show me the WHOLE frame" —
-                        # reaction/gaming mixes need both the person and the
-                        # content. Cropping tight to the detected person (the
-                        # automatic letterbox behavior) threw away the game side.
-                        tracking["region"] = None
-                    if tracking["mode"] == "track" and crop_mode in ("bias_left", "bias_right"):
-                        shift = -0.12 if crop_mode == "bias_left" else 0.12
-                        tracking["path"] = [(t, x + shift) for t, x in tracking["path"]]
-                render_vertical(
-                    intermediate, tracking, render_path, ass_path=ass_path, vf_extra=vf_extra,
-                    normalize=normalize,
-                )
-        else:
-            if edit is not None:
-                # Horizontal (or Vertical Live) output: cut plain first, then
-                # apply edits and burn captions in the same pass (they land
-                # AFTER the cuts).
-                from video_editor.export import apply_edits
-
-                plain = clip_dir / f"{stem}.plain.mp4"
-                scratch.append(plain)
-                cut_clip(source, padded, plain, vf_extra=vf_extra)
-                # final: this pass writes the clip (or what the card joins),
-                # with its first frame at 0 in every app.
-                apply_edits(plain, edit, render_path, ass_path=ass_path, normalize=normalize,
-                            final=True)
-            else:
-                cut_clip(source, padded, render_path, ass_path=ass_path, vf_extra=vf_extra,
-                         normalize=normalize, final=True)
+        gaming_kept, framing_quality = frame_intermediate(
+            source, padded, render_path, clip_dir, stem, config=config, opts=opts, edit=edit,
+            ass_path=ass_path, vf_extra=vf_extra, normalize=normalize, landscape=landscape,
+            vertical_live=vertical_live, podcast=podcast, gaming=gaming, sport_name=sport_name,
+            sport_screen=sport_screen, scratch=scratch,
+            # Passed from here, so a test that stands in for one of them on
+            # this module still reaches the render.
+            cut=cut_clip, gaming_render=_try_gaming_render, framing_of=_sport_framing,
+        )
     finally:
         # NEVER raise from here. This runs in a `finally`, so an exception
         # would REPLACE whatever the render actually failed with — and the
@@ -1932,21 +1798,6 @@ def _refine_windows(sport_profile, candidates: list, video, segments, config: di
             c.start, c.end = start, end      # it edits in place: undo a half-done pass
         print(f"      (clip starts kept as found: {e})")
         return candidates
-
-
-def _sport_framing(clip_path: Path, config: dict, sport_name: str, hints: dict | None = None) -> dict | None:
-    """The sport's own framing for a clip (sports/), or None to use the face
-    tracker as always: a sport without framing, or a failure, never stops a
-    clip from rendering. `hints`: the clip's render_opts["sport_moment"]."""
-    try:
-        import sports
-
-        return sports.framing(sport_name, clip_path, config, hints)
-    except cancel.CancelledError:
-        raise
-    except Exception as e:
-        print(f"      ({sport_name} framing failed: {e}; framing it the usual way)")
-        return None
 
 
 def _register_clip(

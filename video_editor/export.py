@@ -54,6 +54,7 @@ def apply_edits(
     ass_path: Path | None = None,
     normalize: bool = False,
     final: bool = False,
+    encoder: list[str] | None = None,
 ) -> Path:
     """normalize: loudness-normalise the voice. Only for a FINAL clip — the
     vertical path runs this on a staging file that the cropper encodes
@@ -65,7 +66,12 @@ def apply_edits(
 
     final: this pass IS the clip (horizontal and Vertical Live clips with
     edits): written with final_movflags(), so its first frame is at 0 in
-    every app."""
+    every app.
+
+    encoder: the `-c:v ...` argument block to encode with, in place of the
+    one the settings chose. None, the default, is the command as it has
+    always been; the export compiler (editor suite step 7) passes its
+    mezzanine block."""
     graph_parts = []
     audio_label = "0:a"
 
@@ -131,7 +137,7 @@ def apply_edits(
         *inputs,
         "-filter_complex", ";".join(graph_parts),
         "-map", video_out, "-map", "[aout]",
-        *video_encoder_args(),
+        *(video_encoder_args() if encoder is None else encoder),
         "-c:a", "aac", "-b:a", "128k",
         "-fps_mode", "cfr",
         *(final_movflags() if final else ["-movflags", "+faststart"]),

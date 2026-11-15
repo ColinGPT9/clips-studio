@@ -213,9 +213,21 @@ def _project(conn, data_dir: Path, asked: str, project_id: str, key: str) -> Med
     try:
         doc = json.loads(row["doc"])
         entry = doc["media"][key]
+    except (TypeError, ValueError, KeyError):
+        raise NotFound(f"The project has no media {key!r}.") from None
+    return resolve_entry(conn, data_dir, asked, key, entry)
+
+
+def resolve_entry(conn, data_dir, asked: str, key: str, entry: dict) -> Media:
+    """The file a project's media entry (`document["media"][key]`) names,
+    under the same rules as a `project:` id. The export compiler (step 7)
+    resolves the media of the revision it renders this way: that revision's
+    document, not necessarily the one saved as the project now."""
+    data_dir = Path(data_dir)
+    try:
         source = entry["source"]
         source_type = source["type"]
-    except (TypeError, ValueError, KeyError):
+    except (TypeError, KeyError):
         raise NotFound(f"The project has no media {key!r}.") from None
     media_kind = entry.get("kind") if entry.get("kind") in KINDS else None
     if source_type == "video":

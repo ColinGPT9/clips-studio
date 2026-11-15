@@ -431,7 +431,11 @@ def test_the_routes_are_internal(env):
     mine = {("POST", "/clips/{clip_id}/project"), ("POST", "/projects"), ("GET", "/projects/{project_id}"),
             ("POST", "/projects/{project_id}/ops"), ("POST", "/projects/{project_id}/undo"),
             ("POST", "/projects/{project_id}/redo"), ("GET", "/projects/{project_id}/revisions"),
-            ("DELETE", "/projects/{project_id}")}
+            ("DELETE", "/projects/{project_id}"),
+            # The export, draft and still routes of step 7 (server/compose_api.py).
+            ("POST", "/projects/{project_id}/export"), ("GET", "/projects/{project_id}/exports"),
+            ("POST", "/projects/{project_id}/draft"), ("GET", "/projects/{project_id}/draft"),
+            ("GET", "/projects/{project_id}/still")}
     assert mine <= served
     assert {route for route in served if "project" in route[1]} == mine
     for route in mine:

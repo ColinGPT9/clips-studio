@@ -2180,7 +2180,7 @@
         "5",
         "6"
       ],
-      "status": "todo",
+      "status": "done",
       "user_visible": false,
       "acceptance": [
         "Plan snapshots",
@@ -2195,14 +2195,174 @@
         "video_editor/compose.py (new)",
         "core/framing.py (new)",
         "core/pipeline.py (extraction only)",
-        "server/jobs.py"
+        "server/jobs.py",
+        "video/cutter.py (encoder= keyword)",
+        "video_editor/export.py (encoder= keyword)",
+        "video_editor/watermark.py (logo_graph extracted)",
+        "video/captions.py (refit_caption_lines head_until)",
+        "tests/test_step7_helpers.py (new)",
+        "tests/test_branch_a_replace.py (new)",
+        "tests/test_editor_import_guard.py",
+        ".github/workflows/ci.yml",
+        "docs/editor-suite/api/step7-compiler.md (new)",
+        "video_editor/compose.py (new: compile, RenderPlan, run_plan)",
+        "server/compose_api.py (new: POST /projects/{id}/export, GET /projects/{id}/exports)",
+        "server/editor_lane.py (project exports listed with the exports; TaskContext.run cwd and on_progress)",
+        "server/api.py (installs compose_api)",
+        "core/framing.py (track= keyword)",
+        "core/state.py (project_exports: branch, duration_us, bytes, job_id)",
+        "video_editor/project/store.py (add_export/set_export fields)",
+        "video_editor/project/ops.py (framing.pad)",
+        "video_editor/media/cache.py (tracking product)",
+        "video_editor/media/resolver.py (resolve_entry)",
+        "tests/test_compose_plan.py (new)",
+        "tests/snapshots/compose_plans/ (new)",
+        "tests/test_compose_render.py (new)",
+        "tests/test_compose_routes.py (new)",
+        "tests/test_compose_lane.py (new)",
+        "tests/test_project_routes.py",
+        "docs/developers/api-reference.md",
+        "docs/editor-suite/DECISIONS.md (ED28)",
+        "video_editor/compose.py (part C: build_ass and the caption remap, the audio graph with sounds stages, buses, ducking, bleeps, fades, tails, atempo lead; the draft and the still)",
+        "video/captions.py (caption_ass: build_captions' text without writing it)",
+        "server/compose_api.py (part C: POST /projects/{id}/draft, GET /projects/{id}/draft, GET /projects/{id}/still; transcript, branding and logo for exports)",
+        "server/editor_lane.py (submit_task extra=; a task's stage and extra in public())",
+        "video_editor/media/cache.py (draft and stills products)",
+        "tests/test_compose_plan.py (part C cases and rules)",
+        "tests/test_compose_render.py (part C: sync, captions, loudness, click, still SSIM, draft)",
+        "tests/test_compose_routes.py (part C: draft and still routes)",
+        "docs/editor-suite/DECISIONS.md (ED29, ED30, ED31)",
+        "core/housekeeping.py (fix 7-D11: data/clips/projects never an orphan clip)",
+        "server/jobs.py (fix 7-D8: clip_lock around _rerender_clip)",
+        "tests/test_compose_lane.py, tests/test_branch_a_replace.py (fix round 1 tests)",
+        "docs/editor-suite/DECISIONS.md (ED32)"
       ],
       "notes": [
         "#192 and #144: engine",
-        "Project exports render on this PC; remote render can't fetch project media yet"
+        "Project exports render on this PC; remote render can't fetch project media yet",
+        "NVENC unusable on this PC (driver 591.44 = NVENC API 13.0; bundled FFmpeg 8.1 needs 13.1 / driver 610+): GPU targets not measured",
+        "Part B (2026-11-14): Branch B video path, RenderPlan, runner, export route done",
+        "Part C (2026-11-14): captions/text/hook/watermarks in one ASS with the word-level remap, the audio mix (buses, duck, bleep, fades, loudnorm on the mix), the tail pad as an L-cut, draft and still with their routes; the gates passed; QC and the review have not looked at it yet",
+        "Measured (CPU, synthetic 1080p30 source): 60 s 1080x1920 export with every layer 19.2 s (0.32x realtime), -14.0 LUFS; draft 7.4 s; a still 0.17-0.20 s",
+        "Fix round 1 (2026-11-14, 7-D1 to 7-D13): the review's three serious defects fixed (picture timing with a pre-roll; silent short programs; exports kept by Storage's clean-up), plus 7-D2, 7-D3 (part), 7-D6, 7-D7, 7-D8; 7-D1, 7-D4, 7-D5, 7-D12, 7-D13 left with reasons",
+        "Fix round 2 (2026-11-14, 7-D14): Branch B's register holds the clip's lock and replaces the clip's file only if it is still the one the export started from",
+        "2026-11-14: re-check after fix round 2 passed (QC and review, no serious defect); performance passed (exports 0.80-1.23x realtime on real 1080p60 footage, stills 296-300 ms median cold; plain clipping level with step 6, identical output). The small findings are listed in step7-compiler.md \"Left for steps 8 to 11\", to be fixed early in step 8."
       ],
       "results": [],
-      "defects": []
+      "defects": [
+        {
+          "id": "7-D1",
+          "date": "2026-11-14",
+          "found_by": "QC",
+          "summary": "ATEMPO_LEAD_S (the sync correction for slowed items) was measured only with the bundled FFmpeg 8.1; CI runs the 0.25x/0.5x sync tests on FFmpeg 6.x. Not changed: FFmpeg 6 can't be run on this PC (the permission system refused a downloaded build). Watch the first CI run of this branch; if a slowed-item sync test fails there, measure the lead per FFmpeg version.",
+          "routed_to": "Engineering",
+          "status": "open"
+        },
+        {
+          "id": "7-D2",
+          "date": "2026-11-14",
+          "found_by": "QC",
+          "summary": "The cancel test raced a real 2 s final encode that a fast runner could finish before the cancel. Fixed: the final stage is a stand-in FFmpeg writing its output at real time for up to 60 s, so it is always running when cancelled (tests/test_compose_routes.py).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "7-D3",
+          "date": "2026-11-14",
+          "found_by": "QC",
+          "summary": "An AI item's frame stage (tracking plus the cropper's render) ran outside the lane's process control: a cancel landed only when it ended. Partly fixed: the task is checked once the tracking is known (computed or cached), so the cropper's render never starts after a cancel (compose.cached_tracker check=; test in tests/test_compose_lane.py). Left for step 11: the tracking and a started cropper render still run to their end, and the cropper's FFmpeg isn't at the lane's below-normal priority.",
+          "routed_to": "Engineering",
+          "status": "open"
+        },
+        {
+          "id": "7-D4",
+          "date": "2026-11-14",
+          "found_by": "QC",
+          "summary": "AI items pass through one extra visible encode (the cropper's own CRF 20 / NVENC render) before the mezzanine and the final encode. Documented (choice 7); step 11 gives the cropper the canvas and an encoder.",
+          "routed_to": "Engineering",
+          "status": "open"
+        },
+        {
+          "id": "7-D5",
+          "date": "2026-11-14",
+          "found_by": "QC",
+          "summary": "After a Branch B export of a clip's project the clip row keeps start_s, end_s and render_opts while its file is the export; today's Apply would replace it with a render without the project's edits. Not changed in the engine: such a clip is already recognisable (clips.path equals a project_exports row's path with that clip_id), and the warning or routing of Apply through the project is step 8's (listed in the doc's 'Left for steps 8 to 11').",
+          "routed_to": "Engineering",
+          "status": "open"
+        },
+        {
+          "id": "7-D6",
+          "date": "2026-11-14",
+          "found_by": "QC",
+          "summary": "Stills (revision, frame) and drafts (revision) were cached without the settings, logo and transcript they were made from, so a change that doesn't raise the revision served an old one. Fixed: compose_api.facts_key (a hash of the caption style, captions switch and watermark settings, and the logo and transcript files' time and size) is in both cache names; test: a re-made transcript gives a new still.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "7-D7",
+          "date": "2026-11-14",
+          "found_by": "QC",
+          "summary": "The join stage's planned argv was not what ran (_run_join called encoding.concat). Fixed: the runner runs the stage's own command on the task (encoding.concat's first try, -copyts -c copy final_movflags), so the plan shows what runs and a cancel kills it.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "7-D8",
+          "date": "2026-11-14",
+          "found_by": "QC",
+          "summary": "Branch A re-rendered a clip on the lane's thread with nothing keeping a queued Apply of the same clip apart. Fixed: every re-render holds the clip's lock (server/jobs.py clip_lock; Worker._rerender_clip wraps _rerender_clip_now); Branch A checks for a cancel while it waits (tests/test_branch_a_replace.py).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "7-D9",
+          "date": "2026-11-14",
+          "found_by": "Review",
+          "summary": "SERIOUS. Branch B's picture ran early against the sound when an item's in point fell between two source frames (up to one source frame / speed: 3 to 4 frames at 0.25x and 0.5x); the still and the draft too. Class: every V1 item and overlay read from -ss with setpts=PTS-STARTPTS. Fixed: items are read from a 0.25 s pre-roll, the picture keeps each frame's offset (setpts=(PTS-pre/TB)/speed, fps=...:start_time), the item's own sound drops the pre-roll, and source_frame_time and still_frame follow the same rule. The review's t2_offgrid.py and t6_still_draft.py now show the picture within a frame of the sound and stills at SSIM >= 0.999; new test with in points between source frames at 0.25x, 0.5x and 1x, still included.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "7-D10",
+          "date": "2026-11-14",
+          "found_by": "Review",
+          "summary": "SERIOUS. An export or draft under 3 s with nothing to hear failed: loudnorm on digital silence put out NaN and the AAC encoder refused it. Class: loudnorm on any input it can't measure. Fixed: loudnorm is left out when nothing can be heard (compose.a1_audible, no buses), and a program under 3 s gets an aeval guard after it (NaN/inf -> 0) for a silent track it can't know about. The review's t10_short_silence.py and t9_silence_repeat.py pass; new tests: a 1 s picture, a 2 s silent track and a 2 s item at volume 0, export and draft each.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "7-D11",
+          "date": "2026-11-14",
+          "found_by": "Review",
+          "summary": "SERIOUS. Storage's clean-up deleted a manual project's finished export in data/clips/projects/ (no clip row points at it). Class: user files known only to project_exports. Fixed: housekeeping.survey never takes a file in data/clips/projects/ for an orphan clip, also after the project is deleted (ED32); test_storage_clean_up_keeps_a_manual_projects_export.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "7-D12",
+          "date": "2026-11-14",
+          "found_by": "Review",
+          "summary": "True peak after the AAC encode up to -0.6 dBTP on a peaky synthetic source, and one project at -15.5 LUFS, against the plan's -14 +-1 LUFS and <= -1 dBTP. A -2 dBTP ceiling was tried and did not fix it (-0.8 dBTP on the same source), so nothing changed; step 10's two-pass loudnorm plus a limiter.",
+          "routed_to": "Engineering",
+          "status": "open"
+        },
+        {
+          "id": "7-D13",
+          "date": "2026-11-14",
+          "found_by": "Review",
+          "summary": "Braces and backslashes typed into text are removed by step 5's clean_text, not escaped. Not changed: the hook also goes to today's renderers through Branch A, which don't escape them, and the \\{ escape is libass-only; step 9 (text on the viewer) picks an escape that works in both branches and JASSUB.",
+          "routed_to": "Engineering",
+          "status": "open"
+        },
+        {
+          "id": "7-D14",
+          "date": "2026-11-14",
+          "found_by": "Review",
+          "summary": "SERIOUS. Branch B's register step took no clip lock: if today's Apply had re-rendered the clip's file in place and not yet registered it, the export repointed the row and deleted Apply's fresh file, leaving Apply's new clip on a missing file and the export unreferenced by any clip. Class: a step that changes a clip's row or file without the clip's lock. Fixed: compose_api._register_b takes jobs.clip_lock (cancel-aware wait, taken before the file moves, so a cancel while waiting leaves nothing), re-reads the row under it, and repoints the clip and deletes its old file only if the row still names the file the export started from with the same size and mtime; otherwise the newer render wins and the export stays a project export (recorded in project_exports). The other writers of a clip's row/file under clip_lock are Apply and Branch A (7-D8). The review's test_r2_race.py runs the export inline inside Apply's lock and so cannot pass with any lock (it would deadlock); its scenario is now tests/test_compose_routes.py::test_an_apply_racing_a_branch_b_export_keeps_the_clips_new_file (the export on a second thread, waiting at the lock), plus test_a_branch_b_export_leaves_a_clip_whose_file_changed_meanwhile.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        }
+      ]
     },
     {
       "id": "8",

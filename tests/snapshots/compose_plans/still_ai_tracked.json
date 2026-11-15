@@ -1,0 +1,85 @@
+{
+  "project_id": "0123456789abcdef",
+  "revision": 7,
+  "purpose": "still",
+  "preset": {
+    "kind": "original"
+  },
+  "canvas": {
+    "width": 1080,
+    "height": 1920,
+    "fps": {
+      "num": 30,
+      "den": 1
+    }
+  },
+  "output": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30.0,
+    "codec": "mjpeg",
+    "encoder": "mjpeg",
+    "audio_kbps": 0,
+    "max_bytes": null,
+    "passes": 1
+  },
+  "program_us": 10000000,
+  "card_us": 0,
+  "work": "<WORK>",
+  "result": "<WORK>/still.jpg",
+  "video_post": [],
+  "notes": [],
+  "stages": [
+    {
+      "id": "still",
+      "kind": "ffmpeg",
+      "commands": [
+        [
+          "ffmpeg",
+          "-hide_banner",
+          "-y",
+          "-v",
+          "error",
+          "-nostdin",
+          "-progress",
+          "pipe:1",
+          "-nostats",
+          "-ss",
+          "102.483333",
+          "-i",
+          "<MEDIA>/m1.mp4",
+          "-/filter_complex",
+          "<WORK>/still.graph.txt",
+          "-map",
+          "[vout]",
+          "-frames:v",
+          "1",
+          "-q:v",
+          "2",
+          "-update",
+          "1",
+          "<WORK>/still.part.jpg"
+        ]
+      ],
+      "reads": [
+        "<MEDIA>/m1.mp4"
+      ],
+      "writes": [
+        "<WORK>/still.jpg"
+      ],
+      "temps": {
+        "<WORK>/still.jpg": "<WORK>/still.part.jpg"
+      },
+      "scripts": {
+        "<WORK>/still.graph.txt": "[0:v]crop=606:1080:657:0,scale=1080:1920:flags=lanczos,setsar=1,colorbalance=rm=0.10:bm=-0.10,eq=saturation=1.10:brightness=0.01[g0];\n[g0]format=yuv420p,setpts=PTS-STARTPTS+2.5/TB[b0];\n[b0]scale=out_range=full,format=yuvj420p[vout]\n"
+      },
+      "seconds": 0.033333,
+      "weight": 0.05,
+      "params": {
+        "t_us": 2500000,
+        "frame": 75
+      },
+      "cwd": "<WORK>"
+    }
+  ]
+}
