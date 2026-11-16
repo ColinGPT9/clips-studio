@@ -59,7 +59,9 @@ def test_etag_and_validators():
     assert fileio.if_none_match(f'"x", {tag}', tag) and fileio.if_none_match("*", tag)
     assert not fileio.if_none_match('"other"', tag) and not fileio.if_none_match(None, tag)
     assert fileio.if_range(None, tag, modified)
-    assert fileio.if_range(tag, tag, modified) and fileio.if_range(modified, tag, modified)
+    assert fileio.if_range(tag, tag, modified)
+    # A date is never taken (step 8): a file replaced within the same second has the same one.
+    assert not fileio.if_range(modified, tag, modified)
     assert not fileio.if_range('"other"', tag, modified)
     assert not fileio.if_range(f"W/{tag}", tag, modified)       # a weak tag never matches If-Range
     assert not fileio.if_range("Thu, 01 Jan 1970 00:00:00 GMT", tag, modified)

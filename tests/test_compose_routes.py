@@ -619,3 +619,84 @@ def test_a_still_is_a_jpeg_of_that_moment_kept_by_revision_and_time(env, media):
     transcript.write_text(transcript.read_text(encoding="utf-8") + " ", encoding="utf-8")
     assert env.get(f"/projects/{pid}/still?t_us=500000").status_code == 200
     assert len(list(stills.glob(f"r{out['revision']}-*-500000.jpg"))) == 2
+
+
+# ---- the end pad covers the whole program (fix 8-D10) ------------------------------------------------
+
+
+def _mean_rgb(binary: str, path: Path, t: float) -> tuple[int, int, int]:
+    out = subprocess.run([binary, "-v", "error", "-ss", f"{t:.3f}", "-i", str(path), "-frames:v", "1",
+                          "-vf", "scale=1:1:flags=area", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                         capture_output=True, check=True, timeout=60).stdout
+    return out[0], out[1], out[2]
+
+
+def test_the_end_pad_keeps_what_was_laid_to_the_end(env, media, monkeypatch):
+    """Fix 8-D10 (the round-3 review's test_t2_pad_overlay.py). An unchanged
+    clip's export runs Apply's 0.4 s past the end the timeline shows (ED34).
+    A video laid over the whole program stays on screen through the pad,
+    holding its last frame when its source has no more; text laid to the
+    end runs to the file's end; a picture that ends earlier keeps its end."""
+    pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    from video_editor import compose
+    from video_editor.project import store
+
+    binary = _ffmpeg_or_skip()
+    cid = env.clip(start=1.0, end=4.0, render_opts={"crop": "center", "captions": False},
+                   path=clip_file(env, "clip_00001-00004.mp4"))
+    p = env.project_of(cid)
+    doc = p["document"]
+    w, h = doc["canvas"]["width"], doc["canvas"]["height"]
+    end = model_end(doc)
+    assert end == 3_000_000
+    green, red = env.data_dir / "green.mp4", env.data_dir / "red.png"
+    # Exactly the program's length: past it, the source has no more frames.
+    subprocess.run([binary, "-v", "error", "-y", "-f", "lavfi", "-i", f"color=c=lime:s={w}x{h}:r=30:d=3",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(green)],
+                   check=True, timeout=120)
+    subprocess.run([binary, "-v", "error", "-y", "-f", "lavfi", "-i", f"color=c=red:s={w}x{h}", "-frames:v", "1",
+                    str(red)], check=True, timeout=60)
+    video = store.add_asset(env.db.conn, env.data_dir, green, kind="video", name="Green",
+                            facts={"duration_us": 3_000_000, "width": w, "height": h,
+                                   "fps": {"num": 30, "den": 1}, "has_audio": False})
+    picture = store.add_asset(env.db.conn, env.data_dir, red, kind="image", name="Red",
+                              facts={"duration_us": 0, "width": w, "height": h, "has_audio": False})
+    out = env.ops(p["id"], p["revision"], {"op": "add_media", "asset": video["sha256"]},
+                  {"op": "add_media", "asset": picture["sha256"]}, {"op": "add_track", "kind": "video"},
+                  {"op": "add_track", "kind": "video"}, {"op": "add_track", "kind": "text"})
+    kinds = {m["kind"]: k for k, m in out["document"]["media"].items() if k != doc["context"]["media_id"]}
+    lower, upper = [t["id"] for t in out["document"]["tracks"] if t["kind"] == "video" and t["id"] != "V1"]
+    out = env.ops(p["id"], out["revision"],
+                  {"op": "insert_clip", "track_id": lower, "media_id": kinds["video"], "source_in_us": 0,
+                   "source_out_us": end, "start_us": 0},
+                  {"op": "insert_clip", "track_id": upper, "media_id": kinds["image"], "source_in_us": 0,
+                   "source_out_us": 2_000_000, "start_us": 0},
+                  {"op": "add_text", "content": "Follow for more", "start_us": 0, "duration_us": end})
+    burned = []
+    real_build_ass = compose.build_ass
+
+    def seen_ass(*args, **kwargs):
+        text, fonts = real_build_ass(*args, **kwargs)
+        burned.append(text)
+        return text, fonts
+
+    monkeypatch.setattr(compose, "build_ass", seen_ass)
+    ex = env.export(p["id"], revision=out["revision"])
+    assert ex.status_code == 200 and ex.json()["branch"] == "B", ex.text
+    env.lane.run_pending()
+    job = env.lane.get(ex.json()["export"]["export_id"])
+    assert job["status"] == "done", job
+    path = Path(job["result"]["path"]) if job["result"].get("path") else Path(env.clip_row(cid)["path"])
+    assert abs(job["result"]["duration_us"] - 3_400_000) <= 40_000           # Apply's length (ED34)
+    r_, g, b = _mean_rgb(binary, path, 0.5)
+    assert r_ > 200 and g < 60 and b < 60, "the picture is on top until 2 s"
+    for t in (2.5, 3.1, 3.3):                    # the picture ended at 2 s; the video held through the pad
+        r_, g, b = _mean_rgb(binary, path, t)
+        assert g > 200 and r_ < 60 and b < 60, f"at {t} s the video laid over the whole program is gone"
+    assert burned and "0:00:03.40,Hook,,0,0,0,,Follow for more" in burned[-1]
+
+
+def model_end(doc: dict) -> int:
+    items = next(t for t in doc["tracks"] if t["id"] == "V1")["items"]
+    return items[-1]["start_us"] + items[-1]["duration_us"]

@@ -8,7 +8,7 @@
 - parse_range(): the Range header (RFC 9110 section 14): one range
   `bytes=a-b`, open-ended `bytes=a-` or a suffix `bytes=-n`.
 - etag(), if_none_match(), if_range(): a strong validator from the file's
-  size and modification time.
+  size and modification time. If-Range takes the ETag only, never a date.
 
 Standard library only.
 """
@@ -158,17 +158,31 @@ def parse_range(header: str | None, size: int) -> tuple[int, int] | None:
             first or last):
         return None
     if not first:                                   # bytes=-n: the last n bytes
-        n = int(last)
+        n = _number(last)
         if n == 0 or size == 0:
             raise Unsatisfiable()
         return max(0, size - n), size - 1
-    start = int(first)
-    if last and int(last) < start:
+    start = _number(first)
+    if last and _number(last) < start:
         return None
     if start >= size:
         raise Unsatisfiable()
-    end = min(int(last), size - 1) if last else size - 1
+    end = min(_number(last), size - 1) if last else size - 1
     return start, end
+
+
+_DIGITS_MAX = 19                # more than any file has bytes (2^63 has 19 digits)
+
+
+def _number(digits: str) -> int:
+    """A Range number. One with more digits than any file size has is
+    taken as larger than every file, without int(), which refuses a string
+    of more than 4,300 digits (step 6's fault: a 500 instead of an ignored
+    or refused range)."""
+    digits = digits.lstrip("0") or "0"
+    if len(digits) > _DIGITS_MAX:
+        return 10 ** _DIGITS_MAX
+    return int(digits)
 
 
 def etag(size: int, mtime_ns: int) -> str:
@@ -195,11 +209,13 @@ def if_none_match(header: str | None, tag: str) -> bool:
 
 
 def if_range(header: str | None, tag: str, modified: str) -> bool:
-    """Whether a Range may be honoured under If-Range: no If-Range, an
-    entity tag that matches strongly, or the exact Last-Modified date."""
+    """Whether a Range may be honoured under If-Range: no If-Range, or an
+    entity tag that matches strongly. A date is never taken (editor suite
+    step 8): Last-Modified has whole seconds, so a file replaced within the
+    same second as the one the client saw would pass for it, and its bytes
+    would be sent as a range of the old file. The answer is then the whole
+    file, as RFC 9110 lets a server answer. Chromium sends the ETag."""
     if header is None:
         return True
     header = header.strip()
-    if header.startswith('"') or header.startswith("W/"):
-        return header == tag                        # strong comparison: a weak tag never matches
-    return header == modified
+    return header == tag                            # strong comparison: a weak tag never matches

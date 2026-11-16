@@ -22,7 +22,10 @@ step 1's exports (GET /export/jobs, "export" events, POST
   file goes to data/clips/projects/<project id>-r<revision>.mp4; a project
   made from a clip that still exists has that clip's file replaced by it (the
   clip keeps its id, title and posts). A project with no clip only gets the
-  file and its row.
+  file and its row; when the request names the person's export folder
+  (`folder`, Settings' Export folder), such a project's file goes there
+  instead, named after the project and the day (step 8's UX fix:
+  "own_clip_45s - 2026-11-15.mp4").
 
 Either way the new file is complete and registered before the old one is
 deleted, and a failed or cancelled export leaves the clip, the project and
@@ -38,6 +41,7 @@ import json
 import os
 import re
 import shutil
+import threading
 import uuid
 from pathlib import Path
 from typing import Any
@@ -55,7 +59,7 @@ from server.projects_api import local_origin, session_guard
 from video import export_presets
 from video_editor import compose
 from video_editor.media import cache, resolver
-from video_editor.project import projection, store
+from video_editor.project import importer, projection, store
 
 PROJECTS_FOLDER = ("clips", "projects")      # under the data folder (core/housekeeping.PROJECT_EXPORTS)
 
@@ -71,6 +75,36 @@ class ExportIn(BaseModel):
 
     revision: StrictInt | None = None
     preset: Any = None
+    # The project of a clip that was changed in today's editor since the
+    # project was made or last exported (8-D6): exporting would replace the
+    # clip's file with the project's older version of it. Refused (409,
+    # reason "clip_changed") unless the person chose that.
+    replace_clip_changes: bool = False
+    # The person's export folder (Settings' Export folder, as the clip
+    # exports send it). Used only for a project with no clip (made by hand,
+    # or whose clip was deleted): its file goes there, named after the
+    # project and the day. A project made from a clip that exists replaces
+    # that clip's file, as before. Absent, or not an absolute path: the
+    # file stays in data/clips/projects/ as <project id>-r<revision>.mp4.
+    folder: str | None = None
+
+
+_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+
+
+def export_stem(name: str, day: str) -> str:
+    """The file name (without .mp4) of a project export that goes to the
+    person's export folder: the project's name and the day, made safe as a
+    Windows file name ("own_clip_45s - 2026-11-15"). A project without a
+    usable name is called "Project". A video's extension at the end of the
+    name (an imported file's project is named after the file) is left out,
+    so the file is never "own_clip_45s.mp4 - 2026-11-15.mp4"."""
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", str(name or "")).strip()
+    cleaned = re.sub(r"\.(mp4|mov|m4v|mkv|webm|avi|flv|ts|wmv)$", "", cleaned, flags=re.IGNORECASE).strip().rstrip(". ")
+    cleaned = re.sub(r"\s+", " ", cleaned)[:80].strip().rstrip(". ") or "Project"
+    if cleaned.split(".")[0].upper() in _RESERVED:
+        cleaned = f"{cleaned} project"
+    return f"{cleaned} - {day}"
 
 
 class DraftIn(BaseModel):
@@ -84,6 +118,42 @@ class DraftIn(BaseModel):
 
 DRAFT_PRODUCT, STILL_PRODUCT = "draft", "stills"     # in data/media_cache/project-<id>/ (cache.PRODUCTS)
 STILLS_KEPT = 200                                    # stills kept per project; the oldest go first
+SUPERSEDED = "A newer still of this project was asked for."
+
+
+class StillSlots:
+    """One still's FFmpeg at a time per project, and a newer request stops
+    an older one (step 7's fault, fixed in step 8: scrubbing started an
+    FFmpeg per request, with no limit). Each request takes a ticket; a
+    newer ticket cancels the task of the one running and makes every older
+    one that is still waiting give up."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._slots: dict[str, dict] = {}
+
+    def ticket(self, project_id: str) -> tuple[dict, int]:
+        """A new ticket for `project_id`: stops the still being made for it."""
+        with self._lock:
+            slot = self._slots.setdefault(project_id, {"newest": 0, "task": None, "lock": threading.Lock()})
+            slot["newest"] += 1
+            task = slot["task"]
+        if task is not None:
+            task.cancel()
+        return slot, slot["newest"]
+
+    def current(self, slot: dict, ticket: int) -> bool:
+        with self._lock:
+            return slot["newest"] == ticket
+
+    def running(self, slot: dict, task) -> None:
+        with self._lock:
+            slot["task"] = task
+
+    def done(self, slot: dict, task) -> None:
+        with self._lock:
+            if slot["task"] is task:
+                slot["task"] = None
 
 
 def project_token(secret: str, project_id: str) -> str:
@@ -141,6 +211,8 @@ def resolve_media(conn, data_dir: Path, project_id: str, doc: dict, *, tracking:
 
 _VIDEO_ID = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}")
 _PROJECT_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+# What an export's file can be, for GET /projects/{id}/exports/{row}/file.
+EXPORT_FILE_TYPES = (".mp4", ".mov", ".m4v", ".mkv", ".webm")
 
 
 def transcript_file(data_dir: Path, doc: dict) -> Path | None:
@@ -236,6 +308,8 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
     config = config or {}
     guarded = [Depends(session_guard(session_secret, data_dir))]
     db_path = data_dir / "state.db"
+    still_slots = StillSlots()
+    app.state.still_slots = still_slots
 
     def sent(payload, status: int = 200) -> Response:
         return Response(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), status_code=status,
@@ -305,6 +379,20 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
         except (export_presets.PresetError, export_presets.ExportError) as e:
             raise HTTPException(400, str(e)) from e
 
+    def export_place(project: dict, clip_id, folder: str | None) -> tuple[Path, str] | None:
+        """Where a project with no clip (made by hand, or whose clip was
+        deleted) puts its file when the person's export folder is named:
+        that folder, and the project's name with the day. None (the app's
+        own folder, <project id>-r<revision>) for a clip's project, or when
+        no absolute folder is given."""
+        if clip_id is not None or not folder or not str(folder).strip():
+            return None
+        place = Path(str(folder).strip())
+        if not place.is_absolute():
+            return None
+        name = (project.get("document") or {}).get("name") or project.get("name") or ""
+        return place, export_stem(name, _now()[:10])
+
     # ---- the routes --------------------------------------------------------------------------
 
     @app.post("/projects/{project_id}/export", dependencies=guarded)
@@ -329,6 +417,13 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
                                                      "it is now, or undo back to it first.",
                                           "current_revision": revision})
             doc = project["document"]
+            clip_now = clip_changed(d, project_id, project.get("clip_id"))
+            if clip_now and not body.replace_clip_changes:
+                raise HTTPException(409, {
+                    "message": "This clip was changed in the clip editor after this project was made. "
+                               "Exporting puts the project's version in its place, so those changes "
+                               "would be lost.",
+                    "reason": "clip_changed", "clip_id": project.get("clip_id")})
             preset = read_preset(body, doc)
             branch = branch_of(project, preset)
             name = f"{project_id}-r{revision}"
@@ -347,6 +442,9 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
                 except compose.CompileError as e:
                     raise HTTPException(400, str(e)) from e
             clip_id = project.get("clip_id")
+            out = export_place(project, clip_id, body.folder)
+            if out is not None:
+                folder, name = out
             export_id = store.add_export(d.conn, project_id, revision, clip_id=clip_id,
                                          preset=None if preset["kind"] == "original" else preset,
                                          status="queued", branch=branch["branch"])
@@ -355,9 +453,9 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
         extra = {"project_id": project_id, "revision": revision, "branch": branch["branch"],
                  "project_export_id": export_id}
         if branch["branch"] == "A":
-            work = _branch_a(project_id, export_id, int(clip_id), branch)
+            work = _branch_a(project_id, export_id, revision, int(clip_id), branch)
         else:
-            work = _branch_b(project_id, export_id, revision, doc, preset, clip_id)
+            work = _branch_b(project_id, export_id, revision, doc, preset, clip_id, out)
         job = lane.submit_project_export(work, folder=folder, name=name, preset=preset, clip_id=clip_id,
                                          extra=extra,
                                          on_dropped=lambda _job: _record(export_id, status="cancelled"))
@@ -482,8 +580,20 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
         folder = preview_folder(data_dir, project_id)
         kept = folder / STILL_PRODUCT / f"r{revision}-{facts_key(data_dir, doc, config)}-{frame_us}.jpg"
         headers = {"Cache-Control": "no-cache", "X-Clips-Kitty-Still-Time": str(frame_us)}
+        # This request is now the newest of the project's: an older still
+        # still being made is stopped, and one still waiting gives up.
+        slot, ticket = still_slots.ticket(project_id)
         if kept.is_file():
             return Response(kept.read_bytes(), media_type="image/jpeg", headers=headers)
+        with slot["lock"]:
+            if not still_slots.current(slot, ticket):
+                raise HTTPException(409, {"message": SUPERSEDED, "superseded": True})
+            return _make_still(project_id, slot, revision, doc, t_us, folder, kept, headers)
+
+    def _make_still(project_id: str, slot: dict, revision: int, doc: dict, t_us: int, folder: Path, kept: Path,
+                    headers: dict) -> Response:
+        """The still made in the request, one FFmpeg at a time per project
+        (the caller holds the project's slot)."""
         d = db()
         try:
             try:
@@ -505,10 +615,16 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
                 if tracking is not None:
                     inputs.tracking = {"tracking": tracking, "run_start_us": run[1]}
             plan = compose.compile(doc, revision, None, "still", inputs=inputs, at_us=t_us)
+            task = compose.LocalTask()
+            still_slots.running(slot, task)
             try:
-                made = compose.run_plan(plan, compose.LocalTask(), config=config)
+                made = compose.run_plan(plan, task, config=config)
+            except export_presets.Cancelled as e:
+                raise HTTPException(409, {"message": SUPERSEDED, "superseded": True}) from e
             except compose.StageFailed as e:
                 raise HTTPException(500, f"The still couldn't be made: {e}") from e
+            finally:
+                still_slots.done(slot, task)
             body = Path(made["path"]).read_bytes()
             if plan.notes:
                 headers["X-Clips-Kitty-Still-Note"] = "approximate"
@@ -541,7 +657,8 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
             for row in rows:
                 # One the app was closed in the middle of: the lane forgets
                 # its jobs at a restart, and the export never finished.
-                if row["status"] in ("queued", "running") and row.get("job_id") is not None                         and lane.get(int(row["job_id"])) is None:
+                if row["status"] in ("queued", "running") and row.get("job_id") is not None \
+                        and lane.get(int(row["job_id"])) is None:
                     row["status"] = "interrupted"
                     store.set_export(d.conn, row["id"], status="interrupted")
         finally:
@@ -551,7 +668,43 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
                 row["preset"] = json.loads(row["preset"]) if row.get("preset") else None
             except ValueError:
                 row["preset"] = None
+            # Whether the file is still there to play or show (step 8): a
+            # later export, an Apply or a person may have replaced or deleted
+            # it. A row whose file went is never offered as done, nor one
+            # whose path now holds another file (8-D4: today's Apply writes
+            # a clip's file in place, and that is a Branch A export's file).
+            row["file_exists"] = bool(row.get("path")) and Path(str(row["path"])).is_file()
+            if row["status"] == "done" and row["file_exists"] and not store.file_is_its_own(row):
+                row["status"] = "replaced"
+                _record(int(row["id"]), status="replaced")
+            # Where the editor plays it (step 8 part C): only a finished
+            # export whose file is there, with the project's token.
+            row["url"] = (f"/projects/{project_id}/exports/{int(row['id'])}/file?t="
+                          f"{project_token(session_secret, project_id)}"
+                          if row["status"] == "done" and row["file_exists"] else None)
         return sent({"exports": rows})
+
+    @app.get("/projects/{project_id}/exports/{export_row}/file")
+    def project_export_file(project_id: str, export_row: int, request: Request):
+        """A finished export's file, to play it in the editor's export
+        dialog (step 8 part C): Range and ETag as step 6's sources, the
+        session header or the project's token. Only a row of this project
+        whose status is done, a video by its extension, and whose file is
+        there; never any other path."""
+        read_guard(request, project_id)
+        d = db()
+        try:
+            row = next((r for r in store.exports(d.conn, project_id) if int(r["id"]) == export_row), None)
+        finally:
+            d.close()
+        if row is None or row.get("status") != "done" or not row.get("path"):
+            raise HTTPException(404, "This project has no such finished export.")
+        path = Path(str(row["path"]))
+        if path.suffix.lower() not in EXPORT_FILE_TYPES or not path.is_file():
+            raise HTTPException(404, "That export's file is gone.")
+        if not store.file_is_its_own(row):
+            raise HTTPException(404, "That export's file was replaced by a newer one.")
+        return serve_file(request, path)
 
     # ---- the jobs ----------------------------------------------------------------------------
 
@@ -573,11 +726,24 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
         except Exception as e:
             _record(export_id, status="failed", error=(str(e).strip() or type(e).__name__)[:500])
             raise
-        _record(export_id, status="done", error="", **{k: result[k] for k in ("path", "bytes", "duration_us",
-                                                                              "clip_id") if k in result})
+        stamp = _stamp(Path(result["path"])) if result.get("path") else None
+        fields = {k: result[k] for k in ("path", "bytes", "duration_us", "clip_id") if k in result}
+        if stamp:
+            fields.update(bytes=stamp[0], file_mtime_ns=stamp[1])
+        _record(export_id, status="done", error="", **fields)
+        # Earlier exports whose file this one replaced (the clip's old file,
+        # or the same name written again) are marked so, never offered as
+        # done with a file that is gone or is another export's (step 7's
+        # fault, fixed in step 8).
+        d = StateDB(db_path)
+        try:
+            store.mark_replaced(d.conn, [result.get("path"), result.get("replaced")], keep=export_id)
+        finally:
+            d.close()
         return result
 
-    def _branch_b(project_id: str, export_id: int, revision: int, doc: dict, preset: dict, clip_id):
+    def _branch_b(project_id: str, export_id: int, revision: int, doc: dict, preset: dict, clip_id,
+                  out: tuple[Path, str] | None = None):
         def work(ctx) -> dict:
             workdir = lane.work_root / f"job-{ctx.job.id}"
 
@@ -608,7 +774,8 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
                 plan = compose.compile(doc, revision, preset, "export", inputs=inputs)
                 made = compose.run_plan(plan, ctx, config=config)
                 ctx.check()
-                return _register_b(project_id, revision, Path(made["path"]), clip_id, made, ctx, start_file)
+                return _register_b(project_id, revision, Path(made["path"]), clip_id, made, ctx, start_file,
+                                   export_id=export_id, out=out)
 
             try:
                 return _finish(export_id, run)
@@ -618,7 +785,8 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
         return work
 
     def _register_b(project_id: str, revision: int, made: Path, clip_id, outcome: dict,
-                    ctx=None, start_file=None) -> dict:
+                    ctx=None, start_file=None, export_id: int | None = None,
+                    out: tuple[Path, str] | None = None) -> dict:
         """The finished file into data/clips/projects/, then the clip pointed
         at it, then the clip's old file deleted: in that order, so nothing is
         lost if any step fails.
@@ -631,7 +799,7 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
         render wins and the clip is not touched; the export stays a project
         export in clips/projects/ (recorded in project_exports)."""
         if clip_id is None:
-            return _register_b_locked(project_id, revision, made, None, outcome, start_file)
+            return _register_b_locked(project_id, revision, made, None, outcome, start_file, export_id, out)
         from server.jobs import clip_lock
 
         lock = clip_lock(clip_id)
@@ -639,15 +807,31 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
             if ctx is not None:
                 ctx.check()
         try:
-            return _register_b_locked(project_id, revision, made, clip_id, outcome, start_file)
+            return _register_b_locked(project_id, revision, made, clip_id, outcome, start_file, export_id)
         finally:
             lock.release()
 
     def _register_b_locked(project_id: str, revision: int, made: Path, clip_id, outcome: dict,
-                           start_file) -> dict:
-        folder = data_dir.joinpath(*PROJECTS_FOLDER)
+                           start_file, export_id: int | None = None,
+                           out: tuple[Path, str] | None = None) -> dict:
+        folder, stem = data_dir.joinpath(*PROJECTS_FOLDER), f"{project_id}-r{revision}"
+        if out is not None and clip_id is None:
+            # A project with no clip, and the person's export folder named:
+            # the file goes there, named after the project (step 8's UX
+            # fix). If that folder can't be made, the app's own folder.
+            try:
+                out[0].mkdir(parents=True, exist_ok=True)
+                folder, stem = out
+            except OSError:
+                pass
         folder.mkdir(parents=True, exist_ok=True)
-        target = unique_target(folder, f"{project_id}-r{revision}")
+        target = unique_target(folder, stem)
+        if export_id is not None:
+            # The row names the file before it is there, so a crash between
+            # the move and the clip's update leaves a file that its export
+            # row names, never one nothing names (step 7's fault, fixed in
+            # step 8). Storage never sweeps this folder.
+            _record(export_id, path=str(target))
         try:
             os.replace(made, target)
         except OSError:
@@ -656,7 +840,8 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
             duration_us = int(round(export_presets.probe(target).duration * 1_000_000))
         except export_presets.ExportError:
             duration_us = 0
-        result = {"path": str(target), "file": target.name, "bytes": target.stat().st_size,
+        result = {"path": str(target), "file": target.name, "folder": str(target.parent),
+                  "bytes": target.stat().st_size,
                   "duration_us": duration_us, "retried": outcome.get("retried", False),
                   "fell_back_to_cpu": outcome.get("fell_back_to_cpu", False)}
         if clip_id is None:
@@ -671,7 +856,12 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
                 return result       # re-rendered while the export ran: the newer file stays
             old = Path(row["path"]) if row["path"] else None
             d.set_clip(int(clip_id), path=str(target), edited_at=_now())
+            # The person exported over the clip as it is now (8-D6): from
+            # here the project is compared with that.
+            store.set_clip_basis(d.conn, project_id, importer.clip_basis(row), revision=None)
             result["clip_id"] = int(clip_id)
+            if old is not None:
+                result["replaced"] = str(old)
         finally:
             d.close()
         if old is not None and old != target and old.exists() and _inside(data_dir, old):
@@ -680,7 +870,7 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
         broadcaster.publish({"type": "clip_file_replaced", "clip_id": int(clip_id), "project_id": project_id})
         return result
 
-    def _branch_a(project_id: str, export_id: int, clip_id: int, branch: dict):
+    def _branch_a(project_id: str, export_id: int, revision: int, clip_id: int, branch: dict):
         def work(ctx) -> dict:
             workdir = lane.work_root / f"job-{ctx.job.id}"
 
@@ -723,6 +913,12 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
                             shutil.copyfile(backup, old)
                         raise
                     new = d.get_clip(new_id) if new_id is not None else None
+                    if new is not None:
+                        # The clip is now the project's window and options
+                        # at the exported revision, not at the head now:
+                        # edits made during the export stay "changes of
+                        # its own" (8-D6, 8-D12).
+                        store.set_clip_basis(d.conn, project_id, importer.clip_basis(new), revision=revision)
                 finally:
                     d.close()
                 if new is None:
@@ -733,7 +929,8 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
                 except export_presets.ExportError:
                     duration_us = 0
                 return {"path": str(path), "file": path.name, "bytes": path.stat().st_size,
-                        "duration_us": duration_us, "clip_id": int(new_id)}
+                        "duration_us": duration_us, "clip_id": int(new_id),
+                        "replaced": str(old) if old is not None else None}
 
             try:
                 return _finish(export_id, run)
@@ -741,6 +938,23 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
                 shutil.rmtree(workdir, ignore_errors=True)
 
         return work
+
+
+def clip_changed(d, project_id: str, clip_id) -> bool:
+    """Whether the clip a project was made from was changed since the
+    project was made or last exported (8-D6): its window or render options
+    are no longer what the project recorded. False for a project made by
+    hand, one whose clip is gone, and one made before this was recorded."""
+    if clip_id is None:
+        return False
+    basis, _unchanged = store.clip_basis(d.conn, project_id)
+    if not basis:
+        return False
+    try:
+        row = d.get_clip(int(clip_id))
+    except (OverflowError, ValueError, TypeError):
+        return False
+    return row is not None and importer.clip_basis(row) != basis
 
 
 class _ConfigOnly:

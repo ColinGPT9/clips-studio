@@ -236,6 +236,16 @@ def compute(source, *, popen=None, use_numpy: bool | None = None, on_progress=No
             read += len(chunk)
             if on_progress is not None and duration_us:
                 on_progress(min(0.999, read / total))
+    except BaseException:
+        # Stopped while FFmpeg is still writing (a read error, a bin that
+        # can't be made): FFmpeg would wait on a pipe no one reads, and the
+        # wait below with it (step 6's fault: the lane hung). It is stopped
+        # first.
+        try:
+            proc.kill()
+        except OSError:
+            pass
+        raise
     finally:
         code = proc.wait()
         reader.join(timeout=5)

@@ -101,6 +101,10 @@ class RenderFirst(BaseModel):
     # The edits plugins suggested that this render puts in the clip, as for
     # POST /clips/{id}/render (server/api.py RenderIn).
     suggestions: dict | None = None
+    # The clip's file is a new-editor export: this render, from the clip's
+    # own settings, would replace it (editor suite step 8, 7-D5). Refused
+    # (409, as Apply's) unless the person chose that.
+    replace_project_edits: bool = False
 
 
 class PublishIn(BaseModel):
@@ -458,6 +462,9 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
             # one: same job type, same worker, same code that Apply edits runs.
             after_job_id = 0
             if body.render_first is not None:
+                from server.api import project_edits_kept
+
+                project_edits_kept(d, clip_id, body.render_first.replace_project_edits)
                 payload = {"clip_id": clip_id}
                 if body.render_first.start is not None:
                     payload["start"] = body.render_first.start
@@ -469,6 +476,8 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
                     from server.api import used_suggestions
 
                     payload["suggestions"] = used_suggestions(body.render_first.suggestions)
+                if body.render_first.replace_project_edits:
+                    payload["replace_project_edits"] = True     # the person chose to (8-D9; server/jobs.py)
                 after_job_id = d.add_job("render", json.dumps(payload))
                 d.mark_edited(clip_id)   # Make clips again keeps it, the render failing too
             elif not (clip["path"] and Path(clip["path"]).exists()):

@@ -49,6 +49,9 @@ contextBridge.exposeInMainWorld('studio', {
   openCatalogLink: (url: string, ours: boolean): Promise<boolean> =>
     ipcRenderer.invoke('open-catalog-link', url, ours),
   pickPluginFolder: (): Promise<string | null> => ipcRenderer.invoke('pick-plugin-folder'),
+  // The new editor's export dialog: an exported video shown in its folder.
+  // The main process takes only an existing video file, and only shows it.
+  showInFolder: (path: string): Promise<boolean> => ipcRenderer.invoke('show-in-folder', path),
   // Whether closing the window keeps Clips Kitty running in the tray, for
   // watched channels. Off unless turned on; the main process remembers it.
   tray: {

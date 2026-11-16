@@ -308,10 +308,16 @@ class RenderIn(BaseModel):
     # editor used them: {"used": [{"id", "applied"}]} (plugins/edit_marks.py).
     # The worker keeps only what the render really changed.
     suggestions: dict | None = None
+    # The clip's file is an export of the new editor's project (editor suite
+    # step 8, 7-D5): a render from the clip's own settings would replace it
+    # with the clip as it was before the project's edits. Refused (409)
+    # unless the person said that is what they want.
+    replace_project_edits: bool = False
 
 
 class CaptionsIn(BaseModel):
     lines: list[dict]  # [{"start", "end", "text"}] clip-relative
+    replace_project_edits: bool = False     # as RenderIn's (editor suite step 8)
 
 
 class TightenIn(BaseModel):
@@ -342,6 +348,7 @@ class CancelIn(BaseModel):
 
 class AiEditIn(BaseModel):
     message: str
+    replace_project_edits: bool = False     # as RenderIn's (editor suite step 8)
 
 
 class AgentIn(BaseModel):
@@ -416,6 +423,9 @@ class TranslateIn(BaseModel):
     voices: dict | None = None    # {language: voice id} chosen by the creator
     style: dict | None = None     # subtitle font/size/colour/position; falls
                                   # back to the clip's own caption style
+    without_project_edits: bool = False  # "Make it anyway": a clip whose file is
+                                  # a new-editor export is translated from the
+                                  # clip as the AI made it (project_edits_left_out)
 
 
 class FeedbackIn(BaseModel):
@@ -751,6 +761,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],  # Vite dev server
         allow_methods=["*"],
         allow_headers=["*"],
+        # The new editor reads which frame a still shows, and whether it is
+        # approximate (server/compose_api.py get_still), with fetch().
+        expose_headers=["X-Clips-Kitty-Still-Time", "X-Clips-Kitty-Still-Note"],
     )
     # Answer only requests addressed to this machine. There is no auth, so a web
     # page could otherwise reach the API by DNS rebinding: its own domain pointed
@@ -938,7 +951,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     # secret and an Origin of this PC's own.
     from server import projects_api
 
-    projects_api.install(app, db=db, data_dir=data_dir, session_secret=desktop_session)
+    projects_api.install(app, db=db, data_dir=data_dir, session_secret=desktop_session, lane=editor_lane)
 
     # The new editor's media (video_editor/media/, editor suite step 6): the
     # source files in byte ranges, proxies, waveform peaks and thumbnail
@@ -1683,6 +1696,14 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         if cancel.active_video() == video_id:
             raise HTTPException(409, "video is processing right now — cancel it first")
 
+        # The new editor's proxy, waveform and thumbnail tasks of this video
+        # stop first: on Windows the FFmpeg reading the download holds it,
+        # and the delete below would leave it (editor suite step 8). Nothing
+        # runs here unless the new editor asked for one of them.
+        from server.media_api import cancel_tasks_for
+
+        cancel_tasks_for(editor_lane, data_dir, f"video:{video_id}")
+
         # Remove files: download, transcript, and the clip folder.
         #
         # Everything below is chosen by LISTING a folder and comparing names,
@@ -2016,7 +2037,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 for l in body.lines
                 if "start" in l and "end" in l
             ]
+            # A render from the clip's own settings, as Apply's (7-D5, 8-D2).
+            project_edits_kept(d, clip_id, body.replace_project_edits)
             payload = {"clip_id": clip_id, "render_opts": {"caption_lines": lines}}
+            if body.replace_project_edits:
+                payload["replace_project_edits"] = True     # the person chose to (8-D9; jobs.py)
             job_id = d.add_job("render", json.dumps(payload))
             # The typed lines are only in the job until its render works:
             # Make clips again keeps the clip meanwhile, and after (StateDB.mark_edited).
@@ -2067,6 +2092,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             drop_fillers=body.fillers,
         )
 
+    _project_edits_kept = project_edits_kept
+
     @app.post("/clips/{clip_id}/ai-edit")
     def ai_edit(clip_id: int, body: AiEditIn):
         """Chat-driven editing: plain language in, validated edit + re-render out."""
@@ -2085,6 +2112,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             row = d.get_clip(clip_id)
             if row is None:
                 raise HTTPException(404, "no such clip")
+            _project_edits_kept(d, clip_id, body.replace_project_edits)
 
             opts = json.loads(row["render_opts"]) if row["render_opts"] else {}
             caption_lines = _clip_captions(row, as_burned=True)
@@ -2121,6 +2149,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                     payload["end"] = result["end"]
                 if result["render_opts"]:
                     payload["render_opts"] = result["render_opts"]
+                if body.replace_project_edits:
+                    payload["replace_project_edits"] = True     # the person chose to (8-D9; jobs.py)
                 job_id = d.add_job("render", json.dumps(payload))
                 d.mark_edited(clip_id)   # Make clips again keeps it, the render failing too
                 _log_feedback(
@@ -2148,6 +2178,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             row = d.get_clip(clip_id)
             if row is None:
                 raise HTTPException(404, "no such clip")
+            _project_edits_kept(d, clip_id, body.replace_project_edits)
             payload = {"clip_id": clip_id}
             if body.start is not None:
                 payload["start"] = body.start
@@ -2157,6 +2188,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 payload["render_opts"] = _clean_render_gaming(dict(body.render_opts))
             if body.suggestions is not None:
                 payload["suggestions"] = used_suggestions(body.suggestions)
+            if body.replace_project_edits:
+                payload["replace_project_edits"] = True     # the person chose to (8-D9; jobs.py)
             job_id = d.add_job("render", json.dumps(payload))
             d.mark_edited(clip_id)   # Make clips again keeps it, the render failing too
             _log_feedback(
@@ -2606,6 +2639,15 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         stage = body.stage if body.stage in ("translate", "export") else "export"
         if stage == "export" and not body.folder:
             raise HTTPException(400, "choose an export folder")
+        if stage == "export" and (body.burn or body.dub or body.subtitles):
+            # Burned subtitles, a dub and subtitle files are made from the
+            # clip's own window and caption lines: ask first for a clip whose
+            # file is a new-editor export (8-D13).
+            d = db()
+            try:
+                project_edits_left_out(d, body.clip_ids[:50], body.without_project_edits)
+            finally:
+                d.close()
         # Held until the job naming them is queued (core/in_use.py).
         with in_use.holding(body.clip_ids[:50]):
             job_id = _queue_translation(body, langs, stage)
@@ -2627,6 +2669,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 "post_text": body.post_text,
                 "voices": body.voices or {},
                 "style": body.style or {},
+                # Only when chosen, so every other job's payload is as before.
+                **({"without_project_edits": True} if body.without_project_edits else {}),
             }))
         finally:
             d.close()
@@ -2934,6 +2978,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     @app.post("/export/jobs/{export_id}/cancel")
     def cancel_export_job(export_id: int, request: Request):
         _require_session(request)
+        # And an Origin of this PC's own, as the project routes ask (8-D9):
+        # the new editor's export dialog cancels a project export here.
+        from server.projects_api import local_origin
+
+        if not local_origin(request.headers.get("origin"), request.headers.get("host")):
+            raise HTTPException(403, "Exports can only be stopped from the Clips Kitty app on this PC.")
         job = editor_lane.cancel(export_id)
         if job is None:
             raise HTTPException(404, "no such export")
@@ -3870,6 +3920,60 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
 
 # ---- helpers --------------------------------------------------------------------
+
+
+def project_edits_kept(d, clip_id: int, replace: bool) -> None:
+    """Refuse a render of a clip whose file is a new-editor export, made
+    from the clip's own (older) settings, unless the person chose to replace
+    it (editor suite step 8, 7-D5). Every route that queues such a render
+    asks this first: Apply (POST /clips/{id}/render), the chat edit, PUT
+    /clips/{id}/captions and "Apply edits & upload" (server/youtube_api.py,
+    render_first). A clip with no such export renders exactly as before.
+
+    The clip's file is told to be an export by the file itself too, so a
+    deleted project still asks (8-D9): then `project_id` is null and there
+    is no project to open."""
+    project_id = d.project_export_of(clip_id)
+    if project_id is not None and not replace:
+        if project_id:
+            message = ("This clip was changed in the new editor. Applying changes here starts again from "
+                       "the clip as it was before, so those changes would be lost. Open it in the new "
+                       "editor to keep them.")
+        else:
+            message = ("This clip was changed in the new editor, and that project was deleted. Applying "
+                       "changes here starts again from the clip as it was before, so the video you "
+                       "exported from the new editor would be replaced.")
+        raise HTTPException(409, {"message": message, "reason": "project_export",
+                                  "project_id": project_id or None})
+
+
+def project_edits_left_out(d, clip_ids, go_ahead: bool) -> None:
+    """Refuse to make a SEPARATE file (a translation, a dub, subtitle files)
+    from the clip's own window when the clip's file is a new-editor export,
+    unless the person chose "Make it anyway" (editor suite step 8, 8-D13).
+    project_edits_kept's sibling: that one guards renders that replace the
+    clip's file; this one guards new files made beside it, which would be
+    the clip as the AI made it, without the project's changes. A batch is
+    asked about once, naming every clip it affects (`clip_ids`, `count` of
+    `total`); `project_id` is there only when one clip is affected and its
+    project still exists, so the app can offer to open it. A batch with no
+    such clip goes ahead exactly as before."""
+    if go_ahead:
+        return
+    ids = list(clip_ids or [])
+    found = d.project_export_clips(ids)
+    if not found:
+        return
+    only = next(iter(found.values())) if len(found) == 1 else ""
+    if len(found) == 1:
+        message = ("This clip was changed in the new editor. The new files are made from the clip as the AI "
+                   "made it, without the new editor's changes.")
+    else:
+        message = (f"{len(found)} of these clips were changed in the new editor. The new files are made from "
+                   "those clips as the AI made them, without the new editor's changes.")
+    raise HTTPException(409, {"message": message, "reason": "project_export", "separate_file": True,
+                              "clip_ids": list(found), "count": len(found), "total": len(ids),
+                              "project_id": only or None})
 
 
 def used_suggestions(value) -> dict:

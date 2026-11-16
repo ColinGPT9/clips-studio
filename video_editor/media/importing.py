@@ -120,16 +120,30 @@ def public(row: dict) -> dict:
             "height": row["height"], "fps": fps, "has_audio": bool(row["has_audio"])}
 
 
+def _facts(info: dict) -> dict:
+    return {"duration_us": info["duration_us"], "width": info["display_width"], "height": info["display_height"],
+            "fps": info.get("fps"), "has_audio": info["has_audio"]}
+
+
+def checked_copy(copy: Path) -> dict:
+    """The copy read again before it is kept (store.add_asset's `check`):
+    what is recorded is what was copied, not what the file was when the
+    import was asked for. Raises Refused, as facts_of does."""
+    info = facts_of(Path(copy))
+    return {"kind": info["kind"], "facts": _facts(info)}
+
+
 def import_file(conn, data_dir, path: Path, info: dict, *, name: str = "", progress=None) -> dict:
     """Copy a checked file (check_path, facts_of) into the project media.
-    The same file imported twice is one asset."""
+    The same file imported twice is one asset. The copy is read again
+    before it is kept (checked_copy), so a file replaced or still being
+    written between the check and the copy is recorded as it was copied,
+    or refused."""
     from video_editor.project import store
 
-    facts = {"duration_us": info["duration_us"], "width": info["display_width"], "height": info["display_height"],
-             "fps": info.get("fps"), "has_audio": info["has_audio"]}
     try:
         row = store.add_asset(conn, data_dir, path, kind=info["kind"], name=(name or path.name).strip()[:120],
-                              facts=facts, progress=progress)
+                              facts=_facts(info), progress=progress, check=checked_copy)
     except OSError as e:
         raise Refused(f"The file couldn't be copied ({e.strerror or e}).") from None
     return public(row)

@@ -266,7 +266,136 @@ Some voices may not be used in videos that earn money. Clips Kitty marks those w
 
 ## The new editor (beta)
 
-Coming in step 8
+The new editor lets you edit a clip, or a whole video, yourself on a timeline: choose your own parts, put them in the order you want, and export. It's still being built, so it's off until you turn it on, and the clip editor you use today stays exactly as it is.
+
+### Turn it on
+
+Open **Settings** and tick **New editor (beta)**. Untick it to hide everything below again; nothing you made in the new editor is lost.
+
+### Three ways in
+
+All three are on the **Clip Editor** page:
+
+- **A clip:** click a clip, then **Edit in new editor** (under **Edit this clip**). The first time, the clip becomes a project; after that the same button opens that same project, with your changes.
+- **A whole video:** pick a video, then **Edit whole video** (beside **Make clips again…**). Choose the shape (**9:16** for TikTok, Reels and Shorts, **16:9** for YouTube, **1:1** square, or **4:5**) and click **Open in the new editor**. The whole video goes on the timeline, fitted to the shape with a blurred background. No AI runs.
+- **A video from your PC:** click **Import a video to edit** at the top, choose the shape, then **Choose a video…** and pick the file. Clips Kitty copies it in (a big file shows how far it's got) and opens it. No AI runs.
+
+**Projects** (at the top of the page) lists everything you've made in the new editor, the last changed first: its name, shape, length and when you last changed it. Click a name to open it, or **×** to delete the project (the clip, your videos and the files you exported stay). A project whose clip you deleted says **Clip deleted**, and still opens.
+
+### The screen
+
+It's laid out like CapCut:
+
+- **Media**, on the left: the videos, pictures and sounds in the project. Click one to see it on its own in the viewer. **+ Main track** adds all of it to the end of your video; **+ Overlay** puts it over your video at the playhead (picture in picture). You can also drag it onto a track. **Import** brings in another file from your PC.
+- **The viewer**, in the middle: your video.
+- **The inspector**, on the right: the settings of what you selected, or of the project when nothing is selected.
+- **The timeline**, across the bottom: your video's tracks. Click the ruler, or an empty part of a track, to move the playhead there.
+
+There's nothing to save: every change is saved as you make it. **Close** (top left) takes you back to where you were. **Undo** and **Redo** are at the top right.
+
+### Watching your video
+
+- **Play** plays the video as it is on the timeline, straight through its cuts.
+- **Pause** shows the frame exactly as the export will make it, with captions, text, watermark and colour. While it plays, the picture is a quick stand-in: the captions, text and an AI clip's moving crop show only when you pause. If a paused frame says **Approximate frame**, the AI framing of that part is worked out when you export or preview it, so the frame is close but not exact.
+- **Preview** makes a quick small copy of the whole video, with everything the export draws, and plays it. The bar shows how far it's got. **Back to editing** returns to the viewer.
+- **Fit** sizes the video to the window; you can also pick 25%, 50% or 100%.
+
+### Editing on the timeline
+
+The **main track** is your video, part after part, with a picture of each part and its sound's waveform. Above it are the **overlay** tracks (videos and pictures drawn over your video) and the **text** track; under it are the **music and sound** tracks. The main track never has gaps: when you delete or move a part, the rest close up by themselves.
+
+- **Select** a part by clicking it. Shift+click or Ctrl+click selects more than one. Esc selects nothing.
+- **Split** (or **S**) cuts the selected part in two at the playhead. With nothing selected there, it cuts the main track's part under the playhead.
+- **Trim** a part by dragging its left or right edge.
+- **Move** a part by dragging it. On the main track it changes places with the others (a blue line shows where it goes); on the other tracks it goes where you drop it, onto another track of the same kind too. Esc while dragging puts it back.
+- **Delete** (or the Delete key) removes the selected parts.
+- **Snap**, in the timeline's bar, makes the edges you drag stick to the playhead and to the edges of other parts. Click it to turn it off or on.
+- **Zoom** with **−** and **+**, or Ctrl and the mouse wheel. **Fit** shows the whole video.
+- The eye beside an overlay track hides it; the speaker beside a track mutes it (on the main track, its own sound).
+
+Each drag, split or change is one step for **Undo**.
+
+### The inspector
+
+Select a part to change it:
+
+- **Timing:** where the part starts and ends in its own video. Type a time as the viewer shows it (minutes:seconds.frames, like 1:23.12) or in seconds. An overlay also has **Starts at**: when it comes in.
+- **Speed and sound:** **Speed** from 0.25 (a quarter) to 4 (four times as fast), **Volume** from 0 to 200, and how many seconds it takes to **Fade in** and **Fade out**.
+- **Picture:** **Fit** shows the whole picture, with a blurred background (or a colour you pick) around it; **Fill** fills the screen and cuts off the edges; **Position** says which part stays in view. A part of an AI clip shows **AI framing**: the AI follows the speaker as when the clip was made. If you change it, **Reset to AI framing** puts it back.
+- **Place** (overlays): move it left or right, up or down, and change its size, rotation and opacity.
+- **Colour:** a filter, and brightness, contrast, saturation, temperature, tint, sharpen and vignette. **Reset colour** takes them off.
+
+With nothing selected, the inspector shows the project: its **Name**, the **Canvas** (9:16, 16:9, 1:1 or 4:5) and the **Frame rate**.
+
+Sliders change the video when you let go of them.
+
+### Choosing parts of a long video
+
+1. Click the video in **Media**. The viewer shows it on its own, with a bar under it to move through it.
+2. Go to where your part starts and press **I** (or click **Mark in**). Go to where it ends and press **O** (or **Mark out**). The marked part is shaded on the bar.
+3. Click **Add range**. The part goes on the end of the timeline.
+
+Do this as many times as you like. **Timeline** (above the viewer) goes back to your whole video.
+
+### See it the way TikTok, Reels or Shorts show it
+
+Above the viewer, pick **TikTok preview**, **Instagram Reels preview** or **YouTube Shorts preview** to draw that app's buttons and text over your video, the same as the gaming layout's preview, so you can keep faces and text clear of them. **No overlay** hides it. Clips Kitty remembers your choice. It's for 9:16 videos only; on another shape the menu is greyed out.
+
+### Shortcuts
+
+| Key | What it does |
+|---|---|
+| Space | Play or pause |
+| ← or , | One frame back (Shift: 10 frames) |
+| → or . | One frame forward (Shift: 10 frames) |
+| Home / End | Go to the start / the end |
+| I / O | Mark where the part starts / ends (a video on its own) |
+| S | Split at the playhead |
+| Delete | Delete the selected parts |
+| Alt+← / Alt+→ | Move the selected part one place earlier or later (main track) or one frame (other tracks; with Shift, one second) |
+| + / − | Zoom the timeline in or out (also Ctrl and the mouse wheel) |
+| Shift+Z | Fit the whole video in the timeline |
+| Esc | Select nothing |
+| Ctrl+Z | Undo |
+| Ctrl+Shift+Z or Ctrl+Y | Redo |
+
+The ⌨ signs at the bottom right of the viewer and at the right of the timeline's bar list them too.
+
+### Exporting
+
+Click **Export** (top right):
+
+- **Original** makes the video the way Clips Kitty makes clips.
+- **Custom** lets you choose the **Size**, the **Shape** (and how a different shape is filled), the **Quality**, the **Format**, and **Keep under** a number of MB for apps with an upload limit.
+- Under the choices, **About** says how big the file will be.
+
+Click **Export** in the box. The bar shows how far it's got; **Cancel** stops it and changes nothing. When it's done, **Play** plays it right there and **Show in folder** shows the file on your PC.
+
+**A project made from a clip replaces that clip's video** in your Library when you export it. The clip keeps its title and its posts. The Export button's tooltip says so too.
+
+**A project with no clip** (a whole video, a video you imported, or a project whose clip you deleted) is saved in your export folder from **Settings**, named after the project and the day, for example "own_clip_45s - 2026-11-15.mp4". The box says **Saves to** and the folder before you export, and **Saved in** and the folder when it's done. To use another folder, change it in Settings.
+
+While the box is open, the keyboard stays in it: **Tab** goes round its own buttons, and **Esc** closes it. The same goes for the shape box of **Edit whole video** and **Import a video to edit**.
+
+**Earlier exports**, at the bottom of the box, lists this project's exports. One whose file was deleted says **File gone**; one a later export replaced says so. Only the others can be played.
+
+### Clips you changed in the new editor
+
+When your changes in the new editor are ones today's clip editor can make too (a new start or end, a cut, a new speed, with the clip kept in its shape and exported as **Original**), exporting makes the clip the way today's editor would, and today's editor shows those changes: **Re-render** and **Apply edits** there carry on from them without asking.
+
+When they go further (parts in a new order, pieces from other places in the video, layers over the video, another shape or export size), today's editor can't make that clip again. Then if you click **Re-render**, use the chat edit, or **Apply edits & upload** on it in today's clip editor, Clips Kitty asks first: making it again there starts from the clip as it was before, so the new editor's changes would be lost. **Open in new editor** opens it there (only while the new editor is on), **Apply anyway** makes it again from the clip's own settings, **Cancel** leaves it as it is.
+
+It works the other way round too. If you change a clip in today's clip editor after working on it in the new editor, **Edit in new editor** opens it as the clip is now when you hadn't changed anything there. If you had, it asks: **Start again from the clip as it is now** (Undo brings your earlier version back) or **Keep the project**. Exporting a kept project asks once more, because it puts the new editor's version in the clip's place.
+
+### Clearing the new editor's files
+
+The new editor keeps waveforms, pictures of your videos and quick copies for playing. **Settings → Storage** shows how much (while the new editor is on), and **Clear editor cache** deletes them. They're made again when you need them; anything a project is using right now is kept.
+
+### Good to know
+
+- If the project was changed somewhere else while you had it open (another window, for example), the editor loads it again and tells you; the change you were making wasn't made, so make it again.
+- A video Clips Kitty can't play straight away (HEVC, 10-bit or above 1080p60) is made ready in the background first. Until then, pausing still shows it. MKV recordings from OBS (H.264 with AAC sound) play straight away.
+- Text and captions on the timeline are shown but not edited yet, and music and sound effects are edited in a later version.
 
 ## Captions and text in the editor
 

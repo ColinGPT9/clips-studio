@@ -36,6 +36,12 @@ _KEEP_LOGS = 50
 _CLIP_LOCKS: dict[int, threading.Lock] = {}
 _CLIP_LOCKS_GUARD = threading.Lock()
 
+# A render job that would go over a new-editor export the person never chose
+# to replace (8-D9): the job fails with this, and the export stays.
+PROJECT_EXPORT_KEPT = ("This clip was changed in the new editor since this was asked for, so nothing was "
+                       "applied: applying it would replace the video you exported from the new editor. "
+                       "Apply your changes again to choose.")
+
 
 def clip_lock(clip_id) -> threading.Lock:
     """The lock a re-render of this clip holds while it runs."""
@@ -352,7 +358,12 @@ class Worker(threading.Thread):
                         remake.check_cancelled()
                         self._note_remake(db, job["id"], remake.finish())
                 elif job["type"] == "render":
-                    self._rerender_clip(db, payload)
+                    # A render queued from the clip's own settings never
+                    # goes over a new-editor export unless the person chose
+                    # so (7-D5, 8-D9): one queued before the export landed,
+                    # or retried after it, is refused like the routes are.
+                    self._rerender_clip(db, payload,
+                                        keep_project_export=not payload.get("replace_project_edits"))
                 elif job["type"] == "translate":
                     try:
                         self._translate_clips(db, payload)
@@ -554,6 +565,18 @@ class Worker(threading.Thread):
         stage = payload.get("stage", "export")
         folder = Path(payload.get("folder") or data_dir)
         languages = payload["languages"]
+        if (stage != "translate" and (payload.get("burn") or payload.get("dub") or payload.get("subtitles"))
+                and not payload.get("without_project_edits")):
+            # Asked again when the job runs (8-D13), as a render job is
+            # (8-D9): a clip whose file became a new-editor export after the
+            # job was queued is never translated from its old window without
+            # the person's word. Before anything is written.
+            changed = db.project_export_clips(payload["clip_ids"])
+            if changed:
+                raise RuntimeError(
+                    "A clip in this export was changed in the new editor after the export was started, so "
+                    "nothing was made. Start the export again to choose whether to make it without those "
+                    "changes.")
         # Translation may run on its own local model (see llm.translation_model).
         # With a cloud model chosen, translation uses it too: everything the
         # local model would have done runs on the user's own key instead.
@@ -902,15 +925,22 @@ class Worker(threading.Thread):
                 db.set_video_status(vid, "done")  # the Shorts pass finished
             raise RuntimeError(f"The 9:16 Shorts were made; the 16:9 pass failed: {e}") from e
 
-    def _rerender_clip(self, db: StateDB, payload: dict, before_register=None, while_waiting=None) -> int | None:
+    def _rerender_clip(self, db: StateDB, payload: dict, before_register=None, while_waiting=None,
+                       keep_project_export: bool = False) -> int | None:
         """_rerender_clip_now holding the clip's lock (clip_lock): never two
         re-renders of one clip at once. `while_waiting` (Branch A's cancel
-        check) runs every half second while another holds it."""
+        check) runs every half second while another holds it.
+
+        `keep_project_export` (the job queue's render jobs, 8-D9): refuse,
+        under the lock, when the clip's file is a new-editor export
+        (StateDB.project_export_of), as the routes that queue the job do."""
         lock = clip_lock(payload["clip_id"])
         while not lock.acquire(timeout=0.5):
             if while_waiting is not None:
                 while_waiting()
         try:
+            if keep_project_export and db.project_export_of(payload["clip_id"]) is not None:
+                raise ValueError(PROJECT_EXPORT_KEPT)
             # Called on the class: callers (Branch A, tests) pass an owner that is not a Worker.
             return Worker._rerender_clip_now(self, db, payload, before_register=before_register)
         finally:

@@ -156,7 +156,7 @@ def survey(db, data_dir: Path) -> dict:
     from video_editor.media import cache as media_cache
 
     for folder in media_cache.orphans(data_dir, project_media(db.conn)):
-        groups["editor_cache"] += [p for p in folder.rglob("*") if p.is_file()]
+        groups["editor_cache"] += media_cache.walk_files(folder)   # never through a link or junction
 
     # Held: in use, though no row points at it yet (core/in_use.py). Nothing
     # is held outside a Make clips again run, and then nothing is left out.

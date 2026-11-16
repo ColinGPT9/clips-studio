@@ -299,7 +299,8 @@ def test_info_and_the_proxy_rule(env):
     add_video(env.db.conn, "obs1")
     make_video(env.data_dir / "downloads" / "obs1.mkv", seconds=1)       # H.264 + AAC in Matroska
     info = env.get("/media/video:obs1/info").json()
-    assert info["needs_proxy"] is True and "Chromium doesn't play h264 video in MATROSKA" in info["proxy_reasons"]
+    # Plays as it is (step 8 measured it in Electron 31): no proxy.
+    assert info["needs_proxy"] is False and info["proxy_reasons"] == []
 
 
 def test_a_proxy_asked_for_is_made_on_the_lane(env):

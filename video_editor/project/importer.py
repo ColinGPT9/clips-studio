@@ -31,6 +31,7 @@ it was saved for as long as the project still says the same thing.
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 from video_editor.project import model
@@ -70,6 +71,19 @@ def clip_of_row(row) -> dict:
     options that can't be read count as none, as the render reads them."""
     return {"video_id": row["video_id"], "start": float(row["start_s"]), "end": float(row["end_s"]),
             "render_opts": options(row["render_opts"]), "title": row["title"] or ""}
+
+
+def clip_basis(row) -> str:
+    """What a clip's project was made from, as one short text: the clip's
+    video, window and render options (its title is left out: renaming a
+    clip changes nothing the project shows). Two equal texts are the same
+    clip; a different one means the clip was changed since, in today's
+    editor or by its chat edit (editor suite step 8, 8-D6)."""
+    clip = clip_of_row(row)
+    text = json.dumps({"video_id": clip["video_id"], "start": round(clip["start"], 6),
+                       "end": round(clip["end"], 6), "render_opts": clip["render_opts"]},
+                      sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _number(value) -> bool:

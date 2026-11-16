@@ -10,14 +10,16 @@ the sources, not measured in the app; step 8 checks it by playing each kind.
 | Container (ffprobe's format) | Video | Sound |
 |---|---|---|
 | MP4 / MOV / M4A (`mov,mp4,m4a,...`) | H.264 (8-bit 4:2:0), VP9, AV1 | AAC, MP3, Opus, FLAC |
-| WebM / Matroska (`matroska,webm`) | VP8, VP9, AV1 | Opus, Vorbis |
+| WebM / Matroska (`matroska,webm`) | VP8, VP9, AV1, H.264 (8-bit 4:2:0) | Opus, Vorbis, AAC |
 | MP3, ADTS AAC, Ogg, WAV, FLAC (sound only) | none | MP3; AAC; Opus, Vorbis, FLAC; PCM; FLAC |
 
 - H.264 in 10-bit or 4:2:2/4:4:4 (High 10, High 4:2:2) doesn't play in
   Chromium's software decoder: proxy.
-- Matroska with H.264 or AAC (a common OBS recording) is given a proxy:
-  Chromium 126 is not known to play Matroska beyond WebM's codecs. A guess
-  on the safe side, until step 8 tries it.
+- Matroska with H.264 and AAC (a common OBS recording) plays as it is: step 8
+  measured it in Electron 31.7.7 (Chrome 126.0.6478.234, the app's window
+  settings, a file:// page as the packaged app loads): it decodes both, plays,
+  and seeks (13 ms to 4.5 s, as an MP4 of the same streams). The proxy rule
+  it had before (a guess on the safe side) is gone.
 - Bigger than 1080p (either side, after rotation) or more than 60 frames a
   second: proxy, so scrubbing stays smooth.
 
@@ -34,7 +36,7 @@ from pathlib import Path
 MP4_FAMILY = "mov,mp4,m4a,3gp,3g2,mj2"
 PLAYS = {
     "mp4": ({"h264", "vp9", "av1"}, {"aac", "mp3", "opus", "flac"}),
-    "matroska": ({"vp8", "vp9", "av1"}, {"opus", "vorbis"}),
+    "matroska": ({"vp8", "vp9", "av1", "h264"}, {"opus", "vorbis", "aac"}),
     "mp3": (set(), {"mp3"}),
     "aac": (set(), {"aac"}),
     "ogg": (set(), {"opus", "vorbis", "flac"}),

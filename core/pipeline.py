@@ -873,6 +873,11 @@ def _sport_reels(db: StateDB, video_id: str, profile, clips: list, clip_dir: Pat
             row = before.get((reel.kind, reel.subject, (opts or {}).get("profile")))
             # Its own length, not the source's span: the card shows it.
             end = _free_end(db, video_id, start, start + sum(lengths), row["id"] if row else None)
+            if row is not None and _keeps_project_export(db, row["id"]):
+                # The reel's file is a new-editor export (8-D13): kept, as
+                # a clip's is (_register_clip). The join just made is unused.
+                print(f"      {label}: kept the new editor's export of it")
+                continue
             if row is not None:
                 # Made again: its title is kept (it may have been edited),
                 # its chapters are this join's.
@@ -890,6 +895,25 @@ def _sport_reels(db: StateDB, video_id: str, profile, clips: list, clip_dir: Pat
     except Exception as e:
         print(f"      (story reels not made: {e})")
     return reel_clips
+
+
+def _keeps_project_export(db, clip_id) -> bool:
+    """Whether a run that made this clip's window (or story reel) again
+    leaves the clip on its file, because that file is a new-editor export
+    (StateDB.project_export_of; editor suite step 8, 8-D13). A run re-points
+    an existing clip at its fresh render; over an export that would lose the
+    project's changes without a word, so the export is kept, as Make clips
+    again keeps every edited clip. False for every other clip, so a run
+    changes them exactly as before, and for a database that can't tell."""
+    import sqlite3
+
+    export_of = getattr(db, "project_export_of", None)
+    if export_of is None:
+        return False
+    try:
+        return export_of(int(clip_id)) is not None
+    except (sqlite3.Error, TypeError, ValueError):
+        return False
 
 
 def _reel_rows(db: StateDB, video_id: str) -> dict:
@@ -1840,6 +1864,12 @@ def _register_clip(
             "SELECT id FROM clips WHERE video_id = ? AND start_s = ? AND end_s = ?",
             (video_id, round(candidate.start, 2), round(candidate.end, 2)),
         ).fetchone()
+        if row and _keeps_project_export(db, row["id"]):
+            # Its file is a new-editor export (8-D13): the row keeps it. The
+            # fresh render stays on disk for this run (a story reel may join
+            # it) and Storage frees it with the other unused clip files.
+            print(f"      Kept the new editor's export of the clip at {candidate.start:.0f}s-{candidate.end:.0f}s")
+            return None
         if row:
             fresh = {"path": str(final_path), "scores": json.dumps(candidate.subscores or {})}
             rendered = json.loads(render_opts_json) if render_opts_json else {}

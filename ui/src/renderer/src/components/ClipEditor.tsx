@@ -30,7 +30,8 @@ export default function ClipEditor({
   onChanged,
   onOpenEditor,
   onPublish,
-  exports
+  exports,
+  newEditorButton
 }: {
   clip: Clip
   onChanged: () => void
@@ -41,6 +42,9 @@ export default function ClipEditor({
   /** Exports made in the background (Settings → Export set to anything but
    *  Original), so this clip's progress and result show under its buttons. */
   exports?: ExportTracker
+  /** "Edit in new editor", given only while Settings → "New editor (beta)"
+   *  is on; absent, the panel is exactly as before. */
+  newEditorButton?: JSX.Element
 }): JSX.Element {
   const [title, setTitle] = useState(clip.title)
   const [description, setDescription] = useState(clip.description)
@@ -147,6 +151,7 @@ export default function ClipEditor({
           <Scissors size={16} /> Edit this clip
         </span>
       </button>
+      {newEditorButton}
 
       <div className="flex gap-2 flex-wrap text-xs items-center">
         {CHANNELS.map((ch) => (

@@ -61,6 +61,7 @@ import type {
 } from './youtube'
 import type { Capabilities, FanOut, PlatformRow, UploadPostStatus } from './uploadpost'
 import type { RemoteRenderState } from './remoteRender'
+import { sendAskingFirst, sendAskingFirstForNewFiles } from './projectExportPrompt'
 
 export const API_BASE = 'http://127.0.0.1:8765'
 
@@ -75,6 +76,50 @@ export interface FramePeople {
 
 function layoutQuery(source: { url?: string; path?: string }): string {
   return source.path ? `&path=${encodeURIComponent(source.path)}` : `&url=${encodeURIComponent(source.url ?? '')}`
+}
+
+/** A request today's editor makes to render a clip again (Apply, the chat
+ *  edit): as request(), but when the clip's file is an export of the new
+ *  editor the person is asked first (lib/projectExportPrompt.ts). */
+async function renderRequest<T>(
+  path: string,
+  body: Record<string, unknown>,
+  method: 'POST' | 'PUT' = 'POST',
+  /** Where the flag goes: the body itself, or the body's part that is the
+   *  render ("Apply edits & upload" sends it as render_first). */
+  withReplace: (body: Record<string, unknown>) => Record<string, unknown> = (b) => ({ ...b, replace_project_edits: true })
+): Promise<T> {
+  const res = await sendAskingFirst((replace) =>
+    fetch(`${API_BASE}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(replace ? withReplace(body) : body)
+    })
+  )
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`${res.status} ${path}: ${text.slice(0, 200)}`)
+  }
+  return res.json() as Promise<T>
+}
+
+/** A request that makes new files from a clip's own settings (Export in
+ *  other languages): as request(), but when a clip's file is an export of the
+ *  new editor the person is asked first, and "Make it anyway" sends it again
+ *  with without_project_edits (lib/projectExportPrompt.ts). */
+async function newFilesRequest<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const res = await sendAskingFirstForNewFiles((goAhead) =>
+    fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(goAhead ? { ...body, without_project_edits: true } : body)
+    })
+  )
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`${res.status} ${path}: ${text.slice(0, 200)}`)
+  }
+  return res.json() as Promise<T>
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -96,7 +141,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
  *  plugins.ts, which can't be imported here: plugins.ts imports this file).
  *  Without one (the browser shim) no header is sent: Original exports work as
  *  always, and the engine answers anything else with its own refusal. */
-async function sessionHeaders(): Promise<Record<string, string>> {
+export async function sessionHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   const secret = await (window.studio?.pluginSession?.() ?? Promise.resolve('')).catch(() => '')
   if (secret) headers['X-Clips-Kitty-Session'] = secret
@@ -340,10 +385,7 @@ export const api = {
     request<Clip>(`/clips/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   captions: (id: number) => request<{ lines: CaptionLine[] }>(`/clips/${id}/captions`),
   saveCaptions: (id: number, lines: CaptionLine[]) =>
-    request<{ job_id: number }>(`/clips/${id}/captions`, {
-      method: 'PUT',
-      body: JSON.stringify({ lines })
-    }),
+    renderRequest<{ job_id: number }>(`/clips/${id}/captions`, { lines }, 'PUT'),
   tightenClip: (id: number, opts?: { silence?: boolean; fillers?: boolean }) =>
     request<{
       keep: [number, number][]
@@ -387,10 +429,7 @@ export const api = {
       skipped: { clip_id: number; reason: string }[]
     }>('/publish/plan/execute', { method: 'POST', body: JSON.stringify({ items }) }),
   aiEdit: (id: number, message: string) =>
-    request<{ reply: string; job_id: number | null }>(`/clips/${id}/ai-edit`, {
-      method: 'POST',
-      body: JSON.stringify({ message })
-    }),
+    renderRequest<{ reply: string; job_id: number | null }>(`/clips/${id}/ai-edit`, { message }),
   /** `suggestions`: the edits plugins suggested that the creator used in
    *  this render, as the editor recorded each Use. */
   rerenderClip: (
@@ -399,13 +438,10 @@ export const api = {
     renderOpts?: RenderOpts,
     suggestions?: UsedSuggestions
   ) =>
-    request<{ job_id: number }>(`/clips/${id}/render`, {
-      method: 'POST',
-      body: JSON.stringify({
-        ...(range ?? {}),
-        render_opts: renderOpts ?? null,
-        ...(suggestions ? { suggestions } : {})
-      })
+    renderRequest<{ job_id: number }>(`/clips/${id}/render`, {
+      ...(range ?? {}),
+      render_opts: renderOpts ?? null,
+      ...(suggestions ? { suggestions } : {})
     }),
   /** Export with the preset saved in Settings → Export unless told otherwise.
    *  Original copies the file, exactly as before; anything else queues an
@@ -559,10 +595,9 @@ export const api = {
     voices?: Record<string, string>
     style?: CaptionStyle
   }) =>
-    request<{ job_id: number; languages: string[]; clips: number }>('/translate', {
-      method: 'POST',
-      body: JSON.stringify(body)
-    }),
+    // A clip changed in the new editor is asked about first (8-D13): the
+    // files are made without its changes only on "Make it anyway".
+    newFilesRequest<{ job_id: number; languages: string[]; clips: number }>('/translate', body),
   translations: (clipId: number) =>
     request<{ source: CaptionLine[]; translations: Translation[] }>(
       `/clips/${clipId}/translations`
@@ -822,11 +857,21 @@ export const api = {
     request<{ upload: PublishRecord | null; job: PublishJobRow | null }>(
       `/clips/${clipId}/publish`
     ),
+  /** With render_first ("Apply edits & upload"), the clip is rendered
+   *  first, so the person is asked when its file is a new-editor export, as
+   *  Apply asks (lib/projectExportPrompt.ts). */
   publishClip: (clipId: number, body: Record<string, unknown>) =>
-    request<{ publish_job_id: number; render_job_id: number | null }>(
-      `/clips/${clipId}/publish`,
-      { method: 'POST', body: JSON.stringify(body) }
-    ),
+    body.render_first
+      ? renderRequest<{ publish_job_id: number; render_job_id: number | null }>(
+          `/clips/${clipId}/publish`,
+          body,
+          'POST',
+          (b) => ({ ...b, render_first: { ...(b.render_first as Record<string, unknown>), replace_project_edits: true } })
+        )
+      : request<{ publish_job_id: number; render_job_id: number | null }>(`/clips/${clipId}/publish`, {
+          method: 'POST',
+          body: JSON.stringify(body)
+        }),
   cancelPublish: (jobId: number) =>
     request<{ cancelled?: boolean; cancelling?: boolean }>(`/publish/${jobId}/cancel`, {
       method: 'POST'

@@ -53,8 +53,12 @@ def test_what_needs_a_proxy_and_why():
     assert _reasons(video="prores") == ["Chromium doesn't play prores video in MP4"]
     assert _reasons(audio="ac3") == ["Chromium doesn't play ac3 sound in MP4"]
     assert _reasons(pix="yuv420p10le") == ["Chromium doesn't play yuv420p10le H.264 (only 8-bit 4:2:0)"]
-    assert _reasons(container="matroska,webm", video="h264", audio="aac") == [
-        "Chromium doesn't play h264 video in MATROSKA", "Chromium doesn't play aac sound in MATROSKA"]
+    # Step 8 played H.264 + AAC in Matroska in Electron 31 (Chromium 126): no proxy.
+    assert _reasons(container="matroska,webm", video="h264", audio="aac") == []
+    assert _reasons(container="matroska,webm", video="h264", audio="aac", pix="yuv420p10le") == [
+        "Chromium doesn't play yuv420p10le H.264 (only 8-bit 4:2:0)"]
+    assert _reasons(container="matroska,webm", video="hevc", audio="ac3") == [
+        "Chromium doesn't play hevc video in MATROSKA", "Chromium doesn't play ac3 sound in MATROSKA"]
     assert _reasons(container="avi", video="mpeg4", audio="mp3") == ["Chromium doesn't play the avi format"]
     assert _reasons(width=2560, height=1440) == ["bigger than 1080p (2560x1440)"]
     assert _reasons(width=1440, height=2560) == ["bigger than 1080p (1440x2560)"]

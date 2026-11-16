@@ -32,6 +32,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import threading
 import time
 import uuid
@@ -174,11 +175,72 @@ def read_json(path: Path):
         return None
 
 
+REPARSE_POINT = 0x400           # FILE_ATTRIBUTE_REPARSE_POINT: a junction, a symbolic link, ...
+
+
+def is_link(path) -> bool:
+    """A symbolic link or, on Windows, any reparse point (a directory
+    junction among them). The cache never looks through one: a junction
+    put inside data/media_cache by other software would otherwise have its
+    target's files counted, and deleted by Clear and Free up (step 6's
+    fault, fixed in step 8). Python 3.11's is_symlink() says False for a
+    junction, and rglob() walks into it."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return stat.S_ISLNK(st.st_mode) or bool(getattr(st, "st_file_attributes", 0) & REPARSE_POINT)
+
+
+def _children(folder: Path) -> list[Path]:
+    """What is directly inside `folder`."""
+    try:
+        with os.scandir(folder) as found:
+            return [Path(e.path) for e in found]
+    except OSError:
+        return []
+
+
+def _is_folder(path: Path) -> bool:
+    """A real folder: never a link or a junction to one."""
+    return not is_link(path) and path.is_dir()
+
+
+def walk_files(folder: Path) -> list[Path]:
+    """Every file inside `folder`, never through a link or a junction (the
+    link itself is not listed: removing the folder removes it)."""
+    out: list[Path] = []
+    for p in _children(folder):
+        if is_link(p):
+            continue
+        if p.is_dir():
+            out += walk_files(p)
+        elif p.is_file():
+            out.append(p)
+    return out
+
+
+def _unlink_link(path: Path) -> None:
+    """Remove a link or junction itself, never what it points at."""
+    try:
+        os.unlink(path)
+    except OSError:
+        try:
+            os.rmdir(path)          # a directory junction, where unlink refuses it
+        except OSError:
+            pass
+
+
 def _remove(path: Path) -> int:
-    """Remove a file or folder; the bytes that went."""
+    """Remove a file or folder; the bytes that went. A link or a junction
+    is removed itself; what it points at is never touched."""
+    path = Path(path)
+    if is_link(path):
+        _unlink_link(path)
+        return 0
     freed = 0
-    if path.is_dir() and not path.is_symlink():
-        for p in sorted(path.rglob("*"), key=lambda p: -len(p.parts)):
+    if path.is_dir():
+        for p in _children(path):
             freed += _remove(p)
         try:
             path.rmdir()
@@ -257,8 +319,10 @@ def used_at(product: Path) -> float:
 
 
 def _size(path: Path) -> int:
+    if is_link(path):
+        return 0
     if path.is_dir():
-        return sum(_size(p) for p in path.iterdir())
+        return sum(_size(p) for p in _children(path))
     try:
         return path.stat().st_size
     except OSError:
@@ -266,16 +330,21 @@ def _size(path: Path) -> int:
 
 
 def _files(path: Path) -> int:
+    if is_link(path):
+        return 0
     if path.is_dir():
-        return sum(_files(p) for p in path.iterdir())
+        return sum(_files(p) for p in _children(path))
     return 1 if path.exists() else 0
 
 
 def folders(data_dir) -> list[Path]:
+    """The cache's folders. A link or junction placed among them is listed
+    too (Clear removes the link itself, never its target), but nothing is
+    ever counted or removed through it."""
     base = root(data_dir)
     if not base.is_dir():
         return []
-    return sorted(p for p in base.iterdir() if p.is_dir() and PART not in p.name)
+    return sorted(p for p in _children(base) if (is_link(p) or p.is_dir()) and PART not in p.name)
 
 
 def survey(data_dir) -> dict:
@@ -303,14 +372,14 @@ def remove_partials(data_dir) -> int:
     removed = 0
     if not base.is_dir():
         return 0
-    for folder in base.iterdir():
+    for folder in _children(base):
         if PART in folder.name:
             _remove(folder)
             removed += 1
             continue
-        if not folder.is_dir() or held(folder):
+        if not _is_folder(folder) or held(folder):
             continue
-        for p in folder.iterdir():
+        for p in _children(folder):
             if PART in p.name:
                 _remove(p)
                 removed += 1
@@ -339,11 +408,14 @@ def remove_empty(data_dir, *, now: float | None = None) -> int:
         except OSError:
             return True
 
-    for folder in base.iterdir():
-        if not folder.is_dir() or folder.is_symlink() or PART in folder.name or held(folder):
+    def inside(d: Path) -> list[Path]:
+        found = [p for p in _children(d) if _is_folder(p)]
+        return [q for p in found for q in (*inside(p), p)]
+
+    for folder in _children(base):
+        if not _is_folder(folder) or PART in folder.name or held(folder):
             continue
-        inner = sorted((p for p in folder.rglob("*") if p.is_dir() and not p.is_symlink()),
-                       key=lambda p: -len(p.parts))
+        inner = sorted(inside(folder), key=lambda p: -len(p.parts))
         for d in [*inner, folder]:
             if PART in d.name or held(folder) or fresh(d):
                 continue
@@ -375,11 +447,37 @@ def _named(meta, named: dict[str, set[str]]) -> bool:
     return value in named.get(kind, set())
 
 
+def _replaced(meta) -> bool:
+    """The source's file is there, but it is another file than the one the
+    folder was made from (another size or time). A file's folder is named by
+    those, so it can never be served again; an imported file's folder is
+    named by its content (its sha256) and stays valid."""
+    if not isinstance(meta, dict) or not isinstance(meta.get("path"), str):
+        return False
+    if str(meta.get("ref") or "").startswith("asset:"):
+        return False
+    try:
+        st = Path(meta["path"]).stat()
+    except OSError:
+        return False
+    return st.st_size != meta.get("size") or st.st_mtime_ns != meta.get("mtime_ns")
+
+
 def orphans(data_dir, named: dict[str, set[str]]) -> list[Path]:
-    """Folders whose source is gone (deleted, or replaced by another file)
-    and that no project names. `named` is core/state.py project_media()."""
-    return [f for f in folders(data_dir)
-            if not held(f) and _source_gone(read_json(f / SOURCE)) and not _named(read_json(f / SOURCE), named)]
+    """Folders made from a file that has since been replaced by another one
+    (whether a project names it or not: the new file has a folder of its
+    own; step 8), and folders whose source is gone and that no project
+    names. `named` is core/state.py project_media(). A link or junction
+    among the folders is never an orphan: only Clear removes it, never what
+    it points at."""
+    out = []
+    for f in folders(data_dir):
+        if held(f) or is_link(f):
+            continue
+        meta = read_json(f / SOURCE)
+        if _replaced(meta) or (_source_gone(meta) and not _named(meta, named)):
+            out.append(f)
+    return out
 
 
 def remove_folders(paths) -> dict:

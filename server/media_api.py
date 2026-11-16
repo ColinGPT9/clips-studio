@@ -151,6 +151,42 @@ def serve_file(request: Request, path: Path, *, folder: Path | None = None) -> R
         raise
 
 
+TASK_PRODUCTS = ("proxy.mp4", "proxy.m4a", "peaks.bin", "thumbs")   # the lane task keys: <product>:<fingerprint>
+
+
+def cancel_tasks_for(lane, data_dir, ref: str) -> int:
+    """Stop every waiting or running proxy, waveform and thumbnail task made
+    from the media `ref` (video:<id>, ...), before its file is deleted: on
+    Windows the FFmpeg that reads it holds the file, so a delete made while
+    it runs could leave the file behind (step 6's fault, fixed in step 8).
+    Returns how many were stopped."""
+    stopped = 0
+    for folder in cache.folders(data_dir):
+        meta = cache.read_json(folder / cache.SOURCE)
+        if not isinstance(meta, dict) or meta.get("ref") != ref:
+            continue
+        for product in TASK_PRODUCTS:
+            job = lane.find(f"{product}:{folder.name}")
+            if job is not None and job["status"] in ("queued", "running"):
+                lane.cancel(job["job_id"], kind=None)
+                stopped += 1
+    return stopped
+
+
+def _plain_task(what: str, work):
+    """A lane task whose file errors are told in plain words, never with a
+    path of the cache (step 6's fault: the error showed it)."""
+    def run(ctx) -> dict:
+        try:
+            return work(ctx)
+        except OSError as e:
+            reason = e.strerror or type(e).__name__
+            raise RuntimeError(f"The {what} couldn't be saved in the editor cache ({reason}). "
+                               "Ask again to try once more.") from None
+
+    return run
+
+
 class ImportIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -253,10 +289,22 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, config: dict 
 
     # ---- the work, on the editor lane ---------------------------------------------------------
 
+    def again(media: resolver.Media, folder: Path) -> Path:
+        """The cache folder a waiting task writes into, made again (with
+        its source.json) when a Clear or Storage's clean-up took it while the
+        task waited (step 6's fault, fixed in step 8). The source's file is
+        the same, so the folder's name is too."""
+        if not (folder / cache.SOURCE).is_file():
+            made = cache.folder_for(data_dir, media)
+            if made != folder:
+                raise RuntimeError("The file changed while this waited. Ask again.")
+        return folder
+
     def proxy_work(media: resolver.Media, folder: Path, info: dict):
         def work(ctx) -> dict:
             from core.binaries import ffmpeg
 
+            again(media, folder)
             target = folder / proxy.name_for(info)
             with cache.hold(folder), cache.writing(target) as tmp:
                 code, err = ctx.run(proxy.command(ffmpeg(), media.path, tmp, info),
@@ -267,10 +315,11 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, config: dict 
                     raise RuntimeError(f"FFmpeg couldn't make the proxy: {last}")
             return {"file": target.name, "size": target.stat().st_size}
 
-        return work
+        return _plain_task("proxy", work)
 
     def peaks_work(media: resolver.Media, folder: Path, info: dict):
         def work(ctx) -> dict:
+            again(media, folder)
             with cache.hold(folder):
                 made = peaks.compute(media.path, started=ctx.started, on_progress=ctx.progress,
                                      duration_us=info["duration_us"])
@@ -279,17 +328,18 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, config: dict 
                     tmp.write_bytes(made.to_bytes())
             return {"duration_us": made.duration_us}
 
-        return work
+        return _plain_task("waveform", work)
 
     def thumbs_work(media: resolver.Media, folder: Path, info: dict):
         def work(ctx) -> dict:
+            again(media, folder)
             with cache.hold(folder), cache.writing(folder / "thumbs") as tmp:
                 index = thumbs.make(media.path, tmp, info=info, started=ctx.started, on_progress=ctx.progress,
                                     check_cancel=ctx.check)
                 (tmp / "index.json").write_text(json.dumps(index, separators=(",", ":")), encoding="utf-8")
             return {"count": index["count"]}
 
-        return work
+        return _plain_task("thumbnails", work)
 
     # ---- reading ------------------------------------------------------------------------------
 
