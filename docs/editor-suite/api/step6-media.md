@@ -181,11 +181,11 @@ Nothing existing is weakened: `GET /media/{clip_id}` and `GET /media/preview/{cl
    | Container (ffprobe's format) | Video | Sound |
    |---|---|---|
    | MP4, MOV, M4A | H.264 (8-bit 4:2:0 only), VP9, AV1 | AAC, MP3, Opus, FLAC |
-   | WebM, Matroska | VP8, VP9, AV1 | Opus, Vorbis |
+   | WebM, Matroska | VP8, VP9, AV1; H.264 in Matroska since step 8 | Opus, Vorbis; AAC in Matroska since step 8 |
    | MP3, ADTS AAC, Ogg, WAV, FLAC (sound only) | none | MP3; AAC; Opus, Vorbis, FLAC; PCM; FLAC |
 
    - Anything else gets a proxy: HEVC, ProRes, MPEG-4 Part 2, AVI, AC-3, 10-bit or 4:2:2 H.264.
-   - **Matroska with H.264 or AAC** (a common OBS recording) gets one too. Chromium 126 is not known to play Matroska beyond WebM's codecs; this is a guess on the safe side, for step 8 to try.
+   - **Matroska with H.264 or AAC** (a common OBS recording) got one too, as a guess on the safe side. **Step 8 tried it:** Electron 31.7.7 (Chrome 126.0.6478.234) plays and seeks H.264 + AAC in Matroska as it does the same streams in MP4, so that rule is gone ([step8-editor.md](step8-editor.md#part-c-what-changed-in-the-engine)). 10-bit H.264 and other codecs in Matroska still get a proxy.
 2. **Bigger than 1080p60:** the shorter side over 1080 or the longer over 1920 (after rotation), or more than 60 frames a second.
 3. **Asked for:** once a proxy exists or is on its way, `proxy_reasons` says "a proxy was asked for".
 
@@ -384,7 +384,7 @@ Where the plan was not specific:
 6. **Peaks are signed bytes at 512, 256, … 1 bins a second, from 8192 Hz mono.** A level is chosen by rounding `per_second` down to a power of two, so every level is exactly half the one below.
 7. **Peaks and thumbnails are made when first asked for**, on the lane, with 202 until then. Asking is a GET, because making them changes nothing but the cache. They are not tried again after a failure without `retry=true`.
 8. **The proxy is made on the CPU** (libx264), not the graphics card: the same everywhere, and the card stays free for exports.
-9. **Matroska with H.264/AAC gets a proxy** until step 8 shows Chromium 126 plays it.
+9. **Matroska with H.264/AAC gets a proxy** until step 8 shows Chromium 126 plays it. (Step 8 showed it: the rule is gone.)
 10. **The cap's "least recently used" counts each product on its own**; `source.json` and `info.json` stay until their folder goes (orphan, or Clear).
 11. **Housekeeping's cap runs on Free up and after each product**, not on a timer, so nothing runs that wasn't asked for.
 12. **Lane tasks and exports share one queue, first come first served.** A waveform can wait behind an export, and the other way round. Step 8 can put small tasks first if it shows.
@@ -401,7 +401,7 @@ Where the plan was not specific:
 - **Step 8:**
   - **Data:** take `urls` from `GET /media/{id}/info` (they carry the token) for `<video src>`, `<img src>` and the sheet addresses; listen for `media_job` events; check whether Chromium 126 plays H.264/AAC in Matroska (if it does, drop that rule).
   - **Screens:** the "Clear editor cache" button and the Storage label for `editor_cache`; how a project shows a source that is missing.
-- **Small faults from the last check, not fixed (none serious; fix them early in step 8):**
+- **Small faults from the last check, not fixed (none serious; fix them early in step 8):** step 8 fixed each one or gave its reason for leaving it; see [step8-editor.md, "Step 6's small faults"](step8-editor.md#step-6s-small-faults).
   - **Clear while a job waits:** a peaks, thumbnails or proxy job that is queued (not yet running) when Clear or the orphan sweep runs fails, because its cache folder is gone. `GET` peaks and thumbs then answer 500 until the caller adds `retry=true`, and the error text shows the cache path. Fix: make the folder inside the job before writing, and keep the path out of the message.
   - **Junctions in the cache:** `cache._remove` and the survey treat a Windows directory junction as a folder, so a junction placed inside `data/media_cache` by hand or by other software would have its target's files deleted by Clear or Free up. The app never makes one. Fix: skip reparse points before recursing.
   - **Peaks job on a read error:** if `Builder.feed` raises while FFmpeg is still writing, `compute()` waits for FFmpeg without killing it, and the lane can hang. Fix: kill the process before waiting.

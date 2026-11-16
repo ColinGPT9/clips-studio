@@ -12,6 +12,7 @@ import PublishAllDialog from '../components/PublishAllDialog'
 import RemakeDialog from '../components/RemakeDialog'
 import ScheduleView from '../components/ScheduleView'
 import ExportProgress from '../components/ExportProgress'
+import { EditClipInNewEditor, EditWholeVideo, NewEditorBar } from '../components/editor/LibraryEntry'
 import { api } from '../lib/api'
 import type { Provider } from '../lib/uploadpost'
 import { getExportFolder } from '../lib/exportFolder'
@@ -20,6 +21,7 @@ import { remakeBlocked, remakeResultText } from '../lib/remake'
 import { useEvents } from '../lib/useEvents'
 import { useExportJobs } from '../lib/useExportJobs'
 import { useJobWatch } from '../lib/useJobWatch'
+import { useNewEditor } from '../lib/newEditor'
 import type { StudioTarget } from '../App'
 import type { Clip, ExportJob, RemakePreview, StudioEvent, Video } from '../lib/types'
 
@@ -37,6 +39,8 @@ export default function ClipStudio({
   onTargetConsumed: () => void
 }): JSX.Element {
   const [videos, setVideos] = useState<Video[]>([])
+  // Settings → "New editor (beta)": its ways in show only while it is on.
+  const newEditor = useNewEditor()
   const [activeVideo, setActiveVideo] = useState<string | null>(null)
   const [clips, setClips] = useState<Clip[]>([])
   const [selectedClip, setSelectedClip] = useState<number | null>(null)
@@ -228,6 +232,8 @@ export default function ClipStudio({
     // comes ahead of the job's 'done', so whichever refresh brings the new
     // list first moves them with it (refreshClips). Moved here, before any
     // list has the new id, the editor would close until one did.
+    // The new editor's export replaced a clip's file: show the new one.
+    if ((e as { type: string }).type === 'clip_file_replaced' && activeVideo) void refreshClips(activeVideo)
     if (e.type === 'clip_replaced') {
       if (e.old === undefined || e.new === undefined) return
       moved.current.set(e.old, e.new)
@@ -367,6 +373,8 @@ export default function ClipStudio({
   return (
     <div className="p-6 space-y-5">
       <h2 className="text-2xl font-bold">Clip Editor</h2>
+
+      {newEditor && <NewEditorBar />}
 
       <ProcessingBar />
 
@@ -513,6 +521,7 @@ export default function ClipStudio({
               >
                 {t('Make clips again…')}
               </button>
+              {newEditor && activeVideo && <EditWholeVideo videoId={activeVideo} />}
             </div>
             {exportNotice && <p className="text-sm text-accent">{exportNotice}</p>}
             {remakeNotice && <p className="text-sm text-accent">{remakeNotice}</p>}
@@ -553,6 +562,7 @@ export default function ClipStudio({
                 clip={current}
                 onChanged={() => activeVideo && refreshClips(activeVideo)}
                 onOpenEditor={() => setEditingClipId(current.id)}
+                newEditorButton={newEditor ? <EditClipInNewEditor key={`new-editor-${current.id}`} clipId={current.id} /> : undefined}
                 onPublish={publishReady ? () => setPublishOne(current) : undefined}
                 exports={exports}
               />

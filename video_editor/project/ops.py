@@ -160,7 +160,8 @@ SPECS: dict[str, tuple[str, dict]] = {
         "item_id": ("id", True, "the item"),
         "at_us": ("time", True, "where to cut, strictly inside the item"),
     }),
-    "delete_items": ("Remove items. On V1 the items after them close the gap.", {
+    "delete_items": ("Remove items. On V1 the items after them close the gap, and the video's fade in or "
+                     "fade out moves to the new first or last item.", {
         "item_ids": ("list", True, "the items"),
     }),
     "move_item": ("Move an item: to another place on its track, or to another track of the same kind.", {
@@ -772,7 +773,15 @@ def _id_list(name: str, key: str, value: list) -> list[str]:
 
 def _delete_items(doc, op, ctx):
     name = "delete_items"
-    for item_id in _id_list(name, "item_ids", op["item_ids"]):
+    ids = _id_list(name, "item_ids", op["item_ids"])
+    main = model.track(doc, MAIN_VIDEO)
+    # The video's own fade in and fade out (an imported clip's fade_in and
+    # fade_out sit on V1's first and last items): when that item goes, the
+    # fade moves to the item that is first or last now (step 8's choice).
+    first, last = (main["items"][0], main["items"][-1]) if main and main["items"] else (None, None)
+    fade_in = first["fades"]["in_us"] if first is not None and first["id"] in ids else 0
+    fade_out = last["fades"]["out_us"] if last is not None and last["id"] in ids else 0
+    for item_id in ids:
         t, index, _item_found = _item(doc, name, "item_ids", item_id)
         if _is_main(t):
             fps = _fps(doc)
@@ -782,7 +791,26 @@ def _delete_items(doc, op, ctx):
             _lay(name, doc, t, frames, fps)
         else:
             del t["items"][index]
+    if main and main["items"]:
+        _carry_edge_fades(main["items"], fade_in, fade_out, ctx)
     _unlink(doc)
+
+
+def _carry_edge_fades(items: list[dict], fade_in: int, fade_out: int, ctx) -> None:
+    """The fade in of a deleted first item onto the new first item, the fade
+    out of a deleted last item onto the new last item: only onto an item
+    with no fade of its own there, shortened to fit it, and said."""
+    head, tail = items[0], items[-1]
+    if fade_in > 0 and head["fades"]["in_us"] == 0:
+        moved = min(fade_in, head["duration_us"] - head["fades"]["out_us"])
+        if moved > 0:
+            head["fades"]["in_us"] = moved
+            ctx.warnings.append("The video's fade in moved to the part that is first now.")
+    if fade_out > 0 and tail["fades"]["out_us"] == 0:
+        moved = min(fade_out, tail["duration_us"] - tail["fades"]["in_us"])
+        if moved > 0:
+            tail["fades"]["out_us"] = moved
+            ctx.warnings.append("The video's fade out moved to the part that is last now.")
 
 
 def _unlink(doc: dict) -> None:

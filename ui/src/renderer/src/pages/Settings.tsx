@@ -6,6 +6,7 @@ import {
   saveAppearance,
   type Appearance
 } from '../lib/appearance'
+import { setNewEditorOn, useNewEditor } from '../lib/newEditor'
 import { api, errorText } from '../lib/api'
 import type { Preflight, Settings as SavedSettings } from '../lib/types'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
@@ -33,6 +34,7 @@ import YouTubeCard from '../components/YouTubeCard'
 import ConnectedAccountsCard from '../components/ConnectedAccountsCard'
 import RemoteRenderCard from '../components/RemoteRenderCard'
 import ExportSettingsCard from '../components/ExportSettingsCard'
+import EditorCacheRow from '../components/editor/EditorCacheRow'
 import { Folder } from '../components/icons'
 
 // Content languages offered in the dropdown — the transcription/caption
@@ -154,6 +156,7 @@ const GB = (bytes: number): string => `${(bytes / 1e9).toFixed(2)} GB`
  *  interrupted downloads, and an editor preview per clip. None of it shows
  *  anywhere, so the drive just quietly shrinks. */
 function StorageCard(): JSX.Element {
+  const newEditor = useNewEditor()
   const [info, setInfo] = useState<Awaited<ReturnType<typeof api.storage>> | null>(null)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState('')
@@ -169,7 +172,10 @@ function StorageCard(): JSX.Element {
     orphan_transcripts: 'Transcripts with no video',
     render_leftovers: 'Leftovers from failed renders',
     orphan_clips: 'Clip files not in your library',
-    previews: 'Editor previews (rebuilt on demand)'
+    previews: 'Editor previews (rebuilt on demand)',
+    // The new editor's waveforms, thumbnails and previews of videos that
+    // are gone (data/media_cache): shown only once the new editor was used.
+    editor_cache: t('New editor files no project uses')
   }
 
   return (
@@ -217,6 +223,9 @@ function StorageCard(): JSX.Element {
             </button>
             {done && <span className="text-xs text-muted">{done}</span>}
           </div>
+
+          {/* The new editor's cache, only while it is switched on. */}
+          {newEditor && <EditorCacheRow />}
 
           <p className="text-[11px] text-muted/80 border-t border-raised/60 pt-2">
             {t('Source videos')}: {info.sources.files} · {GB(info.sources.bytes)}.{' '}
@@ -391,6 +400,28 @@ function AppearanceCard(): JSX.Element {
         Changes apply instantly and are remembered. Keyboard focus outlines and reduced-motion
         preferences are always honored.
       </p>
+    </div>
+  )
+}
+
+/** "New editor (beta)": the new editor's ways in (Clip Editor page), off by
+ *  default. Kept with the other UI preferences of this window. */
+function NewEditorCard(): JSX.Element {
+  const on = useNewEditor()
+  return (
+    <div className="card" aria-label={t('New editor (beta)')}>
+      <label
+        className="flex items-center gap-3 cursor-pointer"
+        title={t('Adds the new editor to the Clip Editor page: edit a clip or a whole video on a timeline, with your own parts, and export it. It is still being built, so the editor you use today stays as it is.')}
+      >
+        <input
+          type="checkbox"
+          className="accent-[#38BDF8] size-4"
+          checked={on}
+          onChange={(e) => setNewEditorOn(e.target.checked)}
+        />
+        <span className="text-sm font-semibold">{t('New editor (beta)')}</span>
+      </label>
     </div>
   )
 }
@@ -779,6 +810,8 @@ export default function Settings(): JSX.Element {
       <LanguageCard />
 
       <AppearanceCard />
+
+      <NewEditorCard />
 
       <NotificationsCard />
 

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "Clips Kitty editor suite",
-  "updated": "2026-11-14",
+  "updated": "2026-11-15",
   "about": "Machine-readable tracker for the editor suite. STATUS.md is the readable view of this file; when they disagree, this file wins. Acceptance criteria are copied from the plan's Proof column; step 0 also carries the checks from the plan's section on keeping plain auto-clipping identical. depends_on is read from the plan's text (which earlier step's output a step uses): the plan gives the run order, not a dependency list.",
   "now": "1",
   "stop_after_phase": 2,
@@ -2379,7 +2379,7 @@
         "6",
         "7"
       ],
-      "status": "todo",
+      "status": "in_progress",
       "user_visible": true,
       "acceptance": [
         "Black-box: 2 h VOD → mark 3 ranges → reorder → export",
@@ -2392,16 +2392,159 @@
       "files": [
         "ui/src/renderer/src/components/editor/ (new)",
         "ui/src/renderer/src/App.tsx",
-        "ui/src/renderer/src/lib/api.ts"
+        "ui/src/renderer/src/lib/api.ts",
+        "docs/editor-suite/api/step8-editor.md (new: the UI contract, part A's engine changes)",
+        "server/projects_api.py (GET /projects; POST /projects with media and insert)",
+        "server/compose_api.py (stills one at a time; replaced exports; file_exists; the export row's path before the move)",
+        "server/media_api.py (jobs survive Clear; plain errors; cancel_tasks_for)",
+        "server/api.py (CORS expose_headers; DELETE /videos stops editor jobs; 7-D5's 409 and replace_project_edits)",
+        "video_editor/compose.py (AI runs in pieces; Apply's end pad in Branch B)",
+        "video_editor/media/{cache,fileio,peaks,resolver,importing}.py (step 6's small faults)",
+        "video_editor/project/{store,ops}.py (summaries, mark_replaced, add_asset check; edge fades)",
+        "core/state.py (project_export_of), core/housekeeping.py (walk_files)",
+        "ui/src/renderer/src/pages/Settings.tsx (Storage's editor_cache line)",
+        "tests/test_step8_engine.py (new), tests/test_step8_routes.py (new, Plugin platform job)",
+        "tests/snapshots/compose_plans/{ai_gaming_layout,landscape_canvas_ai_items}.json (end pad, on purpose)",
+        "ui/src/renderer/src/components/editor/{EditorScreen,Viewer,OverlayLayer,MediaBin,Inspector,TimelinePanel,ProjectsList,LibraryEntry}.tsx (new, part B)",
+        "ui/src/renderer/src/components/editor/{programPlayer,useProject,useMediaInfos}.ts (new, part B)",
+        "ui/src/renderer/src/lib/{newEditor,editorApi,editorTypes,editorProgram,editorPlayhead}.ts (new, part B)",
+        "ui/src/renderer/src/App.tsx, pages/ClipStudio.tsx, pages/Settings.tsx, components/ClipEditor.tsx, lib/api.ts (part B: the switch and the ways in)",
+        "tests/test_ui_new_editor.py (new, part B)",
+        "docs/editor-suite/USER-GUIDE.md (The new editor (beta)), CHANGELOG.md (one Unreleased line)",
+        "ui/src/renderer/src/components/editor/{TimelinePanel,Inspector,MediaBin,ExportDialog,ProjectExportPrompt,EditorCacheRow}.tsx (part C)",
+        "ui/src/renderer/src/components/editor/timelineMedia.ts (new, part C); lib/editorTimeline.ts, lib/projectExportPrompt.ts (new, part C)",
+        "ui/src/renderer/src/lib/{api,editorApi,editorTypes}.ts, App.tsx, pages/Settings.tsx, env.d.ts (part C)",
+        "ui/src/main/index.ts, ui/src/preload/index.ts (part C: show-in-folder)",
+        "server/compose_api.py (part C: GET /projects/{id}/exports/{row}/file, each row's url)",
+        "video_editor/media/probe.py (part C: Matroska H.264/AAC needs no proxy)",
+        "tests/test_ui_new_editor_part_c.py (new, part C); tests/test_step8_routes.py, test_project_routes.py, test_media_probe.py, test_media_routes.py (part C)",
+        "QC round 1: server/youtube_api.py (render_first asks first), server/api.py (project_edits_kept, captions, cancel Origin), server/projects_api.py and server/compose_api.py (clip_basis, clip_changed, file stamp), core/state.py (projects.clip_basis/clip_basis_head, project_exports.file_mtime_ns), video_editor/project/{store,importer}.py, ui lib/api.ts, lib/editorApi.ts, lib/editorTypes.ts, lib/editorProgram.ts, components/editor/{LibraryEntry,ExportDialog,Inspector}.tsx",
+        "Review fix 8-D13: server/api.py (project_edits_left_out, TranslateIn.without_project_edits), server/jobs.py (_translate_clips asks again), core/state.py (StateDB.project_export_clips), core/pipeline.py (_keeps_project_export in _register_clip and _sport_reels), ui lib/api.ts (newFilesRequest), lib/projectExportPrompt.ts (sendAskingFirstForNewFiles, NothingMade), components/editor/ProjectExportPrompt.tsx (the separate-file question), components/MultilingualExport.tsx (Cancel is a notice); tests/test_step8_routes.py, tests/test_ui_new_editor_part_c.py",
+        "UX fix round: server/compose_api.py (ExportIn.folder, export_stem, export_place, result.folder), ui components/editor/useModalFocus.ts (new), components/editor/{ExportDialog,LibraryEntry}.tsx, lib/editorApi.ts, lib/editorTypes.ts; tests/test_step8_routes.py, tests/test_ui_new_editor_part_c.py"
       ],
       "notes": [
-        "Timeline seeded from OpenCut classic's MIT code, credited",
+        "Timeline written from scratch (step8-editor.md choice 9); no outside code was adapted, so nothing is added to NOTICE",
         "Step E must land before this step reaches users",
         "Expect several layout rounds: Colin judges layout by looking",
-        "Whether the new editor becomes the default instead of beta is Colin's call after Phase 2"
+        "Whether the new editor becomes the default instead of beta is Colin's call after Phase 2",
+        "Part A (engine, 2026-11-14): step 6's and step 7's small faults fixed with tests except three judged not worth their cost (see step8-editor.md); 7-D5 answered with a 409 and replace_project_edits (ED35); edge fades move (ED36); end pad in Branch B (ED34); one-call manual project and the projects list (ED37)",
+        "Measured: Electron 31.7.7's file:// window sends no Origin header and no CORS preflight; expose_headers matters only for the dev server",
+        "Part B (UI, 2026-11-15): the switch (localStorage, off by default), Edit in new editor / Edit whole video / Import a video to edit, the Projects list, the editor's frame over the app, and the viewer (two players with pre-rolled cuts, the engine's still when paused, Preview, a media on its own with I/O and Add range, the TikTok/Reels/Shorts overlay for 9:16). ED38. Checked in the sandbox: open 52-835 ms; at a cut a part's last frame stays at most about one frame longer. Part C: timeline, inspector, export dialog, the 7-D5 dialog, Clear editor cache, the Matroska check.",
+        "Part C (UI, 2026-11-15): the timeline (from scratch: buttons near the view, a canvas per track; split, trim, move, snap, zoom, keys), the inspector (timing, speed, volume, fades, framing with AI framing, overlay place, colour; the project's name, canvas, frame rate), the media bin (thumbnails, + Main track, + Overlay, drag, Import), the export dialog (presets, progress, cancel, play, show in folder, earlier exports), 7-D5's question in today's editor, Clear editor cache; Matroska H.264/AAC plays without a proxy (measured in Electron 31) (ED39 to ED42)",
+        "Measured part C: three ranges of the 2-hour video reordered and exported (frames checked); an own file split, trimmed, undone, redone, exported at 720p; an unchanged AI clip exported byte-identical to Apply; a 300-item project opens in 17 to 42 ms (production build); scrolling 500 items drops no frame; zooming with all 500 in view drops about one frame in 14",
+        "Waiting for Colin's click-through; Show in folder not yet tried in the desktop app",
+        "QC fix round 1 (2026-11-15): 8-D1 to 8-D9 (step8-editor.md, QC round 1 fixes); 7-D5 now guards every render of today's editor (publish render_first, PUT captions); a clip changed in today's editor after its project is asked about (clip_basis, ED43); the UI's frame grid is the engine's to the microsecond",
+        "Review fix 8-D13 (2026-11-15): anything made from a clip's original window asks first when the clip's file is a new-editor export (ED45); inventory and choices in step8-editor.md, 'Everything made from a clip's own window'. Left for step 9: burn and dub onto the export with captions remapped through the timeline instead of asking.",
+        "UX fix round (2026-11-15): a project with no clip (by hand, imported, or its clip deleted) exports to Settings' export folder as '<project name> - <date>.mp4' and the dialog says 'Saves to' / 'Saved in' the folder (ED46); a clip's project still replaces the clip (ED28). The Export dialog and the shape box keep the keyboard (useModalFocus: the page behind inert, Tab goes round, Esc from anywhere, focus back on the opener).",
+        "2026-11-15: built and checked. Last QC and review passed with no serious defect from normal use (one serious, unusual: two overlapping exports of one project; on the click-through list); black-box passed (S3 re-tested); performance passed against step 7 (zoom of 500 items in view misses 60 fps at p95; one cut in 57 two frames late); UX passed after one fix round (ED46 export folder for projects with no clip; dialogs keep the keyboard), and the orchestrator fixed focus going back to the opener after Close (App.tsx notes it before the page goes inert; checked in the sandbox). Waiting for Colin's click-through; the list is in step8-editor.md 'Left for later'."
       ],
       "results": [],
-      "defects": []
+      "defects": [
+        {
+          "id": "8-D1",
+          "date": "2026-11-15",
+          "found_by": "QC",
+          "summary": "\"Apply edits & upload\" (YouTube render_first) queued a render of the clip's old window over a new-editor export without the 7-D5 question. Fixed: RenderFirst.replace_project_edits and the same check in _publish_clip; api.publishClip with render_first asks first. Tests in test_step8_routes.py and test_ui_new_editor.py.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "8-D2",
+          "date": "2026-11-15",
+          "found_by": "QC",
+          "summary": "PUT /clips/{id}/captions queued the same render without the check (no screen calls it). Fixed: CaptionsIn.replace_project_edits and the check; api.saveCaptions asks first.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "8-D3",
+          "date": "2026-11-15",
+          "found_by": "QC",
+          "summary": "state.json said the timeline was seeded from OpenCut classic; it was written from scratch. Note corrected.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "8-D4",
+          "date": "2026-11-15",
+          "found_by": "QC",
+          "summary": "A done export row whose path was later rewritten in place (Apply over a Branch A export's file) stayed offered; paths were compared as text. Fixed: bytes and file_mtime_ns recorded at done, a mismatch lists the row replaced and its file route answers 404; mark_replaced compares paths as the system does.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "8-D5",
+          "date": "2026-11-15",
+          "found_by": "Review",
+          "summary": "Review: same as 8-D1 and 8-D2, reproduced (test_r1_d5_publish.py). Fixed with them; the review script passes.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "8-D6",
+          "date": "2026-11-15",
+          "found_by": "Review",
+          "summary": "Review: Edit in new editor reopened a project older than today's Apply of the clip; exporting it put the old window back and deleted Apply's file. Fixed (ED43): projects.clip_basis; an unchanged project follows the clip by itself (undoable), a changed one asks (Start again / Keep the project), export asks (409 clip_changed, replace_clip_changes). The review's test_r8_stale_project.py passes.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "8-D7",
+          "date": "2026-11-15",
+          "found_by": "Review",
+          "summary": "Review: the UI's frame starts rounded down, the engine's to the nearest microsecond, so the paused still showed the previous frame on one frame in three. Fixed: frameUs uses model.frame_us's formula; r2_frames.py shows 0 of 600 frames differ at four rates.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "8-D8",
+          "date": "2026-11-15",
+          "found_by": "Review",
+          "summary": "Review: typing back the Inspector's shown source time moved the edge by up to a frame. Fixed: a typed time is committed only when it lands on another frame.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "8-D9",
+          "date": "2026-11-15",
+          "found_by": "Review",
+          "summary": "Review: POST /export/jobs/{id}/cancel had no Origin check (it did need the session header, so a web page could not cancel). Now also checks the Origin. GET /export/jobs stay open as before (step 1; read-only progress).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "8-D10",
+          "date": "2026-11-15",
+          "found_by": "Review",
+          "summary": "Review (serious): an unchanged clip's export (and its Preview) ran ED34's 0.4 s end pad on V1 only, so a picture, logo, overlay video or text laid over the whole program vanished for the file's last 0.4 s. Fixed: with_end_pad lengthens every item on the other video and text tracks that ends at the old end; an overlay video runs on in its source, then holds its last frame. Captions unchanged (they follow Apply). Tests: test_step8_engine.py::test_the_end_pad_covers_every_layer_that_ran_to_the_end, ::test_a_caption_that_ends_at_the_end_ends_there_as_apply_draws_it, test_compose_routes.py::test_the_end_pad_keeps_what_was_laid_to_the_end; the review's test_t2_pad_overlay.py passes.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "8-D11",
+          "date": "2026-11-15",
+          "found_by": "Review",
+          "summary": "Review (serious): deleting a project from the Projects list also deleted its project_exports rows, the only thing the 7-D5 guard (StateDB.project_export_of) read. After that, today's Apply (and the chat edit, PUT captions, 'Apply edits & upload') no longer asked and re-rendered the clip's old window over the Branch B export, deleting the person's edited video, against the delete dialog's promise. Also when the project was deleted while its export waited or ran. Fixed (ED44): project_export_of also knows an export by its file (a file directly in data/clips/projects/, compared as the system compares paths); with its project gone the 409 carries project_id null and ProjectExportPrompt offers only 'Apply anyway' and 'Cancel' with a sentence of its own; DELETE /projects/{id} cancels that project's waiting and running exports first, so the clip stays as it was; a render job (queued before the export landed, or retried after it) asks again under the clip's lock and fails with a plain sentence unless its payload carries replace_project_edits (the person's choice). Make clips again (edited_at) and Storage (the folder is never swept) were already safe. Tests: test_step8_engine.py::test_a_clip_whose_file_is_a_deleted_projects_export_is_still_known, test_step8_routes.py::test_a_deleted_projects_export_is_still_asked_about, ::test_a_render_job_never_goes_over_an_export_it_was_not_asked_about, ::test_deleting_a_project_cancels_its_waiting_export, ::test_deleting_a_project_cancels_its_running_export, test_ui_new_editor_part_c.py::test_the_question_without_a_project_offers_only_apply_anyway_and_cancel; the review's test_u1_delete_project_then_apply.py and test_u2_delete_project_mid_export.py pass.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "8-D12",
+          "date": "2026-11-15",
+          "found_by": "Review",
+          "summary": "Review (serious): edits made while a Branch A export waited or ran were dropped without a word. set_clip_basis recorded the project's head when the export ended as 'the clip is this project', so a cut made during the export counted as no change of its own; after today's Apply, 'Edit in new editor' started the project again from the clip by itself (started_again), which the UI never mentioned. Fixed (ED43 amended): the export records the revision it rendered (set_clip_basis(revision=...), clip_basis_head = that revision; Branch B keeps -1, never started again by itself), so later edits make the person be asked (clip_changed_since); whenever the engine does start again, the editor shows 'Started again from the clip as it is now. Undo brings back your changes.' through t(); a start-again keeps the project's own name. Ride-alongs: ProjectExportPrompt's first focus is on Cancel when 'Open in new editor' is not offered (never on 'Apply anyway'); delete_items' moved-fade warnings name 'the part that is first now' / 'last now' instead of internal item ids. Tests: test_step8_routes.py::test_edits_made_during_a_branch_a_export_are_never_dropped, ::test_an_unchanged_branch_a_export_still_follows_the_clip_and_keeps_its_name; test_step8_engine.py::test_the_clip_basis_is_the_exported_revision_not_the_head, ::test_a_moved_fades_notice_names_no_internal_id; test_ui_new_editor_part_c.py::test_without_open_in_new_editor_first_focus_is_on_cancel, ::test_a_start_again_is_always_told; the review's test_v1_edit_during_branch_a.py, test_s8_restart_after_a.py and test_v3_edge_fade_undo.py pass.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "8-D13",
+          "date": "2026-11-15",
+          "found_by": "Review",
+          "summary": "Review (serious): Export in other languages (POST /translate) ignored the new editor's edits. For a clip whose file is its project's Branch B export, burned subtitles and dubs were made through multilingual.burn.clean_base, which renders the clip's OLD window and render options from the source, and every language's caption timings (subtitle files too) came from the old window; nothing asked. The fourth defect of the kind after Apply, the chat edit, the caption save and 'Apply edits & upload', so the whole kind is closed (ED45): an inventory of every route, job, MCP tool and hook that makes video from a clip's window is in step8-editor.md. Fixed: POST /translate (stage export with burn, dub or subtitles) answers 409 reason project_export, separate_file, clip_ids, count, total, project_id (one per request, a batch names every clip it affects) unless without_project_edits ('Make it anyway'); the translate job asks again when it runs, before any AI or file; a forced run (Process anyway, retry, story reels made again) keeps a clip on its new-editor export instead of re-pointing it at the fresh render (core/pipeline.py _keeps_project_export). UI: api.translateClips asks through ProjectExportPrompt's separate-file question (t(): the new files are made from the clip as the AI made it, without the new editor's changes; Open in new editor / Make it anyway / Cancel). Tests: test_step8_routes.py::test_export_in_other_languages_asks_first_for_a_project_export, ::test_a_batch_is_asked_about_once_and_a_plain_clip_never, ::test_a_translate_job_never_makes_files_it_was_not_asked_about, ::test_a_run_that_makes_the_window_again_keeps_the_export, ::test_a_story_reel_made_again_keeps_its_export; test_ui_new_editor_part_c.py::test_export_in_other_languages_asks_before_making_files_without_the_editors_changes; the review's test_w1_translate_over_export.py passes.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        }
+      ]
     },
     {
       "id": "9",

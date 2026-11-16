@@ -12,6 +12,12 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Added
 
+- **New editor (beta)** (#192, #144). Off unless you tick it in Settings. It adds a full-screen
+  editor to the Clip Editor page: open a clip, a whole video or a video from your PC, choose
+  your own parts on a timeline (split, trim, move, overlays, speed, framing, colour), pause on
+  the exact frame the export will make, preview it with TikTok's, Reels' or Shorts' buttons
+  drawn over it, and export it. Today's clip editor works as before; it asks first before it
+  replaces, or makes translations from, a clip you exported from the new editor.
 - **A built-in voice, and your own voice apps.** Clips Kitty now has its own voice for
   English, Spanish, French, Hindi, Italian and Portuguese. It runs on your PC with no
   account and no internet, and its voices may be used in videos that earn money. Dubbing

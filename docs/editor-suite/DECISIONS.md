@@ -622,3 +622,193 @@ The Kokoro voice that Voicebox uses by default was already in the repo as an opt
 **Trade-offs accepted:** in that race the export does not become the clip's file; the person sees it in the project's exports.
 
 **Undo:** the lock and the `start_file` check in `server/compose_api.py` `_register_b`.
+
+## ED34 · An unchanged clip's export runs Apply's 0.4 s past its end
+
+**Date:** 2026-11-14 · **Steps:** 8 (part A) · step 7's open fault "Branch B is 0.4 s shorter than Branch A"
+
+**Context:** Apply renders a clip 0.4 s past its window's end (`core/pipeline.py` `END_PAD`: Whisper's word ends run early), and drops the pad as soon as the clip has a cut. Branch B ended at V1's last out point, so an unchanged AI clip exported through the compiler was 0.4 s shorter than Apply's file, and its last word could be cut with the end card off.
+
+**Decision:** the export carries the pad (`compose.end_pad_us`, `with_end_pad`), and so does the draft, which is the export's program (one tracking pass serves both; a still on the last item finds it): for a project made from a clip whose V1 is still one stretch of the clip's own video (no cut, one speed) ending where the clip's window ends, the export's last item runs `END_PAD` further (less where `stop_by` or the video's end says so; none for a whole-video clip). Looped music that filled the program fills it; captions are mapped through the unpadded timeline. The document, the editor's timeline and the stills keep the clip's window.
+
+**Why:** that is exactly when Apply keeps its pad, so the two branches make files of the same length; the document stays the clip as it was saved (`projection(import(x)) == x` holds).
+
+**Rejected:** carrying the pad in the imported item's length (the timeline would disagree with the clip's window, and every trim would move it); a sound-only tail without the end card (still 0.4 s shorter).
+
+**Trade-offs accepted:** the exported file is 0.4 s longer than the timeline shows, as today's clips are longer than their window. Two compose-plan snapshots changed for it (`ai_gaming_layout`, `landscape_canvas_ai_items`).
+
+**Undo:** `end_pad_us`/`with_end_pad` and their call in `compose.compile`; `build_ass(caption_doc=)`.
+
+**Amended 2026-11-15 (8-D10, the round-3 review):** the pad covers the whole program, not V1 alone. `with_end_pad` also lengthens every item on the other video tracks and the text tracks that ends at the old end (on the same frame): overlays, pictures, stickers, logos, text and the hook end at the new end, as looped music already did. An overlay video runs on in its source as far as the source has frames, then holds its last frame (`overlay_graph` adds `tpad=stop_mode=clone` only when an item is longer on the timeline than its source span, which a plain item never is). An item that ends before the end keeps its end. Captions are unchanged: they follow Apply, which builds a clip's captions from the unpadded window, so a line that ends at the clip's end ends there. The draft and the export share the compile, so both changed. Without this, anything laid over the whole program vanished for the export's last 0.4 s. Rejected: dropping the pad whenever another track reaches the end (an unchanged clip with a logo laid over it would be 0.4 s shorter than Apply again, and could cut the last word). No snapshot changed for it (no snapshot case is a clip's project with items on other tracks); the argv snapshots and the golden check are identical.
+
+## ED35 · Today's editor asks before rendering over a new-editor export
+
+**Date:** 2026-11-14 · **Steps:** 8 (part A) · 7-D5
+
+**Context:** after a Branch B export of a clip's project, the clip's file is the export while its row keeps the old window and render options. Today's Apply and chat edit would render that window again and silently replace the export with the clip as it was before the project's edits.
+
+**Decision:** `POST /clips/{id}/render` and `POST /clips/{id}/ai-edit` answer 409 `{message, reason: "project_export", project_id}` for such a clip (`StateDB.project_export_of`: the clip's path is a Branch B `project_exports` row's), unless the request says `replace_project_edits: true`. Today's editor shows the message with "Open in new editor" and "Apply anyway".
+
+**Why:** never quietly lose the person's edits, and never lock them out: with the switch off they can still choose to apply.
+
+**Rejected:** routing today's Apply through the project (two editors writing one clip); refusing with no way through.
+
+**Trade-offs accepted:** an MCP or script caller that re-renders such a clip gets the 409 and must send the flag.
+
+**Undo:** `_project_edits_kept` in `server/api.py` and the `replace_project_edits` fields.
+
+## ED36 · Deleting V1's first or last item moves the video's fade
+
+**Date:** 2026-11-14 · **Steps:** 8 (part A) · step 5's edge-fade note
+
+**Context:** an imported clip's fade in and fade out sit on V1's first and last items. Deleting that item dropped the fade with no word.
+
+**Decision:** `delete_items` moves the deleted first item's fade in to the new first item, and the deleted last item's fade out to the new last item, only where that item has no fade of its own, shortened to fit, with a warning. It is part of the operation, so it is one undo step and the same for the editor, the AI and MCP.
+
+**Why:** the fade belongs to the video, not to one piece of it; trimming a clip's edges is the most common edit.
+
+**Rejected:** a warning only (the fade is lost); doing it in the UI (the AI and MCP would still lose it).
+
+**Undo:** `_carry_edge_fades` in `video_editor/project/ops.py`.
+
+## ED37 · A project made by hand starts in one call, with the whole video on V1
+
+**Date:** 2026-11-14 · **Steps:** 8 (part A) · #144
+
+**Context:** "Edit whole video" and "Import a video to edit" make a project from one media. As three operations after an empty project, the first undo steps would take the video back out.
+
+**Decision:** `POST /projects` takes `media` (`video:<id>` or `asset:<sha256>`) and `insert` (default true): the project is made with the media and, by default, the whole of it on V1 framed fit and centred, at the video's own frame rate when known, before it is saved, so its history starts there. `GET /projects` lists every project as a summary (no document), the last changed first, a deleted clip's project labelled.
+
+**Why:** one round trip on open, and undo never empties the project it was made for.
+
+**Undo:** `_with_media` and `project_list` in `server/projects_api.py`; `store.summaries`.
+
+## ED38 · The new editor opens over the app, its switch is a window preference, and the viewer pre-rolls cuts
+
+**Date:** 2026-11-15 · **Steps:** 8 (part B) · #192, #144
+
+**Context:** the editor needs a switch, a way to be reached from the Library, and a viewer that plays a program of cuts from the media themselves.
+
+**Decision:**
+- "New editor (beta)" is kept in localStorage like the window's other preferences (appearance), off unless it is `"1"`. It decides only what this window shows.
+- The editor is drawn over the app as a full screen, loaded only when a project is opened (`React.lazy`), with the page underneath left mounted: Close returns to the same video and clip without any state to restore.
+- "Edit in new editor" sits in today's clip panel under "Edit this clip" (an optional slot that is absent with the switch off), not on the clip cards, whose four corners are taken.
+- Paused frames come from the engine (`still`) and are drawn on a canvas from `createImageBitmap`: the packaged CSP lets no `blob:` or `data:` address into an `<img>`, and the CSP stays as it is until step 9.
+- At a cut, the waiting player starts early and hidden, by a measured start time, and its speed is nudged while it is silent so it reaches the cut when the outgoing item ends; the outgoing one holds its last frame if it is late. Measured: a part's last frame stays on screen at most about one frame longer than a normal frame.
+- The phone app overlay is offered for 9:16 only (greyed out with a tooltip on other shapes): its drawing and the safe zones are measured on a 1080x1920 phone screen.
+
+**Why:** nothing changes for anyone with the switch off; Close is exact; the paused frame is the export's; cuts play without a black frame.
+
+**Undo:** `lib/newEditor.ts`, `App.tsx`'s `editorProject`, `components/editor/programPlayer.ts`.
+
+
+## ED39 · The timeline is written from scratch: buttons for the items near the view, one canvas per track
+
+**Date:** 2026-11-15 · **Steps:** 8 (part C) · #192, #144
+
+**Context:** the timeline must hold 500 items at 60 frames a second, open a 300-item project within a second, and let a keyboard and a screen reader reach every item. The plan allowed adapting OpenCut classic or react-timeline-editor (both MIT).
+
+**Decision:** written from scratch (nothing to credit). Each item near the view (a view's width each side, plus the selected and the dragged) is a memoised `<button>` with a spoken name; the pictures and waveforms are drawn on one canvas per track the width of the view, for the view only, from step 6's thumbnail sheets and peaks. A zoom is one render with its scroll set right after; wheel steps between two frames are one zoom. The main track has no magnet toggle (step 5's V1 is always gapless); "Snap" is the toggle. A drag, a split or a slider sends one operation when it ends, so it is one undo step.
+
+**Why:** buttons give keyboard and screen-reader access for free; a canvas keeps the pictures cheap at any zoom. Measured: a 300-item project opens in 17 to 42 ms (production build); scrolling 500 items never drops a frame; zooming with all 500 in view drops about one frame in 14.
+
+**Rejected:** adapting react-timeline-editor (its rows are divs per item with no keyboard model, and it brings its own drag library); drawing everything on one canvas (no keyboard or screen reader without a second, hidden model).
+
+**Undo:** `components/editor/TimelinePanel.tsx`, `timelineMedia.ts`, `lib/editorTimeline.ts`.
+
+## ED40 · Matroska with H.264 and AAC needs no proxy
+
+**Date:** 2026-11-15 · **Steps:** 8 (part C), 6 · #192
+
+**Context:** step 6 gave Matroska with H.264 or AAC (OBS's default recording) a proxy as a guess, for step 8 to try.
+
+**Decision:** tried in Electron 31.7.7 (Chrome 126.0.6478.234, the app's window settings, a `file://` page): H.264 + AAC in `.mkv` plays and seeks as the same streams in `.mp4` do (seek to 4.5 s in 13 ms against 14 ms). `probe.PLAYS["matroska"]` now takes H.264 and AAC; 10-bit H.264, HEVC and other codecs in Matroska still get a proxy.
+
+**Why:** a proxy costs a full encode of a long recording before the editor plays it smoothly.
+
+**Undo:** `video_editor/media/probe.py` `PLAYS`; `tests/test_media_probe.py`, `tests/test_media_routes.py`.
+
+## ED41 · The export dialog plays an export through its row, and shows it in its folder through the desktop app
+
+**Date:** 2026-11-15 · **Steps:** 8 (part C) · #192
+
+**Context:** the dialog must play a finished export or show it in its folder, and must never offer a file that is gone. The engine had no way to serve an export's file, and the page can't open a folder.
+
+**Decision:** `GET /projects/{id}/exports/{row}/file` serves a `done` row's file of that project when it is there and is a video by its extension (the project's token, as the draft); each row carries its `url` only then. "Show in folder" is an IPC call (`show-in-folder`) that takes only an absolute path to an existing video file and calls `shell.showItemInFolder`; the browser build has no such call and shows no button.
+
+**Why:** nothing from the request names a path; a row whose file went never gets an address.
+
+**Undo:** `server/compose_api.py` `project_export_file`; `ui/src/main/index.ts` `show-in-folder`.
+
+## ED42 · Today's editor asks in the API layer, so every way it renders asks the same
+
+**Date:** 2026-11-15 · **Steps:** 8 (part C) · 7-D5
+
+**Context:** part A made `POST /clips/{id}/render` and `/ai-edit` answer 409 `reason: "project_export"` for a clip whose file is a new-editor export. Today's editor calls the render route from five places (Re-render, captions, colour, the timeline editor twice) and the chat edit from one.
+
+**Decision:** `api.rerenderClip` and `api.aiEdit` go through `renderRequest`, which sends the same body as before and, only on that 409, asks (`ProjectExportPrompt`, mounted once in `App.tsx`): "Open in new editor" (while the switch is on), "Apply anyway" (the same request with `replace_project_edits: true`) or "Cancel". The caller gets a plain sentence ("Nothing was applied.") when nothing was sent.
+
+**Why:** one place for all six callers, and a clip the new editor never exported sends and gets exactly what it did.
+
+**Undo:** `lib/projectExportPrompt.ts`, `lib/api.ts` `renderRequest`, `components/editor/ProjectExportPrompt.tsx`.
+
+## ED43 · A clip's project remembers what the clip was, and asks when today's editor changed it since
+
+**Date:** 2026-11-15 · **Steps:** 8 (QC fix round 1) · 8-D6
+
+**Context:** the review found that "Edit in new editor" reopened a clip's project made before today's Apply changed the clip, and that exporting it put the old window back and deleted Apply's file, with no question. 7-D5 (ED35, ED42) guards the other direction.
+
+**Decision:** `projects.clip_basis` (a hash of the clip's video, window and render options; not its title) and `projects.clip_basis_head` (the project's revision then). Opening a clip's project whose clip changed since: a project with no change of its own starts again from the clip by itself, as one revision Undo takes back; one with changes of its own opens as it is, and the editor asks "Start again from the clip as it is now" or "Keep the project". Exporting such a project answers 409 `reason: "clip_changed"` unless `replace_clip_changes`; the export dialog asks "Export anyway". After an export over the clip, the clip as it is then is the new basis, so the person is asked once.
+
+**Why:** nothing of the person's is lost without a question, in either editor, and an untouched project simply follows its clip (the review's case) with no dialog. Rejected: a timestamp comparison (edited_at is also written by the project's own Branch A export), and deleting or detaching the old project (it would lose its exports' records, or be labelled as if its clip were deleted).
+
+**Amended (2026-11-15, 8-D12):** `clip_basis_head` after a Branch A export is the revision that export rendered (the job carries it; `set_clip_basis(revision=...)`), not the head when the export ended: a cut made while the export waited or ran counted as "no change of its own", and the next Apply in today's editor made the project start again by itself, without a word. Now such edits make the person be asked (`clip_changed_since`); Branch B still records -1. No route starts a project again from its clip without the person being asked or told: whenever the engine does (`started_again: true`), the editor opens with "Started again from the clip as it is now. Undo brings back your changes.", and the project's own name (not part of the clip) stays across a start-again.
+
+**Undo:** `core/state.py` (`PROJECT_COLUMNS`), `video_editor/project/store.py` (`clip_basis`, `set_clip_basis`, `start_again`), `video_editor/project/importer.py` (`clip_basis`), `server/projects_api.py` (`POST /clips/{id}/project`), `server/compose_api.py` (`clip_changed`, the export's 409), `components/editor/LibraryEntry.tsx`, `ExportDialog.tsx`.
+
+## ED44 · A new-editor export is known by its file, and deleting a project cancels its exports
+
+**Date:** 2026-11-15 · **Steps:** 8 (review fix) · 8-D11, 7-D5
+
+**Context:** the review found that deleting a project (which deletes its `project_exports` rows) left the clip whose file is its Branch B export unprotected: today's Apply re-rendered the old window over it and deleted the exported file, against the delete dialog's "The clip, your videos and the files you exported stay." The same when the project was deleted while its export waited or ran.
+
+**Decision:**
+- `StateDB.project_export_of` also knows an export by its file: a file directly in `data/clips/projects/` (the data folder is the database file's folder), compared as the system compares paths. Only Branch B writes there. The project is the one the file is named after when it still exists; otherwise `""`, and the 409 carries `project_id: null`. `ProjectExportPrompt` then says the project was deleted and offers only "Apply anyway" (as before) and "Cancel".
+- Deleting a project while its export waits or runs: **cancel** it as part of the delete (option a), not let it finish (option b). With (b) the clip's file would be replaced by the edits of a project the person just deleted, with no project or exports list left to see them in; with (a) the clip stays exactly as it was and no file the person had is touched, so the dialog's promise holds without new words. One that finishes regardless (the cancel came during its last step) is protected by the file rule.
+- The same question when the render runs: a render job (queued before the export landed, or retried after) checks again under the clip's lock and fails with a plain sentence unless its payload says `replace_project_edits` (added by the four routes only when the person chose "Apply anyway"). Branch A and other direct callers of `Worker._rerender_clip` are unchanged.
+- Make clips again needs no change (the export sets `edited_at`, which nothing clears, so the clip is kept), nor Storage (it never sweeps `clips/projects/`).
+
+**Why:** the guard must not depend on records a person can delete; the file itself is the fact. Rejected: keeping rows or a tombstone after a delete (another record that can drift), and refusing to delete a project (a person may want it gone).
+
+**Undo:** `core/state.py` (`in_project_exports`, `project_export_of`, `data_dir`), `server/api.py` (`project_edits_kept`, the `replace_project_edits` payload key), `server/youtube_api.py`, `server/jobs.py` (`keep_project_export`, `PROJECT_EXPORT_KEPT`), `server/projects_api.py` (`DELETE /projects/{id}` cancels, `install(lane=)`), `components/editor/ProjectExportPrompt.tsx`.
+
+
+## ED45 · Anything made from a clip's original window asks first when the clip's file is a new-editor export
+
+**Date:** 2026-11-15 · **Steps:** 8 (review fix) · 8-D13, 7-D5, ED44
+
+**Context:** the review found Export in other languages (`POST /translate`) making its burned and dubbed videos from the clip's old window (`multilingual.burn.clean_base`) and its subtitle timings from the old window's caption lines, for a clip whose file is a new-editor (Branch B) export: the translated videos silently lost the project's edits. It was the fourth defect of one kind after Apply, the chat edit, the caption save and "Apply edits & upload", each caught alone.
+
+**Decision:** one rule for the kind, checked against an inventory of every route, job, MCP tool and hook (step8-editor.md, "Everything made from a clip's own window"):
+- A result that **replaces** the clip's file asks with the existing question (`project_edits_kept`, 409 `reason: "project_export"`, "Apply anyway" = `replace_project_edits`).
+- A result that is a **separate file** (translations, dubs, subtitle files) asks with its own question (`project_edits_left_out`, 409 `reason: "project_export"`, `separate_file: true`, with `clip_ids`, `count`, `total`): the new files are made from the clip as the AI made it, without the new editor's changes; "Make it anyway" = `without_project_edits`. A batch asks once, naming every clip it affects, and never skips one. Non-UI callers get the same 409 and send the flag.
+- The job asks again when it runs (as the render job does, ED44), before anything is written.
+- A **new AI run** that finds a clip's window again (a forced run, a retry, a story reel made again) keeps the clip on its export, without asking, as Make clips again keeps every edited clip.
+- An export is known by `StateDB.project_export_of` (rows, or the file in `data/clips/projects/`, ED44), so a deleted project's export is still asked about.
+
+**Why:** the clip's file is the person's latest work; nothing made "from the clip" may silently be made from an older version of it. Rejected for now: burning and dubbing onto the export itself, which needs the captions remapped through the project's timeline (step 9's caption lane), so the subtitle timings would still be the old window's; and asking at Process anyway, which would hold a whole queue for a clip the run only happens to find again.
+
+**Unchanged:** with the switch off, and for every clip that is not a new-editor export, every route, job payload, argv and file is as before (the checks are one SQL read per clip).
+
+## ED46 · A project with no clip exports to the person's export folder, named after the project and the day
+
+**Date:** 2026-11-15 · **Steps:** 8 (UX fix round) · ED28, ED44
+
+**Context:** the UX check exported an imported 45 s project and the file landed in `data/clips/projects/<project id>-r0.mp4`: not the export folder set in Settings, named by an id, the folder only in a tooltip, and no Library entry (the project has no clip). Nothing said where it would go before Export.
+
+**Decision:** `POST /projects/{id}/export` takes an optional `folder` (Settings' export folder, which the UI keeps, as clip exports send it). Only a project with **no clip** (made by hand, or whose clip was deleted) uses it: the file goes there as `<project name> - <YYYY-MM-DD>.mp4` (the local date; the name made safe for Windows, a trailing video extension left out, reserved names such as CON get " project", an empty name "Project", copies as `-2`, `-3`). A clip's project still replaces the clip's file in `data/clips/projects/` (ED28) and its dialog keeps "Replaces the clip in your Library". No folder, an empty or relative one, or one that can't be made: the old place and name. The dialog says "Saves to <folder>" before and "Saved in <folder>" after; the job's `result` gains `folder`.
+
+**Why:** it must always be clear what is exported and where it went; a file the Library never lists has to be where the person looks for exports. Rejected: moving a clip's project's export too (the clip would then point outside the app's folder, and ED28's replace, the 7-D5/8-D11 guard by path in `data/clips/projects/`, and Storage's survey all rely on it being there); keeping the id name with only a visible folder line (the file would still be unrecognisable in the folder).
+
+**Unchanged:** the 7-D5/8-D11 path guard (a clip's file in `data/clips/projects/`) is untouched: no clip ever points at a file in the export folder. Deleting a project never deletes its exports' files, so a file in the person's folder stays theirs.
+

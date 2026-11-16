@@ -20,6 +20,7 @@ Standard library only (video/audio_library.py and core/paths.py are too).
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,8 +61,10 @@ def _inside(base: Path | None, path: Path) -> bool:
         return False
 
 
-def _checked(path: Path, base: Path | None, what: str) -> Path:
-    """`path` resolved, when it is a file inside `base`."""
+def _checked(path: Path, base: Path | None, what: str, *, one_link: bool = False) -> Path:
+    """`path` resolved, when it is a file inside `base`. `one_link`: refuse a
+    file that has another name too (a hard link), which could make a file
+    from anywhere on the drive look as if it were inside the data folder."""
     try:
         resolved = path.resolve()
     except (OSError, RuntimeError):
@@ -70,7 +73,29 @@ def _checked(path: Path, base: Path | None, what: str) -> Path:
         raise NotFound(f"{what} is outside Clips Kitty's folders, so it can't be opened here.")
     if not resolved.is_file():
         raise NotFound(f"{what} is missing.")
+    if one_link:
+        try:
+            links = os.stat(resolved).st_nlink
+        except OSError:
+            raise NotFound(f"{what} is missing.") from None
+        if links > 1:
+            raise NotFound(f"{what} has another name elsewhere on this PC (a hard link), so it can't be "
+                           "opened here.")
     return resolved
+
+
+def _exact_name(path: Path) -> bool:
+    """Whether the file on disk is spelled exactly as `path` is. Windows
+    finds `VID1.mp4` for `vid1.mp4`; a media id names one video, so a name
+    that only matches without regard to case is no match (core/paths.py
+    cached_source compares the name the same way). Elsewhere the drive
+    already tells them apart."""
+    if os.name != "nt":
+        return True
+    try:
+        return os.path.basename(os.path.realpath(path)) == path.name
+    except OSError:
+        return False
 
 
 def is_media_id(media_id: str) -> bool:
@@ -133,7 +158,7 @@ def _download(downloads: Path, video_id: str) -> Path | None:
 
     for ext in _SOURCE_EXTS:
         candidate = downloads / f"{video_id}{ext}"
-        if candidate.is_file():
+        if candidate.is_file() and _exact_name(candidate):
             return candidate
     return cached_source(downloads, video_id)
 
@@ -169,7 +194,14 @@ def _clip(conn, data_dir: Path, asked: str, clip_id: int) -> Media:
     name = str(row["title"] or row["hook"] or f"Clip {clip_id}")
     if not row["path"]:
         raise NotFound(f"The clip “{name}” has no rendered file.")
-    path = _checked(Path(row["path"]), data_dir, f"The file of the clip “{name}”")
+    # A clip's row names its rendered video. One edited to name another file
+    # of the data folder (the database, a saved sign-in), or a hard link to
+    # a file elsewhere, is not served (step 6's fault, fixed in step 8).
+    if Path(str(row["path"])).suffix.lower() not in FILE_SOURCE_EXTS:
+        raise NotFound(f"The file of the clip “{name}” is not a video, so it can't be opened here.")
+    path = _checked(Path(row["path"]), data_dir, f"The file of the clip “{name}”", one_link=True)
+    if path.suffix.lower() not in FILE_SOURCE_EXTS:
+        raise NotFound(f"The file of the clip “{name}” is not a video, so it can't be opened here.")
     return Media(ref=f"clip:{clip_id}", asked=asked, kind="video", path=path, name=name)
 
 
@@ -257,7 +289,7 @@ def resolve_entry(conn, data_dir, asked: str, key: str, entry: dict) -> Media:
         refused = f"The file “{name}” is not a sound or a video, so it can't be opened here."
         if Path(raw).suffix.lower() not in FILE_SOURCE_EXTS:
             raise NotFound(refused)
-        path = _checked(Path(raw), data_dir, f"The file “{name}”")
+        path = _checked(Path(raw), data_dir, f"The file “{name}”", one_link=True)
         if path.suffix.lower() not in FILE_SOURCE_EXTS:
             raise NotFound(refused)
         found = Media(ref=f"file:{path}", asked=asked, kind=media_kind or "audio", path=path, name=name)

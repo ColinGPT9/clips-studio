@@ -70,6 +70,10 @@ interface Window {
     openCatalogLink?: (url: string, ours: boolean) => Promise<boolean>
     /** Folder picker for installing a plugin from a folder on this PC. */
     pickPluginFolder?: () => Promise<string | null>
+    /** Shows an exported video in its folder (Explorer, the file selected).
+     *  The main process takes only an existing video file. Resolves false
+     *  if refused. Absent in the browser shim and in an older preload. */
+    showInFolder?: (path: string) => Promise<boolean>
     /** Absent in the browser shim and in a preload older than the renderer. */
     tray?: {
       get: () => Promise<{ keepInTray: boolean }>

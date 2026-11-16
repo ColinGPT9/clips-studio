@@ -361,12 +361,16 @@ def test_a_clip_deleted_or_re_rendered_under_its_project(env):
     new_id = env.clip(61.0, 90.0)
     env.db.follow_clip_id(clip_id, new_id)
     assert env.get(f"/projects/{made['id']}").json()["clip_id"] == new_id
-    assert env.post(f"/clips/{new_id}/project").json()["id"] == made["id"]
+    again = env.post(f"/clips/{new_id}/project").json()
+    assert again["id"] == made["id"]
+    # The re-render moved the window and the project had no change of its
+    # own: it follows the clip as it is now, one revision (step 8, 8-D6).
+    assert again["started_again"] and again["revision"] == 1
     # The clip deleted (the Library's delete route): the project still opens and still changes.
     assert env.client.delete(f"/clips/{new_id}").status_code == 200
     got = env.get(f"/projects/{made['id']}").json()
     assert got["clip_id"] is None
-    assert env.ops(made["id"], 0, {"op": "add_track", "kind": "text"}).json()["revision"] == 1
+    assert env.ops(made["id"], 1, {"op": "add_track", "kind": "text"}).json()["revision"] == 2
 
 
 def _raw(env, path: str, body) -> object:
@@ -435,7 +439,10 @@ def test_the_routes_are_internal(env):
             # The export, draft and still routes of step 7 (server/compose_api.py).
             ("POST", "/projects/{project_id}/export"), ("GET", "/projects/{project_id}/exports"),
             ("POST", "/projects/{project_id}/draft"), ("GET", "/projects/{project_id}/draft"),
-            ("GET", "/projects/{project_id}/still")}
+            ("GET", "/projects/{project_id}/still"),
+            # The projects list of step 8 (server/projects_api.py), and a finished
+            # export's file for the export dialog (step 8 part C, server/compose_api.py).
+            ("GET", "/projects"), ("GET", "/projects/{project_id}/exports/{export_row}/file")}
     assert mine <= served
     assert {route for route in served if "project" in route[1]} == mine
     for route in mine:

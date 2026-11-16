@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import Dashboard from './pages/Dashboard'
 import ClipStudio from './pages/ClipStudio'
 import Creators from './pages/Creators'
@@ -18,7 +18,15 @@ import { useEvents } from './lib/useEvents'
 import { useQueueNotifications } from './lib/queueNotifications'
 import { ApprovalCards, ClipUpdatesProvider } from './components/ApprovalCard'
 import { OPEN_MARKETPLACE, checkOnlineListAtStart } from './lib/plugins'
+import { OPEN_PROJECT } from './lib/newEditor'
+// Today's editor asks before it makes a clip again over a new-editor export
+// of it (shows nothing unless that happens).
+import ProjectExportPrompt from './components/editor/ProjectExportPrompt'
 import mascot from './assets/mascot.png'
+
+// The new editor (beta), loaded only when a project is opened in it: with
+// Settings → "New editor (beta)" off nothing opens one.
+const EditorScreen = lazy(() => import('./components/editor/EditorScreen'))
 
 type Page = 'dashboard' | 'queue' | 'watch' | 'studio' | 'creators' | 'marketplace' | 'models' | 'settings'
 
@@ -84,6 +92,40 @@ export default function App(): JSX.Element {
     window.addEventListener(OPEN_MARKETPLACE, open)
     return () => window.removeEventListener(OPEN_MARKETPLACE, open)
   }, [])
+  // The new editor: a full screen over the app. The page underneath stays as
+  // it was, so closing the editor returns to exactly where the person was.
+  const [editorProject, setEditorProject] = useState<string | null>(null)
+  const [editorNotice, setEditorNotice] = useState('')
+  // What opened the editor gets focus back when it closes. It is noted here,
+  // before the page underneath goes inert (which takes focus away from it).
+  const editorOpener = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    const open = (e: Event): void => {
+      const detail = (e as CustomEvent<{ projectId?: string; notice?: string }>).detail
+      if (detail?.projectId) {
+        const active = document.activeElement
+        if (active instanceof HTMLElement && active !== document.body) editorOpener.current = active
+        setEditorNotice(detail.notice ?? '')
+        setEditorProject(detail.projectId)
+      }
+    }
+    window.addEventListener(OPEN_PROJECT, open)
+    return () => window.removeEventListener(OPEN_PROJECT, open)
+  }, [])
+  // While it is open, the app underneath can't be reached by Tab or a
+  // screen reader.
+  const asideRef = useRef<HTMLElement>(null)
+  const mainRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    for (const el of [asideRef.current, mainRef.current]) {
+      if (el) (el as HTMLElement & { inert: boolean }).inert = editorProject !== null
+    }
+    if (editorProject === null && editorOpener.current) {
+      const opener = editorOpener.current
+      editorOpener.current = null
+      if (opener.isConnected) opener.focus()
+    }
+  }, [editorProject])
   // Installed pipelines hear about a blocked version without the Marketplace being opened.
   useEffect(() => checkOnlineListAtStart(), [])
   // Whether any AI runs in the cloud on the user's own key, so the sidebar's
@@ -156,7 +198,7 @@ export default function App(): JSX.Element {
   return (
     <ClipUpdatesProvider><div className="flex h-screen" key={locale}>
       <ApprovalCards onOpen={videoId => { setStudioTarget({videoId}); setPage('studio') }} />
-      <aside className="w-52 shrink-0 bg-surface border-r border-raised/60 flex flex-col">
+      <aside ref={asideRef} className="w-52 shrink-0 bg-surface border-r border-raised/60 flex flex-col">
         {/* Same lockup as the website header: Clippy, then the name and
             tagline stacked beside him. `min-w-0` on the text column so a
             longer translated tagline wraps instead of pushing Clippy out of
@@ -227,7 +269,7 @@ export default function App(): JSX.Element {
           </p>
         </div>
       </aside>
-      <main className="flex-1 overflow-y-auto flex flex-col">
+      <main ref={mainRef} className="flex-1 overflow-y-auto flex flex-col">
         <UpdateBanner />
         {page === 'dashboard' && <Dashboard onOpenInStudio={openInStudio} />}
         {page === 'queue' && <Queue onOpenInStudio={(videoId) => openInStudio(videoId)} />}
@@ -252,6 +294,14 @@ export default function App(): JSX.Element {
           }}
         />
       )}
+      {editorProject && (
+        <div className="fixed inset-0 z-50 bg-base">
+          <Suspense fallback={null}>
+            <EditorScreen projectId={editorProject} openNotice={editorNotice} onClose={() => setEditorProject(null)} />
+          </Suspense>
+        </div>
+      )}
+      <ProjectExportPrompt />
     </div></ClipUpdatesProvider>
   )
 }

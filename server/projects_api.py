@@ -33,6 +33,7 @@ from video_editor.project.env import AppEnv
 
 # The Vite dev server, the same two origins server/api.py's CORS lets in.
 DEV_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
+PICTURE_US = 5_000_000          # a picture a manual project starts with lasts 5 s
 
 
 def local_origin(origin: str | None, host: str | None = None) -> bool:
@@ -74,15 +75,28 @@ class CanvasIn(BaseModel):
 
 
 class ProjectIn(BaseModel):
-    """An empty project. `canvas` is 9:16, 16:9, 1:1 or 4:5, or a size of
-    its own; `fps` a number (23.976, 29.97 and 59.94 are the broadcast
-    rates) or {num, den}."""
+    """A new project. `canvas` is 9:16, 16:9, 1:1 or 4:5, or a size of its
+    own; `fps` a number (23.976, 29.97 and 59.94 are the broadcast rates) or
+    {num, den}.
+
+    `media` (step 8): a library video (`video:<id>`) or an imported file
+    (`asset:<sha256>`) the project starts with, in its media. With
+    `insert` (the default) the whole of it goes on V1, framed fit and
+    centred: the new editor's "Edit whole video" and "Import a video to
+    edit". No AI run. Without `fps`, the project takes the video's own frame
+    rate when it is known; without `name`, the media's name."""
 
     model_config = ConfigDict(extra="forbid")
 
     name: str = ""
     canvas: str | CanvasIn = "9:16"
     fps: Any = None
+    media: str | None = None
+    insert: bool = True
+
+
+MEDIA_REFS = {"video": "video_id", "asset": "asset"}       # POST /projects `media`: its add_media field
+MANUAL_FRAMING = {"fit": "fit", "align": "center"}          # a manual project's whole video: fit, centred
 
 
 class OpsIn(BaseModel):
@@ -92,6 +106,17 @@ class OpsIn(BaseModel):
     ops: list[Any]
     dry_run: bool = False
     label: str = ""
+
+
+class ClipProjectIn(BaseModel):
+    """POST /clips/{id}/project's optional body (8-D6): `start_again` puts
+    the clip as it is now in the existing project's place, when the project
+    is still at `expected_revision`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    start_again: bool = False
+    expected_revision: StrictInt | None = None
 
 
 class StepIn(BaseModel):
@@ -116,7 +141,7 @@ def session_guard(session_secret: str, data_dir: Path,
     return guard
 
 
-def install(app, *, db, data_dir: Path, session_secret: str) -> None:
+def install(app, *, db, data_dir: Path, session_secret: str, lane=None) -> None:
     guarded = [Depends(session_guard(session_secret, data_dir))]
 
     def sent(payload) -> Response:
@@ -146,10 +171,21 @@ def install(app, *, db, data_dir: Path, session_secret: str) -> None:
             raise HTTPException(400, str(e)) from e
 
     @app.post("/clips/{clip_id}/project", dependencies=guarded)
-    def project_from_clip(clip_id: int):
+    def project_from_clip(clip_id: int, body: ClipProjectIn | None = None):
         """The clip's project: made from the clip as it is saved the first
         time, and the same project every time after ("created" says which).
-        The clip itself is not changed."""
+        The clip itself is not changed.
+
+        When the clip was changed in today's editor (or by its chat edit)
+        after its project was made or last exported (8-D6), the project
+        shows the clip as it was:
+        - a project nobody changed since then starts again from the clip as
+          it is now by itself (nothing of the person's is lost; Undo takes
+          it back), and the answer says `started_again`;
+        - a project with changes of its own is opened as it is, with
+          `clip_changed_since`: the editor asks the person. `start_again`
+          with the project's `expected_revision` replaces the project's
+          document with the clip as it is now, as one step Undo takes back."""
         d = db()
         try:
             row = d.get_clip(clip_id)
@@ -158,18 +194,55 @@ def install(app, *, db, data_dir: Path, session_secret: str) -> None:
         if row is None:
             raise HTTPException(404, "There is no such clip.")
         existing = store.for_clip(d.conn, clip_id)
-        if existing is not None:
-            return sent({**answer(store.get, d.conn, existing), "created": False})
+        by_itself = False
+        if existing is not None and not (body and body.start_again):
+            basis, unchanged = store.clip_basis(d.conn, existing)
+            changed = bool(basis) and basis != importer.clip_basis(row)
+            if not (changed and unchanged):
+                return sent({**answer(store.get, d.conn, existing), "created": False,
+                             "clip_changed_since": changed, "started_again": False})
+            by_itself = True
         try:
             facts = AppEnv(db=d, data_dir=data_dir).video_facts(row["video_id"])
             document = importer.import_clip(importer.clip_of_row(row), facts)
         except (importer.ClipImportError, ValueError, TypeError) as e:
             raise HTTPException(400, f"This clip can't be opened as a project: {e}") from e
-        return sent(answer(store.create, d.conn, document, clip_id=clip_id, video_id=row["video_id"]))
+        if existing is not None:
+            if by_itself:
+                expected = answer(store.get, d.conn, existing)["revision"]
+            elif body.expected_revision is None:
+                raise HTTPException(400, "expected_revision is needed to start the project again.")
+            else:
+                expected = body.expected_revision
+            # The project's own name is not part of the clip: it stays (8-D12).
+            name = answer(store.get, d.conn, existing)["document"].get("name")
+            if isinstance(name, str) and name:
+                document["name"] = name
+            return sent({**answer(store.start_again, d.conn, existing, expected, document,
+                                  clip_basis=importer.clip_basis(row)),
+                         "created": False, "clip_changed_since": False, "started_again": True})
+        return sent({**answer(store.create, d.conn, document, clip_id=clip_id, video_id=row["video_id"],
+                              clip_basis=importer.clip_basis(row)),
+                     "clip_changed_since": False, "started_again": False})
+
+    @app.get("/projects", dependencies=guarded)
+    def project_list(limit: int = store.LIST_MAX):
+        """Every project, the last changed first, for the editor's Projects
+        list: name, canvas, length, last change, where it came from, and
+        whether the clip it was made from is gone (store.summaries)."""
+        if not 1 <= limit <= store.LIST_MAX:
+            raise HTTPException(400, f"limit is 1 to {store.LIST_MAX}.")
+        d = db()
+        try:
+            return sent({"projects": store.summaries(d.conn, limit)})
+        finally:
+            d.close()
 
     @app.post("/projects", dependencies=guarded)
     def new_project(body: ProjectIn):
-        """An empty project: V1, a text track, A1 and a music track."""
+        """An empty project: V1, a text track, A1 and a music track. With
+        `media`, a project made by hand from a library video or an imported
+        file, the whole of it on V1 (no AI run)."""
         if isinstance(body.canvas, str):
             if body.canvas not in model.CANVAS_PRESETS:
                 raise HTTPException(400, f"canvas is one of {', '.join(model.CANVAS_PRESETS)}, or "
@@ -184,7 +257,49 @@ def install(app, *, db, data_dir: Path, session_secret: str) -> None:
             document = model.new_project(name=name, width=width, height=height, fps=body.fps)
         except model.ModelError as e:
             raise HTTPException(400, f"That project can't be made: {e}.") from e
-        return sent(answer(store.create, db().conn, document))
+        if body.media is None:
+            return sent(answer(store.create, db().conn, document))
+        d = db()
+        try:
+            document, video_id = answer(_with_media, document, body, AppEnv(db=d, data_dir=data_dir))
+            return sent(answer(store.create, d.conn, document, video_id=video_id))
+        finally:
+            d.close()
+
+    def _with_media(document: dict, body: ProjectIn, env) -> tuple[dict, str]:
+        """The new project with its media (add_media) and, with `insert`, the
+        whole of it on V1, framed fit and centred. Made before the project is
+        saved, so it is where the project starts: undo never takes it away."""
+        kind, _, value = str(body.media).partition(":")
+        field = MEDIA_REFS.get(kind)
+        if field is None or not value:
+            raise HTTPException(400, "media is video:<id> (a video of the library) or asset:<sha256> (a file "
+                                     "imported for editing).")
+        added = ops.apply(document, [{"op": "add_media", field: value}], env)
+        document = added.document
+        media_id = next(c["id"] for c in added.created if c["kind"] == "media")
+        entry = document["media"][media_id]
+        steps: list[dict] = []
+        if body.fps is None and entry.get("fps"):
+            steps.append({"op": "set_canvas", "fps": entry["fps"]})
+        if not body.name.strip() and entry.get("name"):
+            steps.append({"op": "set_project_props", "name": entry["name"][:model.NAME_MAX]})
+        if steps:
+            document = ops.apply(document, steps, env).document
+        if body.insert and entry["kind"] in ("video", "image"):
+            length = int(entry.get("duration_us") or 0)
+            if entry["kind"] == "image":
+                length = PICTURE_US
+            if length <= 0:
+                raise HTTPException(400, "The length of that video isn't known yet, so it can't be put on the "
+                                         "timeline. Open it again once it has finished downloading.")
+            put = ops.apply(document, [{"op": "insert_clip", "media_id": media_id, "source_in_us": 0,
+                                        "source_out_us": length}], env)
+            item_id = next(c["id"] for c in put.created if c["kind"] == "item")
+            document = ops.apply(put.document, [{"op": "set_item_props", "item_id": item_id,
+                                                  "framing": dict(MANUAL_FRAMING)}], env).document
+        video_id = value if kind == "video" else ""
+        return document, video_id
 
     @app.get("/projects/{project_id}", dependencies=guarded)
     def project(project_id: str):
@@ -222,7 +337,19 @@ def install(app, *, db, data_dir: Path, session_secret: str) -> None:
 
     @app.delete("/projects/{project_id}", dependencies=guarded)
     def delete_project(project_id: str):
-        """Remove a project and its history. Its clip and its media stay."""
+        """Remove a project and its history. Its clip and its media stay,
+        and so do the files it exported.
+
+        Its exports still waiting or running are cancelled first (8-D9):
+        one finishing after the delete would replace the clip's file with
+        the edits of a project that is gone, with nowhere left to see them.
+        The clip stays as it was. An export that finished (even one that
+        finishes while it is being cancelled) is protected by its file
+        (StateDB.project_export_of)."""
+        if lane is not None:
+            for job in lane.jobs():
+                if job.get("project_id") == project_id and job.get("status") in ("queued", "running"):
+                    lane.cancel(int(job["export_id"]))
         if not answer(store.delete, db().conn, project_id):
             raise HTTPException(404, "There is no such project.")
         return {"deleted": project_id}

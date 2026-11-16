@@ -40,7 +40,7 @@
     "max_bytes": null,
     "passes": 1
   },
-  "program_us": 10000000,
+  "program_us": 10400000,
   "card_us": 0,
   "work": "<WORK>",
   "result": "<WORK>/export.mp4",
@@ -66,7 +66,7 @@
           "-ss",
           "99.75",
           "-t",
-          "10.45",
+          "10.85",
           "-i",
           "<MEDIA>/m1.mp4",
           "-/filter_complex",
@@ -113,10 +113,10 @@
         "<WORK>/a-001.wav": "<WORK>/a-001.part.wav"
       },
       "scripts": {
-        "<WORK>/cut-001.graph.txt": "[0:v]setpts=(PTS-0.25/TB)/1,fps=30/1:start_time=0[s0];\n[s0]split=2[i0bg][i0fg];\n[i0bg]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,scale=240:136,gblur=sigma=12,scale=1920:1080:flags=bilinear,setsar=1[i0wash];\n[i0fg]scale=1920:1080:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,setsar=1[i0pic];\n[i0wash][i0pic]overlay=(W-w)/2:(H-h)/2[f0];\n[f0]format=yuv420p,tpad=stop=-1:stop_mode=clone,trim=end_frame=300,setpts=PTS-STARTPTS[v0];\n[0:a]asetpts=PTS-STARTPTS,aresample=48000,atrim=start_sample=12000,asetpts=N/SR/TB,aformat=sample_fmts=s16:channel_layouts=stereo,apad,atrim=end_sample=480000,asetpts=N/SR/TB[a0];\n[v0]concat=n=1:v=1:a=0[vout];\n[a0]concat=n=1:v=0:a=1[aout]\n"
+        "<WORK>/cut-001.graph.txt": "[0:v]setpts=(PTS-0.25/TB)/1,fps=30/1:start_time=0[s0];\n[s0]split=2[i0bg][i0fg];\n[i0bg]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,scale=240:136,gblur=sigma=12,scale=1920:1080:flags=bilinear,setsar=1[i0wash];\n[i0fg]scale=1920:1080:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,setsar=1[i0pic];\n[i0wash][i0pic]overlay=(W-w)/2:(H-h)/2[f0];\n[f0]format=yuv420p,tpad=stop=-1:stop_mode=clone,trim=end_frame=312,setpts=PTS-STARTPTS[v0];\n[0:a]asetpts=PTS-STARTPTS,aresample=48000,atrim=start_sample=12000,asetpts=N/SR/TB,aformat=sample_fmts=s16:channel_layouts=stereo,apad,atrim=end_sample=499200,asetpts=N/SR/TB[a0];\n[v0]concat=n=1:v=1:a=0[vout];\n[a0]concat=n=1:v=0:a=1[aout]\n"
       },
-      "seconds": 10.0,
-      "weight": 10.0,
+      "seconds": 10.4,
+      "weight": 10.4,
       "params": {}
     },
     {
@@ -179,11 +179,11 @@
         "<WORK>/export.mp4": "<WORK>/export.part.mp4"
       },
       "scripts": {
-        "<WORK>/final.graph.txt": "[0:v]setpts=PTS-STARTPTS[b0];\n[b0]trim=end_frame=300[pre];\n[pre]format=yuv420p[pv];\n[1:a]asetpts=PTS-STARTPTS,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=end_sample=480000,asetpts=N/SR/TB[pa];\n[pv]null[vout];\n[pa]anull[aout]\n",
+        "<WORK>/final.graph.txt": "[0:v]setpts=PTS-STARTPTS[b0];\n[b0]trim=end_frame=312[pre];\n[pre]format=yuv420p[pv];\n[1:a]asetpts=PTS-STARTPTS,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=end_sample=499200,asetpts=N/SR/TB[pa];\n[pv]null[vout];\n[pa]anull[aout]\n",
         "<WORK>/a1.txt": "file '<WORK>/a-001.wav'\n"
       },
-      "seconds": 10.0,
-      "weight": 20.0,
+      "seconds": 10.4,
+      "weight": 20.8,
       "params": {},
       "cwd": "<WORK>"
     }

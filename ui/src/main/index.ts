@@ -525,6 +525,22 @@ ipcMain.handle('pick-video-file', async () => {
   return result.canceled ? null : result.filePaths[0]
 })
 
+// The new editor's export dialog: show an exported video in its folder.
+// Only an absolute path to an existing video file is taken, and it is only
+// shown (selected in Explorer), never opened or run.
+const SHOWABLE = /\.(mp4|mov|m4v|mkv|webm)$/i
+ipcMain.handle('show-in-folder', (_event, path: unknown) => {
+  if (typeof path !== 'string' || path.length > 4096 || !SHOWABLE.test(path)) return false
+  if (!/^(?:[A-Za-z]:[\\/]|\\\\|\/)/.test(path)) return false
+  try {
+    if (!statSync(path).isFile()) return false
+  } catch {
+    return false
+  }
+  shell.showItemInFolder(path)
+  return true
+})
+
 ipcMain.handle('pick-video-files', async () => {
   const result = await dialog.showOpenDialog({
     title: 'Choose videos to add to the queue',

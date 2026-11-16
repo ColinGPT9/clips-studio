@@ -8,6 +8,8 @@ nothing is ever reprocessed or double-uploaded.
 
 import hashlib
 import json
+import os
+import re
 import sqlite3
 import unicodedata
 from contextlib import contextmanager
@@ -622,7 +624,9 @@ PROJECT_TABLES = (
         base        INTEGER NOT NULL DEFAULT 0,
         doc         TEXT NOT NULL,
         created_at  TEXT NOT NULL DEFAULT '',
-        updated_at  TEXT NOT NULL DEFAULT ''
+        updated_at  TEXT NOT NULL DEFAULT '',
+        clip_basis  TEXT NOT NULL DEFAULT '',
+        clip_basis_head INTEGER NOT NULL DEFAULT 0
     )""",
     "CREATE UNIQUE INDEX IF NOT EXISTS projects_by_clip ON projects (clip_id) WHERE clip_id IS NOT NULL",
     """CREATE TABLE IF NOT EXISTS project_revisions (
@@ -667,7 +671,8 @@ PROJECT_TABLES = (
         branch      TEXT NOT NULL DEFAULT '',
         duration_us INTEGER NOT NULL DEFAULT 0,
         bytes       INTEGER NOT NULL DEFAULT 0,
-        job_id      INTEGER
+        job_id      INTEGER,
+        file_mtime_ns INTEGER NOT NULL DEFAULT 0
     )""",
     "CREATE INDEX IF NOT EXISTS project_exports_by_project ON project_exports (project_id)",
 )
@@ -681,7 +686,45 @@ PROJECT_EXPORT_COLUMNS = (
     ("duration_us", "INTEGER NOT NULL DEFAULT 0"),
     ("bytes", "INTEGER NOT NULL DEFAULT 0"),
     ("job_id", "INTEGER"),
+    # The finished file's modification time (step 8, 8-D4): with `bytes`,
+    # how the editor tells that something else wrote that path since.
+    ("file_mtime_ns", "INTEGER NOT NULL DEFAULT 0"),
 )
+
+# Columns step 8 added to projects: `clip_basis`, the clip's window and
+# render options the project of a clip was made from (or last exported to),
+# so a change made to the clip since in today's editor is seen, and
+# `clip_basis_head`, the project's revision then (8-D6).
+PROJECT_COLUMNS = (
+    ("clip_basis", "TEXT NOT NULL DEFAULT ''"),
+    ("clip_basis_head", "INTEGER NOT NULL DEFAULT 0"),
+)
+
+# Where the new editor's exports go, under the data folder
+# (server/compose_api.py PROJECTS_FOLDER, core/housekeeping.PROJECT_EXPORTS),
+# and the name each one gets there (<project id>-r<revision>, then -2, -3
+# when that name is taken: server/editor_lane.unique_target).
+PROJECT_EXPORTS_FOLDER = ("clips", "projects")
+_EXPORT_NAME = re.compile(r"^(?P<project>[0-9a-f]{32})-r\d+(?:-\d+)?$")
+
+
+def in_project_exports(path, data_dir) -> bool:
+    """Whether `path` is a file directly in the data folder's project
+    exports folder: compared as the system compares paths (case on
+    Windows, "." and ".." parts; store.same_path), and by where links lead.
+    False without a data folder (8-D9)."""
+    if not path or data_dir is None:
+        return False
+    folder = Path(data_dir).joinpath(*PROJECT_EXPORTS_FOLDER)
+
+    def same(a, b) -> bool:
+        return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+    try:
+        parent = Path(str(path)).parent
+        return same(parent, folder) or same(os.path.realpath(parent), os.path.realpath(folder))
+    except (OSError, ValueError):
+        return False
 
 
 # What the new editor's projects name (editor suite step 6). A project's
@@ -1066,6 +1109,10 @@ class StateDB:
         for column, decl in PROJECT_EXPORT_COLUMNS:
             if column not in export_cols:
                 self.conn.execute(f"ALTER TABLE project_exports ADD COLUMN {column} {decl}")
+        project_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(projects)")}
+        for column, decl in PROJECT_COLUMNS:
+            if column not in project_cols:
+                self.conn.execute(f"ALTER TABLE projects ADD COLUMN {column} {decl}")
 
     def _mark_exports_from_before(self) -> None:
         """Once, as clips.first_exported_at is added: the exports made before
@@ -1110,6 +1157,69 @@ class StateDB:
                         "at": str(row["updated_at"] or ""),
                     })),
                 )
+
+    def project_export_of(self, clip_id: int) -> str | None:
+        """The project whose export is this clip's file now; "" when the
+        clip's file is a new-editor export whose project is gone; None when
+        it is not an export (editor suite step 8, 7-D5). The new editor's
+        compiler (Branch B) points a clip at its export and keeps the clip's
+        window and render options as they were, so a re-render from those
+        would replace the export with the clip as it was before the
+        project's edits, and delete the export.
+
+        Told from the project_exports rows, and from the file itself (8-D9):
+        a Branch B export is the only thing written to data/clips/projects/
+        (server/compose_api.py PROJECTS_FOLDER), so a clip whose file is in
+        that folder is one, even once its project and their rows are
+        deleted. Plain SQL: the database never loads the project package."""
+        try:
+            row = self.conn.execute("SELECT path FROM clips WHERE id = ?", (int(clip_id),)).fetchone()
+        except OverflowError:
+            return None
+        if row is None or not row["path"]:
+            return None
+        hit = self.conn.execute(
+            "SELECT project_id FROM project_exports WHERE clip_id = ? AND branch = 'B' AND path = ? "
+            "AND status IN ('done', 'running') ORDER BY id DESC LIMIT 1",
+            (int(clip_id), str(row["path"]))).fetchone()
+        if hit is not None:
+            return str(hit["project_id"])
+        if not in_project_exports(row["path"], self.data_dir()):
+            return None
+        # The export's name is <project id>-r<revision>[-n].mp4: that
+        # project, when it is still there; "" when it was deleted.
+        named = _EXPORT_NAME.match(Path(str(row["path"])).stem)
+        if named is not None:
+            project = self.conn.execute("SELECT id FROM projects WHERE id = ?", (named["project"],)).fetchone()
+            if project is not None:
+                return str(project["id"])
+        return ""
+
+    def project_export_clips(self, clip_ids) -> dict[int, str]:
+        """Of these clips, the ones whose file is a new-editor export, with
+        the project that made it ("" when that project was deleted), in the
+        order given (project_export_of). For the routes and jobs that make
+        a separate file from a clip's own window (8-D13)."""
+        found: dict[int, str] = {}
+        for clip_id in clip_ids or ():
+            try:
+                key = int(clip_id)
+            except (TypeError, ValueError):
+                continue
+            if key in found:
+                continue
+            project_id = self.project_export_of(key)
+            if project_id is not None:
+                found[key] = project_id
+        return found
+
+    def data_dir(self) -> Path | None:
+        """The data folder: the one this database file is in (state.db sits
+        at its top, server/api.py). None for a database with no file."""
+        for entry in self.conn.execute("PRAGMA database_list").fetchall():
+            if entry["name"] == "main" and entry["file"]:
+                return Path(entry["file"]).parent
+        return None
 
     def mark_edited(self, clip_id: int) -> None:
         """A person asked for a render of the clip: marked as its job is

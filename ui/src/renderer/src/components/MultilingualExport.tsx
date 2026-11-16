@@ -7,6 +7,7 @@ import TranslationReview from './TranslationReview'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
 import GlossaryEditor from './GlossaryEditor'
 import { formatEta } from '../lib/jobProgress'
+import { NothingMade } from '../lib/projectExportPrompt'
 import { useEvents } from '../lib/useEvents'
 import type { CaptionLine, CaptionStyle, TranslationPreview, VoiceOption } from '../lib/types'
 
@@ -351,7 +352,9 @@ export default function MultilingualExport({
       })
       watchJob(res.job_id, 'export')
     } catch (e) {
-      setNotice(`Error: ${e instanceof Error ? e.message : String(e)}`)
+      // "Cancel" or "Open in new editor" on a clip changed in the new
+      // editor (8-D13): said as it is, not as an error.
+      setNotice(e instanceof NothingMade ? e.message : `Error: ${e instanceof Error ? e.message : String(e)}`)
       setRun(null)
       setBusy(false)
     }

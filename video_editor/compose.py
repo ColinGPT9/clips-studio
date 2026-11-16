@@ -794,6 +794,95 @@ def tails(doc: dict, items: list[dict], words: list[dict]) -> dict[str, int]:
     return out
 
 
+def end_pad_us(doc: dict) -> int:
+    """How far past its end an export of a clip's project runs, as Apply
+    renders the clip (core.pipeline END_PAD, 0.4 s; step 8's choice, ED34).
+
+    Apply cuts a clip END_PAD past its window's end, because Whisper's word
+    ends run early, and drops the pad as soon as the clip has a cut
+    (video_editor/timeline.py clamps the kept ranges to the window). So the
+    pad is the clip's: a project made from a clip carries it when V1 is
+    still one stretch of the clip's own video (no cut, one speed) that ends
+    where the clip's window ends. Not for a whole-video clip (no pad, as
+    Apply), held to the clip's `stop_by` as Apply holds it, and never past
+    the video's end. 0 for everything else, a project made by hand among
+    them."""
+    ctx = doc.get("context") or {}
+    if ctx.get("origin") != "clip":
+        return 0
+    clip, job = ctx.get("clip") or {}, ctx.get("job") or {}
+    mid = ctx.get("media_id")
+    if job.get("whole") or not isinstance(clip.get("end_us"), int) or not isinstance(clip.get("start_us"), int):
+        return 0
+    items = _main_items(doc)
+    if not items or any(i.get("media_id") != mid for i in items):
+        return 0
+    for a, b in zip(items, items[1:]):
+        if b["source_in_us"] != a["source_out_us"] or b["speed"] != a["speed"]:
+            return 0
+    last = items[-1]
+    if last["source_out_us"] != clip["end_us"]:
+        return 0
+    pad = END_PAD_US
+    stop = job.get("stop_by")
+    length_s = (clip["end_us"] - clip["start_us"]) / model.US
+    if isinstance(stop, (int, float)) and not isinstance(stop, bool) and float(stop) >= length_s - 0.01:
+        pad = max(0, min(pad, int(round((float(stop) - length_s) * model.US))))
+    known = int(((doc.get("media") or {}).get(mid) or {}).get("duration_us") or 0)
+    if known:
+        pad = min(pad, known - last["source_out_us"])
+    return max(0, pad)
+
+
+def with_end_pad(doc: dict, pad_us: int) -> dict:
+    """The document with V1's last item running `pad_us` further in its
+    source (its length in whole frames, at its speed), and the pad covering
+    the whole program (8-D10): looped music that filled the program fills
+    it still, and every item on the other video tracks and the text tracks
+    that ends at the old end (an overlay, a picture, a sticker, a logo,
+    text, the hook) ends at the new one. An overlay video runs on in its
+    source as far as the source has frames, then holds its last frame
+    (overlay_graph's hold). Captions are not touched: they follow the
+    document's timeline, as Apply's are built from the unpadded window.
+    Only the export and the draft compile this; the document itself is
+    never changed."""
+    if pad_us <= 0:
+        return doc
+    out = model.clone(doc)
+    fps = out["canvas"]["fps"]
+    main = model.track(out, model.MAIN_VIDEO)
+    old_end = model.program_end(out)
+    last = main["items"][-1]
+    last["source_out_us"] += pad_us
+    first_frame = model.frames_at(last["start_us"], fps)
+    frames = max(1, model.frames_at(int(round((last["source_out_us"] - last["source_in_us"]) / last["speed"])), fps))
+    last["duration_us"] = model.frame_us(first_frame + frames, fps) - last["start_us"]
+    new_end = model.program_end(out)
+    grow = new_end - old_end
+    old_frame = model.frames_at(old_end, fps)
+    media = out.get("media") or {}
+    for track in out["tracks"]:
+        if track["id"] == model.MAIN_VIDEO:
+            continue
+        for item in track["items"]:
+            ends_at_end = model.frames_at(item["start_us"] + item["duration_us"], fps) == old_frame
+            if track["kind"] == "audio":
+                if item.get("loop") and item["start_us"] + item["duration_us"] == old_end:
+                    item["duration_us"] += grow
+                continue
+            if not ends_at_end:
+                continue
+            item["duration_us"] = new_end - item["start_us"]
+            info = media.get(item.get("media_id")) or {}
+            if track["kind"] == "video" and info.get("kind") == "video" and "source_out_us" in item:
+                more = int(round(grow * float(item.get("speed") or 1.0)))
+                known = int(info.get("duration_us") or 0)
+                if known:
+                    more = max(0, min(more, known - int(item["source_out_us"])))
+                item["source_out_us"] += more
+    return out
+
+
 def _tail_input(item: dict, tail_us: int, media: MediaFile) -> list[str]:
     return ["-ss", _secs(item["source_out_us"]), "-t", _secs(tail_us + READ_MARGIN_US), "-i", media.path]
 
@@ -911,6 +1000,41 @@ def _chunks(doc: dict, items: list[dict], inputs: Inputs, ai_ok: bool, fps: dict
     return out
 
 
+def _ai_pieces(doc: dict, chunk: _Chunk, inputs: Inputs, fps: dict,
+               tail_of: dict[str, int] | None = None) -> list[_Chunk]:
+    """An AI run's cut, in pieces of at most MAX_ITEM_INPUTS items whose
+    command stays inside ARGV_BUDGET, as manual chunks are held (step 8).
+    One piece when the whole run fits, which is the plan as before."""
+    pieces: list[_Chunk] = []
+    work = Path(inputs.work)
+    for item in chunk.items:
+        last = pieces[-1] if pieces else None
+        if last is not None and len(last.items) < MAX_ITEM_INPUTS:
+            trial = _cut_stage("x", _Chunk("ai", [*last.items, item]), doc, inputs, fps, None,
+                               work / "src-000.mp4", work / "a-000.wav", tail_of=tail_of)
+            if cmdline_length(trial.argv) <= ARGV_BUDGET:
+                last.items.append(item)
+                continue
+        pieces.append(_Chunk("ai", [item]))
+    return pieces
+
+
+def _join_stage(sid: str, inputs: Inputs, parts: list[Path], joined: Path, seconds: float) -> Stage:
+    """Pieces cut with the same parameters joined by stream copy, with
+    video/encoding.py concat()'s flags (as the program's own join)."""
+    from video.encoding import concat_entry, final_movflags
+
+    work = Path(inputs.work)
+    listing = work / f"{sid}.txt"
+    jt = temp_of(joined)
+    return Stage(id=sid, kind="join",
+                 commands=[[inputs.ffmpeg, "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(listing),
+                            "-copyts", "-c", "copy", *final_movflags(), str(jt)]],
+                 reads=[str(p) for p in parts], writes=[str(joined)], temps={str(joined): str(jt)},
+                 scripts={str(listing): "".join(concat_entry(p.as_posix()) + "\n" for p in parts)},
+                 seconds=seconds, weight=WEIGHTS["join"] * seconds)
+
+
 def _ai_params(doc: dict, chunk: _Chunk, inputs: Inputs, fps: dict, src: Path, framed: Path) -> dict:
     """What the frame stage hands core.framing.frame_intermediate: the
     clip's framing as its render options (crop, gaming) and the job's
@@ -983,6 +1107,12 @@ def overlay_graph(n: int, j: int, item: dict, media: MediaFile, fps: dict, canva
         head = f"[{j}:v]setpts=PTS-STARTPTS{shift}"
     else:
         head = _picture_head(j, item, media, fps, start)
+        # A video longer on the timeline than its source span (the export's
+        # end pad past the source's last frame, with_end_pad) holds its last
+        # frame to its end; a plain item never has this, so its graph is as it was.
+        hold = item["duration_us"] - int(round((item["source_out_us"] - item["source_in_us"]) / item["speed"]))
+        if hold > 0:
+            head += f",tpad=stop_mode=clone:stop_duration={_secs(hold + READ_MARGIN_US)}"
     framing = item.get("framing") or {}
     statements = [f"{head}[os{n}]",
                   *framing_graph(f"os{n}", f"of{n}", f"o{n}", framing, canvas, overlay=True)]
@@ -1202,7 +1332,8 @@ def _watermark(doc: dict, inputs: Inputs) -> dict | None:
     return wm if isinstance(wm, dict) and wm else None
 
 
-def build_ass(doc: dict, inputs: Inputs, canvas: tuple[int, int]) -> tuple[str | None, list[str]]:
+def build_ass(doc: dict, inputs: Inputs, canvas: tuple[int, int], *,
+              caption_doc: dict | None = None) -> tuple[str | None, list[str]]:
     """The plan's one ASS file (text, or None when nothing is burned) and
     the bundled font families it uses (staged beside it for the burn).
 
@@ -1226,7 +1357,10 @@ def build_ass(doc: dict, inputs: Inputs, canvas: tuple[int, int]) -> tuple[str |
         style = dict(style) if isinstance(style, dict) else (dict(inputs.caption_style)
                                                              if isinstance(inputs.caption_style, dict) else None)
         opts = {**cap.DEFAULT_STYLE, **(style or {})}
-        spans = caption_spans(doc)
+        # The captions follow the timeline as the document has it, so the
+        # export's end pad (end_pad_us) captions nothing new, as Apply's pad
+        # doesn't (core/pipeline.py builds a clip's captions unpadded).
+        spans = caption_spans(caption_doc or doc)
         words = transcript_words(inputs)
         source = _source_lines(doc, inputs, spans, words, int(opts["words_per_caption"]),
                                _speaker_turns(doc, opts))
@@ -1605,6 +1739,13 @@ def compile(doc: dict, revision: int, preset, purpose: str = "export", *, inputs
     if purpose == "still":
         return still_plan(doc, revision, inputs, at_us)
     draft = purpose == "draft"
+    caption_doc = doc
+    if purpose in ("export", "draft"):
+        # Apply's 0.4 s past a clip's end, so an unchanged clip's export is
+        # as long as Apply's (step 8, ED34). The draft is the export's
+        # program, so its AI runs are tracked once for both (the same cache
+        # key). The document and the editor's timeline keep the clip's window.
+        doc = with_end_pad(doc, end_pad_us(doc))
     try:
         preset = export_presets.normalize(None if draft else preset)
     except export_presets.PresetError as e:
@@ -1640,10 +1781,30 @@ def compile(doc: dict, revision: int, preset, purpose: str = "export", *, inputs
         if chunk.kind == "manual":
             stages.append(_cut_stage(f"cut-{n:03d}", chunk, doc, inputs, fps, canvas, part, sound,
                                      tail_of=tail_of, carried=carried, draft=draft))
+            sounds.append(sound)
         else:
             src, framed = work / f"src-{n:03d}.mp4", work / f"framed-{n:03d}.mp4"
-            stages.append(_cut_stage(f"cut-{n:03d}", chunk, doc, inputs, fps, None, src, sound,
-                                     tail_of=tail_of, carried=carried, draft=draft))
+            pieces = _ai_pieces(doc, chunk, inputs, fps, tail_of)
+            if len(pieces) == 1:
+                stages.append(_cut_stage(f"cut-{n:03d}", chunk, doc, inputs, fps, None, src, sound,
+                                         tail_of=tail_of, carried=carried, draft=draft))
+                sounds.append(sound)
+            else:
+                # A long run is cut in pieces as manual chunks are (at most
+                # MAX_ITEM_INPUTS decoders, each command inside the budget),
+                # then joined by stream copy into the one stretch the frame
+                # stage tracks (step 7's fault, fixed in step 8: one command
+                # of 64 inputs could pass Windows' limit, and took 2.2 GB).
+                srcs = []
+                for k, piece in enumerate(pieces, start=1):
+                    piece_src, piece_sound = work / f"src-{n:03d}-{k:02d}.mp4", work / f"a-{n:03d}-{k:02d}.wav"
+                    stages.append(_cut_stage(f"cut-{n:03d}-{k:02d}", piece, doc, inputs, fps, None, piece_src,
+                                             piece_sound, tail_of=tail_of, carried=carried, draft=draft))
+                    srcs.append(piece_src)
+                    sounds.append(piece_sound)
+                    end = piece.items[-1]
+                    carried = (end, tail_of[end["id"]]) if end["id"] in tail_of else None
+                stages.append(_join_stage(f"join-{n:03d}", inputs, srcs, src, seconds))
             params = _ai_params(doc, chunk, inputs, fps, src, framed)
             stages.append(Stage(id=f"frame-{n:03d}", kind="frame", reads=[str(src)], writes=[str(framed)],
                                 temps={str(framed): str(temp_of(framed))}, seconds=seconds,
@@ -1651,7 +1812,6 @@ def compile(doc: dict, revision: int, preset, purpose: str = "export", *, inputs
             stages.append(_conform_stage(f"conform-{n:03d}", inputs, fps, canvas, frames, seconds, framed, part,
                                          draft=draft))
         parts.append(part)
-        sounds.append(sound)
 
     # The sounds on A2 and up, premixed by bus.
     bus_files: dict[str, list[Path]] = {}
@@ -1778,7 +1938,7 @@ def compile(doc: dict, revision: int, preset, purpose: str = "export", *, inputs
                             seconds=card_us / model.US, weight=WEIGHTS["card"]))
     # Captions, text and the text watermark (one ASS file), then the logo,
     # at the canvas's size, above the overlays and before the preset.
-    ass_text, ass_fonts = build_ass(doc, inputs, full)
+    ass_text, ass_fonts = build_ass(doc, inputs, full, caption_doc=caption_doc)
     post: list[str] = []
     top = f"b{len(last_group)}"
     if ass_text is not None:
@@ -1942,11 +2102,12 @@ def still_run(doc: dict, inputs: Inputs, at_us: int) -> tuple[dict, int] | None:
     timeline), so the caller can look its tracking up in the cache
     (read_cached_tracking). None when the item at that time isn't framed by
     the cropper."""
+    t = model.frame_us(still_frame(doc, at_us), doc["canvas"]["fps"])
+    doc = with_end_pad(doc, end_pad_us(doc))      # the run as the export and the draft track it (ED34)
     items = _main_items(doc)
     if not items or not _ai_ok(doc):
         return None
     fps = doc["canvas"]["fps"]
-    t = model.frame_us(still_frame(doc, at_us), fps)
     canvas = (int(doc["canvas"]["width"]), int(doc["canvas"]["height"]))
     for chunk in _chunks(doc, items, inputs, True, fps, canvas):
         if chunk.kind == "ai" and any(i["start_us"] <= t < i["start_us"] + i["duration_us"] for i in chunk.items):

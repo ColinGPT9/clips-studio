@@ -230,7 +230,8 @@ def _checked(conn, project_id, expected_revision):
 # ---- projects -----------------------------------------------------------------------------------
 
 
-def create(conn, document: dict, *, clip_id: int | None = None, video_id: str = "", now=None) -> dict:
+def create(conn, document: dict, *, clip_id: int | None = None, video_id: str = "", clip_basis: str = "",
+           now=None) -> dict:
     """A new project holding `document`, at revision 0. With `clip_id`, the
     project of that clip: a clip has one project, so when it already has one
     that project is returned as it is (its "created" is False)."""
@@ -253,9 +254,65 @@ def create(conn, document: dict, *, clip_id: int | None = None, video_id: str = 
             "created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?)",
             (project_id, document["name"], None if clip_id is None else int(clip_id), str(video_id or ""),
              document["schema"], text, _stamp(now), _stamp(now)))
+        if clip_basis:
+            conn.execute("UPDATE projects SET clip_basis = ?, clip_basis_head = 0 WHERE id = ?",
+                         (str(clip_basis), project_id))
         _add_revision(conn, project_id, 0, 0, now, snapshot=text)
         row = _row(conn, project_id)
     return {**_public(conn, row, model.clone(document), False), "created": True}
+
+
+def summaries(conn, limit: int = LIST_MAX) -> list[dict]:
+    """Every project, the last changed first, as the editor's Projects list
+    shows them (step 8): no document, only what the list needs.
+
+    - `origin` is "clip" (made from a clip) or "manual";
+    - `clip_deleted` is true for a project made from a clip that is gone
+      (it still opens, changes and exports);
+    - `clip_file_is_export`: the clip's file is this project's export;
+    - `canvas`, `duration_us` (the length of the video) and `items` (on V1);
+    - a project whose saved data can't be read is listed with `damaged`."""
+    rows = conn.execute("SELECT * FROM projects ORDER BY updated_at DESC, id LIMIT ?",
+                        (max(1, min(int(limit), LIST_MAX)),)).fetchall()
+    out = []
+    for row in rows:
+        entry = {"id": row["id"], "name": row["name"] or "", "clip_id": _clip_id(conn, row),
+                 "video_id": row["video_id"] or "", "revision": row["head"], "created_at": row["created_at"],
+                 "updated_at": row["updated_at"], "read_only": False, "damaged": False, "origin": "manual",
+                 "clip_deleted": False, "clip_file_is_export": False, "canvas": None, "duration_us": 0,
+                 "items": 0}
+        try:
+            doc, read_only, _migrated = _document(row)
+        except Damaged:
+            entry["damaged"] = True
+            out.append(entry)
+            continue
+        entry["read_only"] = read_only
+        if isinstance(doc.get("name"), str):
+            entry["name"] = doc["name"]
+        context = doc.get("context") if isinstance(doc.get("context"), dict) else {}
+        made_from_clip = context.get("origin") == "clip" or row["clip_id"] is not None
+        entry["origin"] = "clip" if made_from_clip else "manual"
+        entry["clip_deleted"] = made_from_clip and entry["clip_id"] is None
+        canvas = doc.get("canvas") if isinstance(doc.get("canvas"), dict) else {}
+        entry["canvas"] = {k: canvas.get(k) for k in ("width", "height", "fps")}
+        try:
+            main = model.track(doc, model.MAIN_VIDEO) or {"items": []}
+            entry["items"] = len(main["items"])
+            entry["duration_us"] = model.program_end(doc)
+        except (KeyError, TypeError):
+            pass
+        if entry["clip_id"] is not None:
+            try:
+                hit = conn.execute(
+                    "SELECT 1 FROM project_exports e JOIN clips c ON c.id = e.clip_id WHERE e.project_id = ? "
+                    "AND e.clip_id = ? AND e.branch = 'B' AND e.status IN ('done', 'running') AND e.path = c.path "
+                    "LIMIT 1", (row["id"], entry["clip_id"])).fetchone()
+            except sqlite3.OperationalError:
+                hit = None      # a database with no clips table (one a test built by hand)
+            entry["clip_file_is_export"] = hit is not None
+        out.append(entry)
+    return out
 
 
 def get(conn, project_id) -> dict:
@@ -270,6 +327,65 @@ def for_clip(conn, clip_id) -> str | None:
     """The id of a clip's project, or None when it has none."""
     row = conn.execute("SELECT id FROM projects WHERE clip_id = ?", (int(clip_id),)).fetchone()
     return None if row is None else row["id"]
+
+
+def clip_basis(conn, project_id) -> tuple[str, bool]:
+    """What the project of a clip was made from, or last exported to
+    (importer.clip_basis), and whether the project is unchanged since (its
+    revision is the one it was at then). ("", False) when it isn't known: a
+    project made before step 8 kept it, or one made by hand."""
+    try:
+        row = conn.execute("SELECT clip_basis, clip_basis_head, head FROM projects WHERE id = ?",
+                           (str(project_id),)).fetchone()
+    except sqlite3.OperationalError:
+        return "", False    # a table from before the columns (a test built by hand)
+    if row is None or not row["clip_basis"]:
+        return "", False
+    return str(row["clip_basis"]), int(row["clip_basis_head"]) == int(row["head"])
+
+
+def set_clip_basis(conn, project_id, basis: str, *, revision: int | None = None) -> None:
+    """The clip is now `basis`, after an export of the project.
+    `revision`: the project's revision that export rendered, when the clip
+    is that revision (Branch A rendered the project's window and options
+    into it). It is the exported revision, never the head when the export
+    ended: edits made while the export waited or ran raise the head past
+    it, so the project counts as changed and the person is asked before it
+    starts again (8-D12). None (Branch B) leaves the clip's own settings as
+    they were and only points it at the export, so the project holds more
+    than they say: never "unchanged", and never started again by itself."""
+    head = -1 if revision is None else int(revision)
+    with _writing(conn):
+        conn.execute("UPDATE projects SET clip_basis = ?, clip_basis_head = ? WHERE id = ?",
+                     (str(basis or ""), head, str(project_id)))
+
+
+def start_again(conn, project_id, expected_revision, document: dict, *, clip_basis: str = "",
+                label: str = "Started again from the clip", now=None) -> dict:
+    """The project's document replaced by `document` (the clip as it is
+    now, imported again) as one revision, which Undo takes back like any
+    other. `clip_basis` is saved with it (8-D6). Raises as apply_ops does."""
+    try:
+        model.check(document)
+    except model.ModelError as e:
+        raise StoreError(f"That is not a project: {e}.") from e
+    now = _seconds(now)
+    with _writing(conn):
+        row, doc, migrated = _checked(conn, project_id, expected_revision)
+        text = model.canonical(document)
+        cursor, tip, base = row["cursor"], row["tip"], row["base"]
+        if migrated:
+            cursor, tip, base = _start_again(conn, row, model.canonical(doc), now)
+        inverse, forward = ops.steps(doc, document, None, text)
+        seq = cursor + 1
+        conn.execute("DELETE FROM project_revisions WHERE project_id = ? AND seq > ?", (row["id"], cursor))
+        _add_revision(conn, row["id"], seq, row["head"] + 1, now, label=_label(label), forward=forward,
+                      inverse=inverse, snapshot=text if seq % SNAPSHOT_EVERY == 0 else None)
+        base = _fold(conn, row["id"], base, seq)
+        _save(conn, row, text, document, now, cursor=seq, tip=seq, base=base)
+        conn.execute("UPDATE projects SET clip_basis = ?, clip_basis_head = head WHERE id = ?",
+                     (str(clip_basis or ""), row["id"]))
+    return get(conn, project_id)
 
 
 def delete(conn, project_id) -> bool:
@@ -487,7 +603,7 @@ def asset_path(data_dir, sha256: str, ext: str = "") -> Path:
 
 
 def add_asset(conn, data_dir, source, *, kind: str, name: str = "", facts: dict | None = None, now=None,
-              progress=None) -> dict:
+              progress=None, check=None) -> dict:
     """Copy a file into the project media (data/media/assets/) and record
     it. `facts` is what is known about it ({"duration_us", "width", "height",
     "fps": {"num", "den"}, "has_audio"}). Returns its row; the file it
@@ -496,13 +612,21 @@ def add_asset(conn, data_dir, source, *, kind: str, name: str = "", facts: dict 
     The file is read once, in blocks: hashed as it is copied to a temporary
     name, which becomes the asset's file (or goes, when the same file is
     already there). `progress(done, total)` is called after each block
-    (bytes); whatever it raises stops the copy, and nothing is kept."""
+    (bytes); whatever it raises stops the copy, and nothing is kept.
+
+    `check(copy)`, when given, reads the copy before it is kept and returns
+    `{"kind", "facts"}` for it, which replace `kind` and `facts`; whatever it
+    raises stops the import, and nothing is kept. So what is recorded is
+    always what was copied, even when the file was replaced or still being
+    written after it was first looked at (step 6's fault, fixed in step 8).
+    The copy keeps the file's extension, for the reader."""
     if kind not in MEDIA_KINDS:
         raise StoreError(f"A media file is one of {', '.join(MEDIA_KINDS)}.")
     source = Path(source)
     folder = assets_dir(data_dir)
     folder.mkdir(parents=True, exist_ok=True)
-    tmp = folder / f".incoming-{uuid.uuid4().hex[:12]}.part"
+    ext = source.suffix.lower() if _EXT.fullmatch(source.suffix.lower()) else ""
+    tmp = folder / f".incoming-{uuid.uuid4().hex[:12]}.part{ext}"
     try:
         digest, size = hashlib.sha256(), 0
         with open(source, "rb") as f:
@@ -516,7 +640,11 @@ def add_asset(conn, data_dir, source, *, kind: str, name: str = "", facts: dict 
                         progress(size, total)
         sha256 = digest.hexdigest()
         found = asset(conn, sha256)
-        ext = source.suffix.lower() if _EXT.fullmatch(source.suffix.lower()) else ""
+        if check is not None and found is None:
+            checked = check(tmp)
+            if checked["kind"] not in MEDIA_KINDS:
+                raise StoreError(f"A media file is one of {', '.join(MEDIA_KINDS)}.")
+            kind, facts = checked["kind"], checked["facts"]
         target = asset_path(data_dir, sha256, found["ext"] if found else ext)
         if not target.is_file():
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -567,7 +695,8 @@ def add_export(conn, project_id, revision: int, *, clip_id: int | None = None, p
     return int(cur.lastrowid)
 
 
-EXPORT_FIELDS = ("clip_id", "path", "status", "error", "branch", "duration_us", "bytes", "job_id")
+EXPORT_FIELDS = ("clip_id", "path", "status", "error", "branch", "duration_us", "bytes", "job_id",
+                 "file_mtime_ns")
 
 
 def set_export(conn, export_id: int, *, now=None, **fields) -> None:
@@ -579,6 +708,57 @@ def set_export(conn, export_id: int, *, now=None, **fields) -> None:
         conn.execute(
             f"UPDATE project_exports SET {', '.join(f'{k} = ?' for k in allowed)}, updated_at = ? WHERE id = ?",
             (*allowed.values(), _stamp(now), int(export_id)))
+
+
+def same_path(a, b) -> bool:
+    """Whether two saved paths name the same file: as the system compares
+    them (case on Windows, "." and ".." parts), not as text (8-D4)."""
+    if not a or not b:
+        return False
+    return os.path.normcase(os.path.normpath(str(a))) == os.path.normcase(os.path.normpath(str(b)))
+
+
+def file_is_its_own(row) -> bool:
+    """Whether a finished export's file is still the one it wrote: there,
+    with the size and modification time recorded when it finished (8-D4).
+    Something else may have written that path since (today's Apply writes a
+    clip's file in place, and that is a Branch A export's file). A row from
+    before these were recorded is judged by the file being there."""
+    row = dict(row)
+    path = row.get("path")
+    if not path:
+        return False
+    try:
+        if not Path(str(path)).is_file():
+            return False
+        st = Path(str(path)).stat()
+    except (OSError, ValueError):
+        return False
+    size = int(row.get("bytes") or 0)
+    mtime = int(row.get("file_mtime_ns") or 0)
+    if size and st.st_size != size:
+        return False
+    return not (mtime and st.st_mtime_ns != mtime)
+
+
+def mark_replaced(conn, paths, *, keep: int | None = None, now=None) -> int:
+    """Exports whose file a later export or render has replaced (their path
+    now holds another file, or nothing): `status` "replaced", so they are
+    never offered as done (step 7's fault, fixed in step 8). `keep` is the
+    export that replaced them. Paths are compared as the system compares
+    them (same_path, 8-D4). Returns how many."""
+    paths = [str(p) for p in paths if p]
+    if not paths:
+        return 0
+    now = _seconds(now)
+    with _writing(conn):
+        rows = conn.execute("SELECT id, path FROM project_exports WHERE status = 'done' AND id != ?",
+                            (-1 if keep is None else int(keep),)).fetchall()
+        ids = sorted(int(r["id"]) for r in rows if any(same_path(r["path"], p) for p in paths))
+        for export_id in ids:
+            conn.execute("UPDATE project_exports SET status = 'replaced', updated_at = ? WHERE id = ?",
+                         (_stamp(now), export_id))
+    return len(ids)
 
 
 def exports(conn, project_id) -> list[dict]:
