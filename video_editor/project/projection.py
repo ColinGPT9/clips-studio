@@ -189,6 +189,11 @@ def _read(doc: dict, why: list) -> dict:
         why.append("The captions are timed to something other than the clip's own video.")
     if any(m.get("mode") != "mute" for m in captions["mutes"]):
         why.append("A stretch is bleeped.")
+    style = captions.get("style")
+    if isinstance(style, dict) and ("x" in style or "y" in style):
+        # Step 9 (9-D11): a place set by dragging is the new editor's alone;
+        # today's clip editor places captions by top/middle/bottom only.
+        why.append("The captions are placed by hand.")
     pieces["mutes"] = [[m["in_us"], m["out_us"]] for m in captions["mutes"]]
     pieces["muted_words"] = captions["muted_words"]
     pieces["captions"] = captions.get("enabled")

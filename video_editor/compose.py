@@ -75,6 +75,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -186,6 +187,9 @@ class Inputs:
     watermark: dict | None = None                # the settings' watermark, for a project whose branding has none
     logo: str | None = None                      # the image watermark's file (found by safe name by the caller)
     tracking: dict | None = None                 # a still: {"tracking", "run_start_us"} cached for the AI run at its time
+    # Step 9: the export's "Burn captions into the video" (ExportIn.captions
+    # "none" is False). Text, the hook and the watermark burn either way.
+    burn_captions: bool = True
 
 
 # ---- the plan --------------------------------------------------------------------------------
@@ -1191,6 +1195,110 @@ def caption_spans(doc: dict) -> list[CaptionSpan]:
     return spans
 
 
+def _played_parts(a: float, b: float, spans: list[CaptionSpan]) -> list[tuple[float, float]]:
+    """The parts of the source stretch [a, b) (seconds) that the spans play,
+    merged and in source order (a stretch played twice counts once)."""
+    parts = sorted((max(a, s.src_in / model.US), min(b, s.src_out / model.US)) for s in spans)
+    out: list[tuple[float, float]] = []
+    for lo, hi in parts:
+        if hi <= lo:
+            continue
+        if out and lo <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], hi))
+        else:
+            out.append((lo, hi))
+    return out
+
+
+def _line_word_times(text: str, a: float, b: float, words: list[dict],
+                     spans: list[CaptionSpan]) -> list[tuple[float, float]]:
+    """When each word of a caption line [a, b) is said, in the source's
+    seconds, never inside a stretch the timeline cuts out (9-D5, 9-D6).
+
+    The transcript's own word times when the line's words line up with them
+    (captions._word_times, unchanged); else, when the line reaches over a
+    cut (a line merged across one, a line whose end was cut off, a saved
+    line made before the cut), the transcript's words of the parts that
+    play when they line up with the line's; else the line's words shared out
+    by length over the parts that play only. A line wholly inside what
+    plays is timed exactly as before, unless it is shorter than 0.05 s
+    (its words used to be shared out past its end and dropped)."""
+    from video import captions as cap
+
+    times = cap._word_times(text, a, b, words)
+    tokens = text.split()
+    parts = _played_parts(a, b, spans)
+    if not parts or len(times) != len(tokens):
+        return times
+
+    def middle(w: dict) -> float:
+        return (float(w["start"]) + min(float(w["end"]), float(w["start"]) + cap.LONGEST_WORD_SECONDS)) / 2
+
+    inside = [w for w in words if a - 0.01 <= middle(w) <= b + 0.01]
+    matched = len(inside) == len(tokens)
+    if matched and not any(not a <= middle(w) < b
+                           and not any(s.src_in / model.US <= middle(w) < s.src_out / model.US for s in spans)
+                           for w in inside):
+        return times                                         # the transcript's own times
+    # (_word_times also counts a word just outside the line, by 0.01 s: when
+    # that word is cut out, its time would take one of the line's words with
+    # it, so the words are timed as below instead. Words inside the line that
+    # a cut takes out are dropped by remap_captions, as before.)
+    if not matched and parts == [(a, b)] and b - a >= 0.05:
+        return times                                         # shared out over the line, as before
+    # (A line shorter than 0.05 s is shared out over 0.05 s by _word_times,
+    # past its end, so its words would fall outside it and vanish.)
+    played = [w for w in inside if any(lo <= middle(w) < hi for lo, hi in parts)]
+    if len(played) == len(tokens):
+        return [(float(w["start"]), float(w["end"])) for w in played]
+    # 9-D14: the line's own transcript words that a cut takes out (said
+    # inside the line, in no part that plays). A typed word that lines up
+    # with one of them (kept while another word was fixed, or typed again)
+    # keeps that word's time, so it stays cut out; only the other words are
+    # shared out over the parts that play.
+    cut = [w for w in inside if a <= middle(w) < b
+           and not any(s.src_in / model.US <= middle(w) < s.src_out / model.US for s in spans)]
+    if cut:
+        import difflib
+
+        def plain(word: object) -> str:
+            return "".join(ch for ch in str(word or "").lower() if ch.isalnum())
+
+        cut_ids = {id(w) for w in cut}
+        fixed: dict[int, tuple[float, float]] = {}
+        match = difflib.SequenceMatcher(a=[plain(w.get("word")) for w in inside],
+                                        b=[plain(t) for t in tokens], autojunk=False)
+        for tag, i1, i2, j1, _j2 in match.get_opcodes():
+            if tag == "equal":
+                for k in range(i2 - i1):
+                    if id(inside[i1 + k]) in cut_ids:
+                        w = inside[i1 + k]
+                        fixed[j1 + k] = (float(w["start"]), float(w["end"]))
+        if fixed:
+            rest = [t for j, t in enumerate(tokens) if j not in fixed]
+            shared = iter(_shared_out(rest, parts))
+            return [fixed[j] if j in fixed else next(shared) for j in range(len(tokens))]
+    return _shared_out(tokens, parts)
+
+
+def _shared_out(tokens: list[str], parts: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Words shared out by length over the parts that play (source seconds),
+    each word inside the part that holds its middle."""
+    total = sum(hi - lo for lo, hi in parts)
+    weights = [max(1, len(t)) for t in tokens]
+    out, at = [], 0.0
+    for wgt in weights:
+        s_off, e_off = at, at + total * wgt / sum(weights)
+        at = e_off
+        m_off, cum = (s_off + e_off) / 2, 0.0
+        for index, (lo, hi) in enumerate(parts):
+            if m_off < cum + (hi - lo) or index == len(parts) - 1:
+                out.append((lo + max(0.0, s_off - cum), lo + min(e_off - cum, hi - lo)))
+                break
+            cum += hi - lo
+    return out
+
+
 def remap_captions(lines: list[dict], words: list[dict], spans: list[CaptionSpan]) -> tuple[list[dict], list[dict]]:
     """Caption lines in the source's time ([{start, end, text, ...}],
     seconds) on the program's timeline: (lines, spoken words), both in
@@ -1198,7 +1306,8 @@ def remap_captions(lines: list[dict], words: list[dict], spans: list[CaptionSpan
 
     Every word of a line gets its source time: the transcript's own when the
     line's words line up with it (captions._word_times, as the highlight
-    reads them), else the line's time shared out by word length. A word is
+    reads them), else the line's time shared out by word length, over the
+    parts of the line that play only (_line_word_times). A word is
     kept where its middle plays: words in a cut-out stretch are dropped, and
     a line split by a cut becomes a caption on each side holding its own
     words. Times are mapped through the span, so speed scales them, and the
@@ -1218,7 +1327,7 @@ def remap_captions(lines: list[dict], words: list[dict], spans: list[CaptionSpan
         if not text or b <= a:
             continue
         tokens = text.split()
-        times = cap._word_times(text, a, b, words)
+        times = _line_word_times(text, a, b, words, spans)
         if len(times) != len(tokens):
             continue
         rest = {k: v for k, v in line.items() if k not in ("start", "end", "text", "in_us", "out_us", "id")}
@@ -1298,7 +1407,165 @@ def _source_lines(doc: dict, inputs: Inputs, spans: list[CaptionSpan], words: li
     return [{**line, "start": line["start"] + lo, "end": line["end"] + lo} for line in made]
 
 
+def caption_style_of(doc: dict, inputs: Inputs) -> dict | None:
+    """The caption style the export uses: the project's own, else the
+    settings' (inputs.caption_style), else None (DEFAULT_STYLE)."""
+    style = (doc.get("captions") or {}).get("style")
+    return dict(style) if isinstance(style, dict) else (dict(inputs.caption_style)
+                                                        if isinstance(inputs.caption_style, dict) else None)
+
+
+def caption_sources(doc: dict, inputs: Inputs, caption_doc: dict | None = None
+                    ) -> tuple[list[dict], list[dict], list[CaptionSpan]]:
+    """(the caption lines in the source's seconds, the transcript's words,
+    the spans of the timeline they are mapped through), exactly as the
+    export reads them. `caption_doc`: the document whose timeline the
+    captions follow (the export's unpadded one, ED34)."""
+    from video import captions as cap
+
+    opts = {**cap.DEFAULT_STYLE, **(caption_style_of(doc, inputs) or {})}
+    spans = caption_spans(caption_doc or doc)
+    words = transcript_words(inputs)
+    source = _source_lines(doc, inputs, spans, words, int(opts["words_per_caption"]), _speaker_turns(doc, opts))
+    return source, words, spans
+
+
+def program_caption_lines(doc: dict, inputs: Inputs, caption_doc: dict | None = None
+                          ) -> tuple[list[dict], list[dict]]:
+    """The caption lines and their spoken words in program seconds: what
+    the export burns (build_ass), what its .srt holds (step 9) and what the
+    caption lane shows (caption_lane), from one remap."""
+    source, words, spans = caption_sources(doc, inputs, caption_doc)
+    return remap_captions(source, words, spans)
+
+
+CUT_LINE_SECONDS = 0.05     # how much of a caption line may fall outside what plays and still count as whole
+
+
+def caption_line_cut(doc: dict, inputs: Inputs) -> bool:
+    """Whether some caption line reaches over a cut or past the ends of what
+    V1 plays (step 9, 9-D12): part of it plays and more than
+    CUT_LINE_SECONDS of it doesn't. Today's re-render (Branch A) keeps such
+    a line whole, with every word and over its whole span
+    (video_editor.captions.remap_lines); the compiler, the lane, the live
+    viewer and the .srt split it word by word (remap_captions). So an
+    export that shows captions takes Branch B when this is true."""
+    source, _words, spans = caption_sources(doc, inputs)
+    for line in source:
+        try:
+            a, b = float(line["start"]), float(line["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        parts = _played_parts(a, b, spans)
+        if parts and (b - a) - sum(hi - lo for lo, hi in parts) > CUT_LINE_SECONDS:
+            return True
+    return False
+
+
+def word_timing_retimed(doc: dict, inputs: Inputs, render_opts: dict | None) -> bool:
+    """Whether today's re-render would time the words differently from the
+    live viewer (step 9, 9-D17): the style lights words up (highlight, or
+    the karaoke animation) and the clip is cut or sped up. Today's render
+    then shares each line's time out over its words by length
+    (karaoke_untimed, core.pipeline's "retimed" path), while the compiler,
+    the lane and the live viewer time each word from the transcript. So an
+    export that burns such captions takes Branch B."""
+    from video import captions as cap
+
+    opts = {**cap.DEFAULT_STYLE, **(caption_style_of(doc, inputs) or {})}
+    if not (opts.get("highlight") or opts.get("animation") == "karaoke"):
+        return False
+    edit = (render_opts or {}).get("edit")
+    if not isinstance(edit, dict):
+        return False
+    try:
+        speed = float(edit.get("speed", 1.0) or 1.0)
+    except (TypeError, ValueError):
+        speed = 1.0
+    return bool(edit.get("keep")) or abs(speed - 1) >= 0.01
+
+
+TRANSCRIPT_LINE_ID = "tx"     # + its index: a caption line made from the transcript, not saved yet
+
+
+def caption_lane(doc: dict, inputs: Inputs) -> dict:
+    """The caption lines for the new editor's caption lane (step 9), in
+    program time, from the same remap the export burns.
+
+    One entry per caption line in the source's time, in the source's order:
+    `id` (the saved line's; for lines made from the transcript, not saved
+    yet, "tx<n>", which set_captions keeps when the lines are saved with
+    it), `in_us`/`out_us` and `text` (the source's), `speaker` (1 on the
+    other speaker's lines when the style colours them, else 0), `pieces`:
+    where it plays, [{start_us, end_us, text}] in program time (a line cut
+    by an edit has one per side, a stretch played twice is captioned twice),
+    and `hidden`: true when no part of it plays (cut out)."""
+    from video import captions as cap
+
+    saved = (doc.get("captions") or {}).get("lines")
+    source, words, spans = caption_sources(doc, inputs)
+    opts = {**cap.DEFAULT_STYLE, **(caption_style_of(doc, inputs) or {})}
+    out = []
+    for index, line in enumerate(source):
+        own = saved[index] if saved is not None and index < len(saved) else None
+        pieces, _ = remap_captions([line], words, spans)
+        out.append({
+            "id": own["id"] if own is not None else f"{TRANSCRIPT_LINE_ID}{index}",
+            "in_us": int(own["in_us"]) if own is not None else int(round(float(line["start"]) * model.US)),
+            "out_us": int(own["out_us"]) if own is not None else int(round(float(line["end"]) * model.US)),
+            "text": str(own["text"] if own is not None else line.get("text", "")),
+            "speaker": 1 if line.get("speaker") else 0,
+            "pieces": [{"start_us": int(round(p["start"] * model.US)), "end_us": int(round(p["end"] * model.US)),
+                        "text": p["text"]} for p in pieces],
+            "hidden": not pieces,
+        })
+    return {
+        "saved": saved is not None,
+        "burned": captions_on(doc, inputs),
+        "enabled": (doc.get("captions") or {}).get("enabled"),
+        "media_id": (doc.get("captions") or {}).get("media_id"),
+        "style": opts,
+        "program_us": model.program_end(doc),
+        "spans": [{"src_in_us": s.src_in, "src_out_us": s.src_out, "start_us": s.start, "end_us": s.end,
+                   "speed": s.speed} for s in spans],
+        "lines": out,
+    }
+
+
+def caption_source_range(doc: dict, start_us: int, end_us: int) -> tuple[int, int] | None:
+    """A caption block's program [start_us, end_us) as a caption line's
+    source [in_us, out_us), through the same spans the export maps captions
+    with (caption_spans): the span that plays `start_us`, with `end_us` held
+    to that span's end (a block never reaches across a cut). Each source
+    time is the span's source in point plus the program offset times the
+    speed, exactly (as a fraction), then the start rounded up and the end
+    down to the microsecond: mapped back (CaptionSpan.program), the start is
+    never before the frame the block was put on and the end never after it
+    (each within 1 / speed µs), so the burned caption is on the same frames,
+    never a frame off. None when no captioned video plays at `start_us` (a
+    gap, a picture, another video)."""
+    from fractions import Fraction
+
+    spans = caption_spans(doc)
+    span = next((s for s in spans if s.start <= start_us < s.end), None)
+    if span is None:
+        return None
+    end_us = min(max(end_us, start_us + 1), span.end)
+    speed = Fraction(span.speed)
+    a = span.src_in + math.ceil((start_us - span.start) * speed)
+    b = min(span.src_in + math.floor((end_us - span.start) * speed), span.src_out)
+    return (a, b) if b > a else None
+
+
 TEXT_POSITIONS = {"top": (8, 190), "middle": (5, 0), "bottom": (2, 440)}   # alignment, margin at 1920 tall
+
+
+def text_place(look: dict) -> tuple[float, float] | None:
+    """A text item's own point ({x, y}: its centre in % of the frame), or
+    None when it is placed by name (top, middle, bottom)."""
+    from video import captions as cap
+
+    return cap.place_of(look.get("position")) if isinstance(look.get("position"), dict) else None
 
 
 def _text_style(name: str, look: dict, canvas: tuple[int, int], font: str) -> str:
@@ -1309,7 +1576,10 @@ def _text_style(name: str, look: dict, canvas: tuple[int, int], font: str) -> st
 
     s = canvas[1] / 1920
     color = cap._ass_color(look.get("color") or "#FFFFFF")
-    align, margin = TEXT_POSITIONS.get(look.get("position") or "top", TEXT_POSITIONS["top"])
+    if text_place(look) is not None:
+        align, margin = 5, 0          # centred on its own point: each event's \pos (build_ass)
+    else:
+        align, margin = TEXT_POSITIONS.get(look.get("position") or "top", TEXT_POSITIONS["top"])
     size = round(int(look.get("size") or 96) * s)
     face = look.get("font") or font
     # Bold as captions are: not a one-weight display face (Anton, Bangers...), which libass would thicken.
@@ -1352,19 +1622,12 @@ def build_ass(doc: dict, inputs: Inputs, canvas: tuple[int, int], *,
 
     program_s = model.program_end(doc) / model.US
     text: str | None = None
-    if captions_on(doc, inputs):
-        style = (doc.get("captions") or {}).get("style")
-        style = dict(style) if isinstance(style, dict) else (dict(inputs.caption_style)
-                                                             if isinstance(inputs.caption_style, dict) else None)
-        opts = {**cap.DEFAULT_STYLE, **(style or {})}
+    if inputs.burn_captions and captions_on(doc, inputs):
+        style = caption_style_of(doc, inputs)
         # The captions follow the timeline as the document has it, so the
         # export's end pad (end_pad_us) captions nothing new, as Apply's pad
         # doesn't (core/pipeline.py builds a clip's captions unpadded).
-        spans = caption_spans(caption_doc or doc)
-        words = transcript_words(inputs)
-        source = _source_lines(doc, inputs, spans, words, int(opts["words_per_caption"]),
-                               _speaker_turns(doc, opts))
-        lines, spoken = remap_captions(source, words, spans)
+        lines, spoken = program_caption_lines(doc, inputs, caption_doc=caption_doc)
         if lines:
             text = cap.caption_ass([Segment(start=0.0, end=program_s, text="", words=spoken)],
                                    ClipCandidate(start=0.0, end=program_s, score=0), style=style, lines=lines,
@@ -1391,6 +1654,13 @@ def build_ass(doc: dict, inputs: Inputs, canvas: tuple[int, int], *,
                     looks[key] = f"Text{len(looks) + 1}"
                     styles.append(_text_style(looks[key], look, canvas, hook_font))
             start, end = item["start_us"] / model.US, (item["start_us"] + item["duration_us"]) / model.US
+            place = text_place(look)
+            if place is not None:
+                # Dragged on the viewer (step 9): centred on its point, the
+                # point kept on the frame.
+                px = min(max(round(place[0] * canvas[0] / 100), 0), canvas[0])
+                py = min(max(round(place[1] * canvas[1] / 100), 0), canvas[1])
+                content = f"{{\\an5\\pos({px},{py})}}{content}"
             events.append(f"Dialogue: 1,{cap._ass_time(start)},{cap._ass_time(end)},{looks[key]},,0,0,0,,{content}")
     wm = _watermark(doc, inputs)
     if wm and wm_mod.has_text(wm):

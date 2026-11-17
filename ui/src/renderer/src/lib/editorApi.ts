@@ -7,6 +7,7 @@
  *  still from a real failure, and show the engine's own plain sentence. */
 import { API_BASE, sessionHeaders } from './api'
 import type {
+  CaptionLane,
   CanvasChoice,
   DraftAnswer,
   ImportedAsset,
@@ -141,6 +142,35 @@ export const editorApi = {
     const bitmap = await createImageBitmap(await res.blob())
     return { bitmap, time_us: time === null ? null : Number(time), approximate: note === 'approximate' }
   },
+  /** The caption lines in program time at `revision` (step 9), for the
+   *  viewer's caption layer, the caption lane and the transcript list. */
+  captionLines: (id: string, revision: number, signal?: AbortSignal) =>
+    call<CaptionLane>(`/projects/${encodeURIComponent(id)}/captions?rev=${revision}`, { signal }),
+  /** The ASS file the export burns at a revision (captions, text, the hook,
+   *  the watermark), for the viewer to draw live. `url` is the caption
+   *  lines' `urls.captions_ass` (token included). */
+  captionsAss: async (url: string, signal?: AbortSignal): Promise<string> => {
+    const res = await fetch(engineUrl(url), { headers: await sessionHeaders(), signal })
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { detail?: unknown } | null
+      const detail = body?.detail ?? null
+      throw new EditorError(res.status, detailText(detail) || `${res.status}`, detail)
+    }
+    return res.text()
+  },
+  /** Caption blocks placed on the lane (program time) as the source times to
+   *  save: null where no captioned video plays at a block's start. */
+  captionSourceTimes: (id: string, revision: number, ranges: { start_us: number; end_us: number }[]) =>
+    post<{ revision: number; ranges: ({ in_us: number; out_us: number } | null)[] }>(
+      `/projects/${encodeURIComponent(id)}/captions/source_times`,
+      { revision, ranges }
+    ),
+  /** The Windows caption fonts this PC has (GET /fonts `system`): each
+   *  family's files' addresses, for the live captions (9-D9). */
+  systemFonts: async (): Promise<{ family: string; urls: string[] }[]> => {
+    const got = await call<{ system?: { family: string; urls: string[] }[] }>('/fonts')
+    return Array.isArray(got.system) ? got.system : []
+  },
   /** Ask for the draft of `revision`: made already, or a lane job. */
   draft: (id: string, revision: number) =>
     post<DraftAnswer>(`/projects/${encodeURIComponent(id)}/draft`, { revision }),
@@ -157,13 +187,17 @@ export const editorApi = {
     revision: number,
     preset: ExportPreset | 'original',
     replaceClipChanges = false,
-    folder?: string
+    folder?: string,
+    captions: { captions: 'burn' | 'none'; srt: boolean } = { captions: 'burn', srt: false }
   ) =>
     post<ProjectExportAnswer>(`/projects/${encodeURIComponent(id)}/export`, {
       revision,
       preset,
       ...(replaceClipChanges ? { replace_clip_changes: true } : {}),
-      ...(folder ? { folder } : {})
+      ...(folder ? { folder } : {}),
+      // Step 9: burn the captions into the picture or not, and a .srt beside the file.
+      captions: captions.captions,
+      srt: captions.srt
     }),
   cancelExport: (exportId: number) => post<ProjectExportJob>(`/export/jobs/${exportId}/cancel`),
   exportJob: (exportId: number) => call<ProjectExportJob>(`/export/jobs/${exportId}`),

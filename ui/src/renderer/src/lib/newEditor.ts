@@ -67,7 +67,22 @@ export function loadPlatform(): PlatformChoice {
 export function savePlatform(p: PlatformChoice): void {
   try {
     localStorage.setItem(PLATFORM_KEY, p)
+    if (p !== 'none') localStorage.setItem(LAST_APP_KEY, p)
   } catch {
     /* not remembered: still shown now */
+  }
+}
+
+const LAST_APP_KEY = 'new-editor-last-app'
+
+/** The app last chosen in the picker (TikTok before any): drawn faintly
+ *  while a caption or text is dragged with the picker on "No overlay"
+ *  (step 9). */
+export function lastPlatformApp(): Exclude<PlatformChoice, 'none'> {
+  try {
+    const v = localStorage.getItem(LAST_APP_KEY)
+    return v === 'reels' || v === 'shorts' || v === 'tiktok' ? v : 'tiktok'
+  } catch {
+    return 'tiktok'
   }
 }

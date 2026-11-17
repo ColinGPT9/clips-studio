@@ -741,6 +741,25 @@ def test_coalesce_key_names_one_small_tweak():
         assert ops.coalesce_key(other) == ""
 
 
+def test_a_whole_caption_style_coalesces_by_the_keys_it_changes():
+    # 9-D7: the caption layer sends the whole style for a drag, a resize or a
+    # colour; with the documents before and after, the key names what changed.
+    def doc(**style):
+        return {"captions": {"style": style or None}}
+
+    base = {"font": "Arial", "font_size": 84}
+    send = [{"op": "set_captions", "style": {**base, "x": 50, "y": 30}}]
+    drag = ops.coalesce_key(send, doc(**base, x=40, y=20), doc(**base, x=50, y=30))
+    drag2 = ops.coalesce_key(send, doc(**base, x=45, y=25), doc(**base, x=50, y=30))
+    resize = ops.coalesce_key(send, doc(**base, x=50, y=30), doc(**{**base, "font_size": 120}, x=50, y=30))
+    first = ops.coalesce_key(send, doc(), doc(**base, x=50, y=30))
+    reset = ops.coalesce_key(send, doc(**base, x=50, y=30), doc(**base))
+    assert drag and drag == drag2                      # two moves of one drag: one step
+    assert len({drag, resize, first, reset}) == 4      # a drag, then a resize: two steps
+    # Without the documents (any other caller): the style's keys, as before.
+    assert ops.coalesce_key(send) == "set_captions||style{font,font_size,x,y}"
+
+
 # ---- found in review (5-D15 onward) -------------------------------------------------------------
 
 

@@ -233,7 +233,7 @@ SPECS: dict[str, tuple[str, dict]] = {
         "font": ("str", False, "a caption font"),
         "size": ("int", False, "8 to 400"),
         "color": ("str", False, "#RRGGBB"),
-        "position": ("str", False, "top, middle or bottom"),
+        "position": ("any", False, "top, middle or bottom, or {x, y}: its centre in % of the frame"),
     }),
     "set_text": ("Change a text item. null puts a look back to its default.", {
         "item_id": ("id", True, "the text item"),
@@ -242,7 +242,7 @@ SPECS: dict[str, tuple[str, dict]] = {
         "font": ("any", False, "a caption font, or null"),
         "size": ("any", False, "8 to 400, or null"),
         "color": ("any", False, "#RRGGBB, or null"),
-        "position": ("any", False, "top, middle or bottom, or null"),
+        "position": ("any", False, "top, middle or bottom, {x, y} (its centre in % of the frame), or null"),
     }),
     "set_captions": ("Switch captions on or off, set their style, or replace their lines.", {
         "enabled": ("any", False, "true, false, or null for the job's own choice"),
@@ -1208,8 +1208,15 @@ def _look(name: str, op: dict, text: dict, ctx: _Ctx) -> None:
             if not isinstance(value, str) or not _COLOUR.fullmatch(value):
                 raise OpError(name, key, "must be a colour as #RRGGBB.")
             value = value.upper()
-        elif key == "position" and value not in TEXT_POSITIONS:
-            raise OpError(name, key, f"must be one of {', '.join(TEXT_POSITIONS)}.")
+        elif key == "position" and isinstance(value, dict):
+            # Step 9: dragged on the viewer, {x, y}: the text's centre in %
+            # of the frame's width and height.
+            if sorted(value) != ["x", "y"] or not all(_is_num(value[k]) and 0 <= value[k] <= 100 for k in value):
+                raise OpError(name, key, "must be top, middle or bottom, or {x, y} with each a number from "
+                                         "0 to 100 (% of the frame).")
+            value = {"x": value["x"], "y": value["y"]}
+        elif key == "position" and (not isinstance(value, str) or value not in TEXT_POSITIONS):
+            raise OpError(name, key, f"must be one of {', '.join(TEXT_POSITIONS)}, or {{x, y}}.")
         text[key] = value
 
 
@@ -1590,10 +1597,27 @@ _COALESCE = {"set_item_props": "item_id", "set_text": "item_id", "set_track_prop
              "set_project_props": None, "set_canvas": None, "set_captions": None, "set_branding": None}
 
 
-def coalesce_key(ops: list) -> str:
+def _style_changes(before: dict | None, after: dict | None) -> list[str]:
+    """The caption style's keys whose value a set_captions changed (added or
+    set to another value; a removed key as "-key", so "Reset position" is
+    never joined with the drag before it)."""
+    before = (before.get("captions") or {}).get("style") if isinstance(before, dict) else None
+    after = (after.get("captions") or {}).get("style") if isinstance(after, dict) else None
+    before, after = before if isinstance(before, dict) else {}, after if isinstance(after, dict) else {}
+    return sorted([k for k in after if k not in before or before[k] != after[k]]
+                  + [f"-{k}" for k in before if k not in after])
+
+
+def coalesce_key(ops: list, before: dict | None = None, after: dict | None = None) -> str:
     """What a call tweaks, when it is one small tweak: the operation, the
     item or track, and the properties it sets. Two calls with the same key,
-    made a moment apart, are one undo step (store.py). "" for anything else."""
+    made a moment apart, are one undo step (store.py). "" for anything else.
+
+    A set_captions style is sent whole (step 9: the caption layer's drag,
+    resize and panel all send it), so with the documents `before` and
+    `after` the call, its key names the style keys whose value changed: a
+    drag (x, y) and a resize (font_size) a moment apart stay two steps
+    (9-D7), two moves of one drag are one."""
     if len(ops) != 1 or not isinstance(ops[0], dict) or ops[0].get("op") not in _COALESCE:
         return ""
     op = ops[0]
@@ -1601,6 +1625,8 @@ def coalesce_key(ops: list) -> str:
     props = []
     for key in sorted(k for k in op if k not in ("op", target)):
         value = op[key]
+        if op["op"] == "set_captions" and key == "style" and isinstance(value, dict) and after is not None:
+            value = dict.fromkeys(_style_changes(before, after))
         props.append(f"{key}{{{','.join(sorted(map(str, value)))}}}" if isinstance(value, dict) else key)
     if op["op"] == "set_captions" and "lines" in op:
         return ""

@@ -123,6 +123,8 @@ CSP_BEFORE = (
 def test_csp_gains_only_font_src():
     html = (ROOT / "ui" / "src" / "renderer" / "index.html").read_text(encoding="utf-8")
     csp = re.search(r'http-equiv="Content-Security-Policy"\s+content="([^"]+)"', html).group(1)
-    assert csp == CSP_BEFORE + "; font-src 'self' http://127.0.0.1:8765"
+    # Editor suite step 9 adds only script-src 'self' 'wasm-unsafe-eval' (JASSUB's WebAssembly).
+    step9 = CSP_BEFORE.replace("default-src 'self'; ", "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; ")
+    assert csp == step9 + "; font-src 'self' http://127.0.0.1:8765"
     dev = (ROOT / "ui" / "vite.config.mts").read_text(encoding="utf-8")
     assert "font-src 'self' http://127.0.0.1:8765" in dev

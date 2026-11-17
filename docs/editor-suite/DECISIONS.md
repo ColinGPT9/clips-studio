@@ -812,3 +812,62 @@ The Kokoro voice that Voicebox uses by default was already in the repo as an opt
 
 **Unchanged:** the 7-D5/8-D11 path guard (a clip's file in `data/clips/projects/`) is untouched: no clip ever points at a file in the export folder. Deleting a project never deletes its exports' files, so a file in the person's folder stays theirs.
 
+## ED47 · A dragged caption is centred on its point and moved in only as far as its own size needs
+
+**Date:** 2026-11-16 · **Steps:** 9 (part A) · #238
+
+**Context:** step 9 lets a person drag the captions anywhere on the viewer (his ask, and #238's "lower middle, higher middle"). The caption style gains optional `x`, `y` (the centre in % of the frame); the plan asks that a caption stays inside the frame and inside the chosen app's safe area, and that a style without them renders byte for byte as before.
+
+**Decision:** with both numbers, every caption event starts with `\an5\pos(px,py)` at the point; the style's margins stay the frame's (60 px) or the app's button column on the right, and only set the line width. Each caption is measured (the safe zones' `caption_fit`, else a guess from its length) and moved in only as far as its own size needs to stay inside the frame, or between the app's bars and left of its buttons with a safe zone. Slide rises into the point. Without both numbers nothing of this runs (15,552 style combinations compared byte for byte with the step-8 commit, plus the snapshots and the golden renders).
+
+**Why:** in the middle of the frame every caption is exactly where it was dropped, and near an edge none ever runs off it or under an app's buttons. Rejected: narrowing the line width around the point (a caption at x = 10% would wrap into a thin column) and holding the point to the middle of the margins (nothing could sit near a side).
+
+**Also decided with it (step 9 part A):** the lane maps program time to source time through the engine (`POST /projects/{id}/captions/source_times`, start rounded up and end down, so a block never lands a frame off at any speed) rather than a new operation; lines made from the transcript get ids `tx<n>` and are saved with them on the lane's first edit; the export's `.srt` is written beside the file from the same remap as the burn, also when the captions are not burned, and never fails the export.
+
+## ED48 · The viewer draws the engine's own ASS with JASSUB, by program time, and moves a dragged layer in that script
+
+**Date:** 2026-11-16 · **Steps:** 9 (part B) · #238
+
+**Context:** the plan asks that captions and text are seen live on the viewer exactly as they will burn, and that dragging, resizing and typing into them on the viewer feels like CapCut (the words follow the pointer). The viewer plays the program with two alternating `<video>` players, so no single video's time is the program's.
+
+**Decision:**
+- **JASSUB 2.5.23** (MIT; libass in WebAssembly, the same renderer as FFmpeg's burn), pinned exactly, a development dependency bundled by Vite (nothing shipped as a package). It runs in **canvas mode**: the viewer renders it at the playhead's program time on every playhead move, so it follows playing, scrubbing and both players. It draws `GET /projects/{id}/captions.ass` itself, with the bundled fonts by name from `/fonts`, this PC's own fonts when the app may read them, never the internet (`queryFonts: 'local'`).
+- **The page's rules gain only `'wasm-unsafe-eval'` in `script-src`** (tested: without it JASSUB's WebAssembly is refused; its worker loads from the app itself, so no `worker-src` or `blob:`). Checked in the built app loaded from `file://` in Electron 31 and in the dev server.
+- **Its `rvfc-polyfill` dependency (GPL-3.0) is not built in:** the build points the name at an empty file. Chromium has `requestVideoFrameCallback`, and canvas mode never uses it.
+- **While a layer is dragged, resized or typed into,** the viewer hands JASSUB the engine's script with that layer moved, rescaled or left out (`lib/captionLayer.ts` `placeEvents`, `withoutEvents`; a caption moved this way is written exactly as the engine writes a dragged one, tested against `video/captions.py`). The paused still is hidden from the press until the engine's script for the new revision arrives, so nothing jumps back. One change is sent at the drop (one undo step).
+- **The boxes** (selection, hit area, amber outline) are measured from the engine's script (each event's `\pos`, `\move` or style anchor, the text measured in its font); the still stays the truth.
+- **Snap rows** are defined once (`SNAP_ROWS`): top 15%, higher middle 33%, middle 50%, lower middle 63%, bottom 75% (where a bottom caption sits today), as the box's middle. The apps' screens (top bar, the column of buttons as tall as the buttons, the text at the bottom) are snap lines and the amber outline's areas; they exist on 9:16 only, so on other canvases nothing of an app is drawn (as the picker already says).
+- **Arrow keys** move the caption layer or a text only while its box on the viewer has focus (a click or Tab gives it focus); elsewhere they still step frames, as in step 8.
+
+**Why:** the engine's own script drawn by libass is the only way the live picture can't drift from the burn; drawing it by program time is the only way it follows the two-player program. Rejected: an HTML imitation of the captions (fonts, outlines and animations would differ), two JASSUB instances (one per layer, twice the memory), and sending every pointer move to the engine (a round trip per frame).
+
+**Known gap:** the Windows fonts the engine doesn't serve (Arial, the default caption font; Arial Black, the hook's) are drawn live with JASSUB's Liberation Sans unless the app may read this PC's fonts: same widths, lighter weight. The paused still and the export use the real font.
+
+## ED49 · The caption lane keeps captions apart and inside their stretch; the list sits beside the media bin
+
+**Date:** 2026-11-16 · **Steps:** 9 (part C) · #238, #174
+
+**Context:** the plan asks for a CapCut-style caption lane (retime, move, split, merge, delete, add, type), a Premiere-style list of the captions, the step-3 caption controls with a position, a text panel, "+ Text", and the export's two caption choices, each action one undo step and a block never a frame off. Captions are saved in the source's time, through step 5's operations only.
+
+**Decision:**
+- **One block per piece that plays**, on the timeline's own zoom and scroll, right under the main track. A block is held between the blocks either side and inside the stretch of video it plays in, its edges on the program's frames; the drop goes through the engine's `source_times`, then one `edit_caption_words`. Only a line in one piece is retimed or moved.
+- **Split shares the words by their length**; **merge** only joins a line that also comes later in the source; **+ Caption** fills the free place at the playhead (up to 2 s), and on a project whose captions name no video it names the main track's video under the playhead and switches captions on, in the same change. Each is `set_captions {lines}` with ids kept.
+- **The list is a "Captions" tab beside "Media"** in the left column; the inspector keeps the caption style (step 3's controls as they are, Words per caption only while lines aren't saved) with Across/Down numbers and Reset position. A position by name takes a dragged place off; a preset keeps it.
+- **Lock** is the editor's (not saved), and covers the lane and the captions on the viewer.
+- **"+ Text"** adds a centred 3 s text on the hundredth of a second at or before the playhead, so it shows on that frame.
+- **The export dialog** sends `captions` and `srt`; burn on and `.srt` off each time it opens.
+
+**Why:** captions that overlap or reach across a cut on the lane would burn differently from what the lane shows; keeping blocks apart is what CapCut's caption track does. The list beside the media keeps the style where every other setting is. Rejected: overlapping blocks, dragging a part of a cut-through line, a new route for word times to split by, regrouping saved lines when Words per caption changes (it would undo the person's fixes), and a lock saved in the project (step 5 has none, and another window or the AI would meet it unexplained).
+
+## ED50 · A caption line is only ever timed over what plays; the live captions use this PC's own Windows fonts
+
+**Date:** 2026-11-16 · **Steps:** 9 (QC fix round 1: 9-D5, 9-D6, 9-D7, 9-D9)
+
+**Context:** the review found that a saved caption line's words were spread over its whole source time, cut-out stretches included, so a merge across a cut or a retime of a line an edit cut through dropped words or brought back cut-out ones. The render check found that Arial and Arial Black, which the engine didn't serve, were drawn live in a stand-in font. The undo check found that a drag and a resize a moment apart were one undo step, because the caption layer sends the whole style each time.
+
+**Decision:**
+- The engine times a line's words only over the parts of it that play (`compose._line_word_times`); a line wholly inside what plays is timed exactly as before (except a line shorter than 0.05 s, whose words used to be shared out past its end and vanish), so the snapshots and golden renders are unchanged. The lane offers Merge only when no cut lies between the two blocks, and saves a line an edit cut off as the part that plays (both ends held to its stretch, the words that play) for a retime, a move, a split, a merge or a word fix.
+- `GET /fonts` lists `system`, the Windows caption fonts this PC has, served by `GET /fonts/system/{file}` from this PC's Windows font folders: only the file names the burn uses (`SYSTEM_FACES`), anything else 404, read-only, open to any page on this PC like the bundled fonts. The live captions add the ones a script names.
+- A `set_captions` style's undo-joining key is the style keys whose value changed.
+
+**Why:** the lane, the viewer and the burn must show the same words as the block the person dragged; the burn uses this PC's font files, so the live layer can draw the very same files without anything from the internet. Rejected: refusing every edit of a cut-through line (CapCut lets you retime it), saving a merged line as two timed parts (a new line shape for one action), granting the browser's local-fonts permission (Electron's grant was not confirmed and it reads every font on the PC), and an undo hint sent by the UI (the engine can tell by itself).

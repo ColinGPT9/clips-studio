@@ -19,8 +19,11 @@ export interface ProjectState {
   /** A plain line to show for a while: a warning, a refusal, a reload. */
   notice: string
   clearNotice: () => void
-  /** Apply operations; resolves with the answer, or null when refused. */
-  apply: (ops: Op[], label?: string) => Promise<OpsAnswer | null>
+  /** Apply operations; resolves with the answer, or null when refused.
+   *  `at`: the revision the operations were built from, when they must not
+   *  be made on a newer one (a whole caption list built from the caption
+   *  lane, 9-D13); null or left out: the latest revision. */
+  apply: (ops: Op[], label?: string, at?: number | null) => Promise<OpsAnswer | null>
   undo: () => Promise<void>
   redo: () => Promise<void>
   reload: () => Promise<void>
@@ -89,10 +92,16 @@ export function useProject(projectId: string, openNotice?: string): ProjectState
   }
 
   const apply = useCallback(
-    (ops: Op[], label?: string): Promise<OpsAnswer | null> =>
+    (ops: Op[], label?: string, at?: number | null): Promise<OpsAnswer | null> =>
       inTurn(async () => {
         const p = current.current
         if (!p) return null
+        // Built from an older revision than the one a change just before
+        // made (in this window): not made, so that change is kept.
+        if (at !== undefined && at !== null && at !== p.revision) {
+          setNotice(t('The captions changed just before this, so it was not made: please do it again.'))
+          return null
+        }
         try {
           const answer = await editorApi.ops(p.id, p.revision, ops, label)
           take(answer)

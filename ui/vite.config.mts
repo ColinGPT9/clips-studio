@@ -23,6 +23,7 @@
 
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 
 /** Relax the page's CSP, for the browser dev server only.
@@ -48,7 +49,7 @@ function relaxCspForBrowserDev(): Plugin {
           '<meta http-equiv="Content-Security-Policy" content="' +
             "default-src 'self'; " +
             // Fast Refresh preamble.
-            "script-src 'self' 'unsafe-inline'; " +
+            "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; " +
             // The engine, plus Vite's own HMR socket on this origin.
             "connect-src 'self' ws: http://127.0.0.1:8765 ws://127.0.0.1:8765; " +
             'media-src http://127.0.0.1:8765; ' +
@@ -63,6 +64,15 @@ function relaxCspForBrowserDev(): Plugin {
 export default defineConfig({
   root: 'src/renderer',
   plugins: [react(), tailwindcss(), relaxCspForBrowserDev()],
+  // As electron.vite.config.ts's renderer block: JASSUB's GPL-3.0
+  // requestVideoFrameCallback polyfill left out, its worker an ES module,
+  // and JASSUB served as it is so its worker and WebAssembly are found
+  // (its one CommonJS import pre-bundled).
+  resolve: {
+    alias: { 'rvfc-polyfill': fileURLToPath(new URL('./src/renderer/src/lib/rvfcNone.ts', import.meta.url)) }
+  },
+  worker: { format: 'es' },
+  optimizeDeps: { exclude: ['jassub'], include: ['jassub > throughput'] },
   server: {
     // 0.0.0.0 so the port is reachable from outside the container. The
     // published port is bound to 127.0.0.1 in docker-compose.yml, so this

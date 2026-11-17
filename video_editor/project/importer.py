@@ -45,6 +45,10 @@ MAPPED_KEYS = ("edit", "crop", "gaming", "captions", "caption_style", "caption_l
                "filter", "adjust", "watermark", "normalize_audio")
 EDIT_KEYS = ("keep", "mutes", "muted_words", "volume", "mute_all", "fade_in", "fade_out", "speed", "hook",
              "music")
+# What the removed Highlights post style (#125) left in a clip's caption
+# style: today's render drops them (core.pipeline._OLD_STYLE_KEYS, the same
+# names), and so does a project (9-D16).
+OLD_STYLE_KEYS = ("post_style", "card_position")
 SOURCE = "m1"       # the clip's source video, in the project's media
 
 
@@ -216,7 +220,7 @@ def import_clip(clip: dict, media: dict | None = None) -> dict:
     if isinstance(opts.get("captions"), bool):
         captions["enabled"] = opts["captions"]
     if isinstance(opts.get("caption_style"), dict):
-        captions["style"] = model.clone(opts["caption_style"])
+        captions["style"] = {k: model.clone(v) for k, v in opts["caption_style"].items() if k not in OLD_STYLE_KEYS}
     if isinstance(opts.get("caption_lines"), list):
         lines = []
         for line in opts["caption_lines"]:
