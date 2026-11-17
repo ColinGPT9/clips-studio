@@ -442,7 +442,10 @@ def test_the_routes_are_internal(env):
             ("GET", "/projects/{project_id}/still"),
             # The projects list of step 8 (server/projects_api.py), and a finished
             # export's file for the export dialog (step 8 part C, server/compose_api.py).
-            ("GET", "/projects"), ("GET", "/projects/{project_id}/exports/{export_row}/file")}
+            ("GET", "/projects"), ("GET", "/projects/{project_id}/exports/{export_row}/file"),
+            # The captions layer of step 9 (server/compose_api.py).
+            ("GET", "/projects/{project_id}/captions.ass"), ("GET", "/projects/{project_id}/captions"),
+            ("POST", "/projects/{project_id}/captions/source_times")}
     assert mine <= served
     assert {route for route in served if "project" in route[1]} == mine
     for route in mine:

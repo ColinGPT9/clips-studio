@@ -103,7 +103,17 @@ function folderOf(path: string | undefined): string {
   return cut > 0 ? path.slice(0, cut) : ''
 }
 
-export default function ExportDialog({ project, onClose }: { project: Project; onClose: () => void }): JSX.Element {
+export default function ExportDialog({
+  project,
+  captionsShown = true,
+  onClose
+}: {
+  project: Project
+  /** False when the captions are hidden (the lane's Hide): none are burned,
+   *  so "Burn captions" is shown off and greyed (step 9). */
+  captionsShown?: boolean
+  onClose: () => void
+}): JSX.Element {
   const root = useRef<HTMLDivElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const [folder, setFolder] = useState('')
@@ -116,6 +126,11 @@ export default function ExportDialog({ project, onClose }: { project: Project; o
   const [error, setError] = useState('')
   const [playing, setPlaying] = useState<string | null>(null)
   const [clipChanged, setClipChanged] = useState(false)
+  // Step 9: burn the captions into the picture (on), and a .srt beside the video (off).
+  const [burn, setBurn] = useState(true)
+  const [srt, setSrt] = useState(false)
+  // Hidden captions are never burned, whatever the box said before.
+  const burns = burn && captionsShown
   const seconds = programLength(project.document) / 1e6
   const fromClip = project.clip_id !== null
   useModalFocus(root, box, onClose)
@@ -206,7 +221,8 @@ export default function ExportDialog({ project, onClose }: { project: Project; o
         project.revision,
         preset.kind === 'original' ? 'original' : preset,
         replaceClipChanges,
-        fromClip ? undefined : folder || undefined
+        fromClip ? undefined : folder || undefined,
+        { captions: burns ? 'burn' : 'none', srt }
       )
       setJob(ans.export)
       loadRows()
@@ -350,6 +366,31 @@ export default function ExportDialog({ project, onClose }: { project: Project; o
                 </>
               )}
             </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+              <label
+                className={`flex items-center gap-1.5 ${captionsShown ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
+                title={
+                  !captionsShown
+                    ? [
+                        t('Your captions are hidden, so none are burned. Show them again with the first button on the Captions lane.'),
+                        t('Hide captions: they are left out of the video and the preview. Click again to show them.')
+                      ].join('\n')
+                    : fromClip
+                    ? t('The captions are drawn into the picture, styled as you see them. Off: the video has no captions, but your texts stay. Your clip in the library then has its captions off too.')
+                    : t('The captions are drawn into the picture, styled as you see them. Off: the video has no captions, but your texts stay.')
+                }
+              >
+                <input type="checkbox" checked={burns} disabled={active || !captionsShown} onChange={(e) => setBurn(e.target.checked)} />
+                {t('Burn captions into the video')}
+              </label>
+              <label
+                className="flex items-center gap-1.5 cursor-pointer"
+                title={t('Saves the captions as a subtitle file next to the video, for YouTube and other players. Plain text and times only, without the style.')}
+              >
+                <input type="checkbox" checked={srt} disabled={active} onChange={(e) => setSrt(e.target.checked)} />
+                {t('Also save captions as a .srt file')}
+              </label>
+            </div>
             {estimate && (
               <p className="text-xs text-muted" role="status">
                 {t('About')}{' '}
@@ -388,6 +429,16 @@ export default function ExportDialog({ project, onClose }: { project: Project; o
                       {doneFolder && (
                         <span className="block text-muted truncate">
                           {t('Saved in')} {doneFolder}
+                        </span>
+                      )}
+                      {job.result?.srt_file && (
+                        <span className="block text-muted truncate" title={job.result.srt ?? ''}>
+                          {t('Captions saved as')} {job.result.srt_file}
+                        </span>
+                      )}
+                      {job.result?.srt === null && job.result.srt_error && (
+                        <span className="block text-amber-300 truncate" title={job.result.srt_error}>
+                          {job.result.srt_error}
                         </span>
                       )}
                     </span>

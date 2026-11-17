@@ -18,6 +18,11 @@ were often broken in a way that only showed up on somebody else's machine.
   the exact frame the export will make, preview it with TikTok's, Reels' or Shorts' buttons
   drawn over it, and export it. Today's clip editor works as before; it asks first before it
   replaces, or makes translations from, a clip you exported from the new editor.
+- **Captions and text in the new editor** (#238, #174). See captions and text live as they will
+  export, drag them anywhere with snap lines (including lower and higher middle) while TikTok's,
+  Reels' or Shorts' buttons show where not to put them, resize and retype them on the video,
+  retime, split, merge and add captions on their own lane, fix words in a captions list, add
+  text with "+ Text", and export with or without burned captions and with a .srt file.
 - **A built-in voice, and your own voice apps.** Clips Kitty now has its own voice for
   English, Spanish, French, Hindi, Italian and Portuguese. It runs on your PC with no
   account and no internet, and its voices may be used in videos that earn money. Dubbing

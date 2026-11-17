@@ -133,6 +133,27 @@ def caption_font_for(language: str, chosen: str | None) -> str | None:
 # position -> (ASS numpad alignment, vertical margin)
 _POSITIONS = {"bottom": (2, 440), "middle": (5, 0), "top": (8, 140)}
 
+# A caption dragged on the new editor's viewer (editor suite step 9): the
+# style's optional `x` and `y`, the caption's centre in % of the frame's
+# width and height. Never in DEFAULT_STYLE: a style without them is placed
+# by `position` exactly as before, byte for byte.
+PLACE_KEYS = ("x", "y")
+
+
+def place_of(style: dict | None) -> tuple[float, float] | None:
+    """(x, y) in % when the style gives both as numbers (held to 0..100),
+    else None: the caption is placed by `position`."""
+    if not isinstance(style, dict):
+        return None
+    out = []
+    for key in PLACE_KEYS:
+        value = style.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value \
+                or value in (float("inf"), float("-inf")):
+            return None
+        out.append(min(100.0, max(0.0, float(value))))
+    return out[0], out[1]
+
 # Captions clear in the quiet parts of a clip (#228). A caption ends at a
 # pause: when nothing is said for longer than PAUSE_SECONDS, the next word
 # starts a new caption, however few words the last one has. And no word
@@ -714,6 +735,7 @@ def caption_ass(
     ] if animation in ("pop", "bounce", "slide") else []
 
     zoned = _zoned(opts, canvas)
+    placed = place_of(opts) is not None
     dialogue = []
     for line in lines:
         text = str(line.get("text", "")).strip()
@@ -734,11 +756,13 @@ def caption_ass(
                 continue
         # A safe zone: a word too wide for the safe area shrinks its caption.
         fit = _fit_scale(text, opts, canvas)
+        # A dragged caption (x, y): its own point, kept inside the frame.
+        at = _placed_at(text, opts, canvas, fit) if placed else None
         if animation == "karaoke":
             # Karaoke fills each word as it is said: it does the word
             # highlight's job, so the highlight is not drawn on top of it.
-            dialogue.extend(_with_scale(
-                [_karaoke(text, start, end, [] if karaoke_untimed else spoken, opts, tint)], fit))
+            dialogue.extend(_at_point(_with_scale(
+                [_karaoke(text, start, end, [] if karaoke_untimed else spoken, opts, tint)], fit), at))
             continue
         if opts.get("highlight"):
             events = _highlighted(text, start, end, spoken, opts, tint)
@@ -747,10 +771,10 @@ def caption_ass(
         if animation != "none":
             here = (_centis(start), _centis(end))
             alone = sum(1 for s, e in spans if s < here[1] and e > here[0]) <= 1
-            events = _animated(events, animation, opts, canvas, text, alone, fit)
+            events = _animated(events, animation, opts, canvas, text, alone, fit, at)
         else:
             events = _with_scale(events, fit)
-        dialogue.extend(events)
+        dialogue.extend(_at_point(events, at))
 
     if not dialogue:
         return None
@@ -773,7 +797,7 @@ _BOUNCE_PEAK = 110     # bounce's overshoot, in %
 
 def _animated(
     events: list[str], animation: str, opts: dict, canvas: tuple[int, int], text: str = "", alone: bool = True,
-    fit: int | None = None,
+    fit: int | None = None, at: tuple[int, int] | None = None,
 ) -> list[str]:
     """One caption's Dialogue events with its animation's override tags.
 
@@ -826,7 +850,8 @@ def _animated(
     def sized(pct: float) -> str:
         return _num(pct if base == 100 else pct * base / 100)
 
-    x, y = _anchor(opts, canvas)
+    # `at`: a dragged caption's own point (_placed_at): slide rises into it.
+    x, y = at if at is not None else _anchor(opts, canvas)
     out = []
     for head, body, ev_start, ev_end in timed:
         at = (ev_start - first) * 10                 # ms from the caption's start
@@ -1071,7 +1096,14 @@ def _anchor(opts: dict, canvas: tuple[int, int]) -> tuple[int, int]:
     """Where a caption's alignment point sits on the frame, as libass places
     an event with no position of its own: across, the middle of the space
     between the margins; down, the margin from the bottom or top, or the
-    middle of the frame."""
+    middle of the frame. A dragged caption: its point (place_of), held
+    inside the area it may use (_place_bounds)."""
+    place = place_of(opts)
+    if place is not None:
+        left, top, right, bottom = _place_bounds(opts, canvas)
+        x = min(max(round(place[0] * canvas[0] / 100), left), right)
+        y = min(max(round(place[1] * canvas[1] / 100), top), bottom)
+        return x, y
     alignment, margin_l, margin_r, margin_v = _layout(opts, canvas)
     x = round((margin_l + canvas[0] - margin_r) / 2)
     if alignment == 2:
@@ -1201,7 +1233,16 @@ def _layout(opts: dict, canvas: tuple[int, int] = (1080, 1920)) -> tuple[int, in
     that much higher again. The side margins both become the width of the
     app's right-hand column of buttons plus the caption's outline and shadow
     (the margins bound the letters, not their outline), so the caption keeps
-    clear of it and stays centred."""
+    clear of it and stays centred.
+
+    A dragged caption (the style's x and y, place_of) is centred on its own
+    point (\\an5\\pos, _at_point): alignment 5 with no vertical margin, and
+    the side margins are the frame's edges (60 px) or, with a safe zone, the
+    app's column of buttons on the right only. The margins then only set
+    how wide a line may be; _placed_at keeps the caption between them."""
+    if place_of(opts) is not None:
+        margin_l, margin_r = _place_margins(opts, canvas)
+        return 5, margin_l, margin_r, 0
     alignment, margin_v = _POSITIONS.get(opts.get("position"), _POSITIONS["bottom"])
     margin_l = margin_r = 60
     name = opts.get("safe_zone")
@@ -1218,6 +1259,101 @@ def _layout(opts: dict, canvas: tuple[int, int] = (1080, 1920)) -> tuple[int, in
     # (canvas[1] / 1920) first, as it always was: the other order rounds a
     # few unusual frame heights 1 px differently.
     return alignment, margin_l, margin_r, round(margin_v * (canvas[1] / 1920))
+
+
+_OUTLINE_PX, _SHADOW_PX = 7, 2     # the style's Outline and Shadow (_header), in the script's pixels
+
+
+def _place_margins(opts: dict, canvas: tuple[int, int]) -> tuple[int, int]:
+    """A dragged caption's side margins: 60 px as any caption's, and on the
+    right, with a safe zone on a portrait clip, the app's column of buttons
+    plus the outline and shadow (as _layout's)."""
+    margin_l = margin_r = 60
+    if _zoned(opts, canvas):
+        zone = SAFE_ZONES[opts["safe_zone"]]
+        margin_r = round((max(60, zone["right"]) + _INK_SPREAD) * canvas[0] / 1080)
+    return margin_l, margin_r
+
+
+def _place_bounds(opts: dict, canvas: tuple[int, int]) -> tuple[int, int, int, int]:
+    """(left, top, right, bottom), in px: the area a dragged caption is kept
+    inside. Across, between the margins (_place_margins: the letters stay
+    inside them, as libass keeps any caption's). Down, the frame, or with a
+    safe zone the space between the app's top and bottom bars, 20 px clear
+    of each (and 40 px more at the bottom for slide, which rises from
+    there), as _layout keeps a top or bottom caption."""
+    margin_l, margin_r = _place_margins(opts, canvas)
+    top, bottom = 0, canvas[1]
+    if _zoned(opts, canvas):
+        zone = SAFE_ZONES[opts["safe_zone"]]
+        s = canvas[1] / 1920
+        rise = _SLIDE_PX if opts.get("animation") == "slide" else 0
+        top = round((zone["top"] + _SAFE_CLEARANCE) * s)
+        bottom = canvas[1] - round((zone["bottom"] + _SAFE_CLEARANCE + rise) * s)
+    return margin_l, top, canvas[0] - margin_r, bottom
+
+
+def _caption_box(text: str, opts: dict, canvas: tuple[int, int], fit: int | None) -> tuple[float, float]:
+    """(width, height) in px of one caption as libass lays it out: its
+    lines measured (caption_fit) at its size; the height with the outline
+    and shadow. A caption that can't be measured (a font this machine lacks,
+    a script the measuring doesn't follow) is guessed from its length."""
+    font = _style_font(opts)
+    size = _style_size(opts, canvas) * (fit or 100) / 100
+    bold = _style_bold(font)
+    margin_l, margin_r = _place_margins(opts, canvas)
+    room = max(1, canvas[0] - margin_l - margin_r)
+    words = _spaced(text)
+    laid = caption_fit.lines(words, font, size, bold, room) if caption_fit.font(font) is not None else None
+    width = caption_fit.widest(laid, font, size, bold) if laid else None
+    if laid and width:
+        count = len(laid)
+    else:
+        guess = 0.6 * size * len(words)
+        width, count = min(room, guess), max(1, math.ceil(guess / room))
+    return width, count * size + 2 * _OUTLINE_PX + _SHADOW_PX
+
+
+def _held(value: int, lo: float, hi: float) -> int:
+    """`value` held to [lo, hi] in whole px (their middle when the space is
+    too small)."""
+    lo, hi = math.ceil(lo), math.floor(hi)
+    if lo > hi:
+        return round((lo + hi) / 2)
+    return min(max(value, lo), hi)
+
+
+def _placed_at(text: str, opts: dict, canvas: tuple[int, int], fit: int | None) -> tuple[int, int]:
+    """Where a dragged caption's centre goes, in px: its x and y (place_of),
+    moved only as far as it takes to keep the whole caption inside
+    _place_bounds. A caption longer than another may sit a little further
+    in, so neither ever runs off the frame or under the app's buttons."""
+    x, y = place_of(opts)
+    left, top, right, bottom = _place_bounds(opts, canvas)
+    width, height = _caption_box(text, opts, canvas, fit)
+    px = _held(round(x * canvas[0] / 100), left + width / 2, right - width / 2)
+    py = _held(round(y * canvas[1] / 100), top + height / 2, bottom - height / 2)
+    return px, py
+
+
+def _at_point(events: list[str], at: tuple[int, int] | None) -> list[str]:
+    """A dragged caption's events centred on `at` (\\an5\\pos), at the start
+    of each event's first override block; an event that moves (slide's
+    \\move, from the same point) gets \\an5 only. `at` None: as they are."""
+    if at is None:
+        return events
+    out = []
+    for event in events:
+        head, sep, body = event.partition(_EVENT_TEXT)
+        if not sep:
+            out.append(event)
+            continue
+        tag = "\\an5" if "\\move(" in body else f"\\an5\\pos({at[0]},{at[1]})"
+        if body.startswith("{"):
+            out.append(f"{head}{_EVENT_TEXT}{{{tag}{body[1:]}")
+        else:
+            out.append(f"{head}{_EVENT_TEXT}{{{tag}}}{body}")
+    return out
 
 
 def _style_font(opts: dict) -> str:

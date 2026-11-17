@@ -463,7 +463,7 @@ def apply_ops(conn, project_id, expected_revision, op_list, env, *, label: str =
         elif not result.changed:
             return out
         head = row["head"] + 1
-        key = ops.coalesce_key(op_list)
+        key = ops.coalesce_key(op_list, doc, result.document)
         last = _revision(conn, row["id"], cursor) if key and not migrated and cursor == tip > base else None
         before = None
         if (last is not None and last["coalesce"] == key and last["head"] == row["head"]

@@ -13,7 +13,7 @@
  *    O) and add that part to the end of the main track.
  *  - The phone apps' screens (TikTok, Reels, Shorts) can be drawn over a 9:16
  *    video, as the gaming layout preview does. */
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { t } from '../../lib/i18n'
 import { EditorError, editorApi, engineUrl, errorText } from '../../lib/editorApi'
 import {
@@ -26,13 +26,16 @@ import {
   v1Items
 } from '../../lib/editorProgram'
 import { createPlayhead, usePlayheadTime, usePlaying, type PlayheadStore } from '../../lib/editorPlayhead'
-import type { EditorEvent, Fps, MediaJob, Project } from '../../lib/editorTypes'
+import type { EditorEvent, Fps, MediaJob, Op, OpsAnswer, Project } from '../../lib/editorTypes'
 import { loadPlatform, PLATFORM_CHOICES, savePlatform, type PlatformChoice } from '../../lib/newEditor'
 import { SAFE_ZONES } from '../../lib/gamingLayout'
 import type { StudioEvent } from '../../lib/types'
 import { useEvents } from '../../lib/useEvents'
 import PlatformOverlay, { PLATFORM_UI } from '../PlatformOverlay'
+import CaptionTextLayer, { type LayerTarget } from './CaptionTextLayer'
+import LiveCaptions, { type LiveState } from './LiveCaptions'
 import OverlayLayer from './OverlayLayer'
+import type { CaptionLayerState } from './useCaptionLayer'
 import { ProgramPlayer } from './programPlayer'
 import { isInfo, playable, type MediaInfos } from './useMediaInfos'
 
@@ -73,6 +76,14 @@ interface Props {
   onSource: (mediaId: string | null) => void
   /** Add a part of a media to the end of the main track. */
   onAddRange: (mediaId: string, inUs: number, outUs: number) => void
+  /** The captions and text as the engine draws them (step 9). */
+  layer: CaptionLayerState
+  /** The caption layer or a text selected on the viewer. */
+  layerSelection: LayerTarget | null
+  onLayerSelect: (target: LayerTarget | null) => void
+  /** The caption lane's Lock (step 9). */
+  captionsLocked?: boolean
+  apply: (ops: Op[], label?: string, at?: number | null) => Promise<OpsAnswer | null>
 }
 
 function TimeReadout({ store, fps, length }: { store: PlayheadStore; fps: Fps; length: number }): JSX.Element {
@@ -188,7 +199,7 @@ function SourceScrub({
 }
 
 const Viewer = forwardRef<ViewerHandle, Props>(function Viewer(
-  { project, infos, playhead, source, onSource, onAddRange },
+  { project, infos, playhead, source, onSource, onAddRange, layer, layerSelection, onLayerSelect, captionsLocked = false, apply },
   ref
 ) {
   const doc = project.document
@@ -239,6 +250,16 @@ const Viewer = forwardRef<ViewerHandle, Props>(function Viewer(
   // ---- the still, while paused (StillLayer asks for it) ----
   const [stillState, setStillState] = useState<{ approximate: boolean; error: string }>({ approximate: false, error: '' })
   const showStill = !playing && source === null && length > 0
+
+  // ---- captions and text drawn live (step 9) ----
+  // While a caption or a text is dragged or edited (and until the engine has
+  // the change) the still is hidden and JASSUB draws it where it is going.
+  const [liveAss, setLiveAss] = useState<string | null>(null)
+  const [layerBusy, setLayerBusy] = useState(false)
+  const [live, setLive] = useState<{ state: LiveState; error: string }>({ state: 'starting', error: '' })
+  const onLive = useCallback((a: string | null) => setLiveAss(a), [])
+  const onBusy = useCallback((b: boolean) => setLayerBusy(b), [])
+  const onLiveState = useCallback((state: LiveState, error?: string) => setLive({ state, error: error ?? '' }), [])
 
   // ---- the draft (Preview) ----
   const [draft, setDraft] = useState<{ status: 'making' | 'ready' | 'failed'; fraction: number; url: string; error: string; job?: number } | null>(null)
@@ -495,7 +516,7 @@ const Viewer = forwardRef<ViewerHandle, Props>(function Viewer(
             className="relative overflow-hidden bg-black shadow-lg"
             style={{ width: boxW, height: boxH }}
             aria-label={t('Video')}
-            role="img"
+            role="group"
           >
             {/* The program: pad, two players, overlays, the still. */}
             <canvas
@@ -509,13 +530,21 @@ const Viewer = forwardRef<ViewerHandle, Props>(function Viewer(
             <video ref={aRef} playsInline preload="auto" className="absolute inset-0 w-full h-full" aria-hidden="true" />
             <video ref={bRef} playsInline preload="auto" className="absolute inset-0 w-full h-full" aria-hidden="true" />
             {!inSource && !draft && <OverlayLayer doc={doc} infos={infos} playhead={playhead} />}
+            <LiveCaptions
+              ass={liveAss ?? layer.ass}
+              playhead={playhead}
+              width={canvas.width}
+              height={canvas.height}
+              hidden={inSource || Boolean(draft)}
+              onState={onLiveState}
+            />
             <StillLayer
               projectId={project.id}
               revision={project.revision}
               playhead={playhead}
               fps={canvas.fps}
               length={length}
-              active={showStill}
+              active={showStill && !layerBusy}
               onState={setStillState}
             />
             {/* A media on its own. */}
@@ -560,6 +589,24 @@ const Viewer = forwardRef<ViewerHandle, Props>(function Viewer(
               </div>
             )}
             {vertical && !inSource && PLATFORM_UI[platform] && <PlatformOverlay platform={platform} />}
+            {!inSource && !draft && length > 0 && (
+              <CaptionTextLayer
+                doc={doc}
+                revision={project.revision}
+                lane={layer.lane}
+                ass={layer.ass}
+                playhead={playhead}
+                platform={platform}
+                vertical={vertical}
+                selection={layerSelection}
+                onSelect={onLayerSelect}
+                apply={apply}
+                readOnly={project.read_only}
+                captionsLocked={captionsLocked}
+                onLive={onLive}
+                onBusy={onBusy}
+              />
+            )}
             {length === 0 && !inSource && (
               <p className="absolute inset-0 flex items-center justify-center text-xs text-muted p-4 text-center">
                 {t('The main track is empty. Add a video to it to see it here.')}
@@ -617,6 +664,16 @@ const Viewer = forwardRef<ViewerHandle, Props>(function Viewer(
         {!inSource && stillState.error && !playing && (
           <span className="text-[11px] text-red-300 truncate max-w-64" title={stillState.error}>
             {stillState.error}
+          </span>
+        )}
+        {!inSource && live.state === 'failed' && (
+          <span className="text-[11px] text-amber-300 truncate max-w-64" title={live.error}>
+            {t('Live captions could not start here. Pause to see them as they will look.')}
+          </span>
+        )}
+        {!inSource && layer.error && (
+          <span className="text-[11px] text-red-300 truncate max-w-64" title={layer.error}>
+            {layer.error}
           </span>
         )}
         {inSource && sourceEntry?.kind === 'video' && (

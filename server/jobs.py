@@ -1193,6 +1193,12 @@ class Worker(threading.Thread):
                   "dependent row(s)")
         if rendered and old_path and old_path.exists() and old_path != rendered.path:
             discard(old_path)
+        if rendered and old_path and old_path.with_suffix(".srt").is_file():
+            # A new-editor export's captions file beside the old video
+            # ("<video>.srt", editor suite step 9, 9-D1) describes a video
+            # that is gone or written over: it goes too (a new-editor export
+            # asked with a .srt writes its own after this).
+            discard(old_path.with_suffix(".srt"))
         # The editor's draft of the clip (POST /clips/{id}/preview) is filed
         # under the old id, which nothing will ask for again.
         discard(data_dir / "previews" / f"clip_{int(clip['id'])}.mp4")

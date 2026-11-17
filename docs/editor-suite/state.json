@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "Clips Kitty editor suite",
-  "updated": "2026-11-15",
+  "updated": "2026-11-16",
   "about": "Machine-readable tracker for the editor suite. STATUS.md is the readable view of this file; when they disagree, this file wins. Acceptance criteria are copied from the plan's Proof column; step 0 also carries the checks from the plan's section on keeping plain auto-clipping identical. depends_on is read from the plan's text (which earlier step's output a step uses): the plan gives the run order, not a dependency list.",
   "now": "1",
   "stop_after_phase": 2,
@@ -2550,30 +2550,196 @@
       "id": "9",
       "title": "Captions and text in the editor",
       "size": "M",
-      "scope": "Captions and text in the editor: engine-made ASS, JASSUB preview, CSP update, caption and text panels",
+      "scope": "Captions and text as a layer in the new editor: the engine's own ASS drawn live with JASSUB, drag/resize/type on the viewer with snap lines and the phone apps' screens, caption x/y and text {x, y}, a caption lane, a captions list, caption and text panels, \"+ Text\", export with or without burned captions and a .srt",
       "closes": [
-        174
+        174,
+        238
       ],
       "depends_on": [
         "3",
         "7",
         "8"
       ],
-      "status": "todo",
+      "status": "in_progress",
       "user_visible": true,
       "acceptance": [
-        "JASSUB frame vs burned frame: SSIM ≥0.98 on the caption area"
+        "JASSUB frame vs burned frame: SSIM ≥0.98 on the caption area (on a bundled font; Arial is drawn live in Liberation Sans)",
+        "A caption dragged to y = 70% sits within ±1% in the export",
+        ".srt times within 1 frame of the burned captions",
+        "A lane retime moves the burned caption by the same amount",
+        "A style or text without x/y gives byte-identical ASS to 78adec0"
       ],
       "files": [
-        "server/api.py",
-        "ui/src/renderer/index.html",
-        "ui/src/renderer/src/components/editor/"
+        "video/captions.py (x/y placement)",
+        "video_editor/compose.py (program_caption_lines, caption_lane, caption_source_range, text \\pos, burn_captions)",
+        "video_editor/project/env.py, video_editor/project/ops.py (validation)",
+        "server/compose_api.py (captions.ass, captions, captions/source_times; ExportIn captions/srt; the .srt)",
+        "ui/src/renderer/index.html (CSP: 'wasm-unsafe-eval'), ui/package.json (jassub 2.5.23), ui/electron.vite.config.ts, ui/vite.config.mts",
+        "ui/src/renderer/src/lib/captionLayer.ts, captionLane.ts, rvfcNone.ts (new)",
+        "ui/src/renderer/src/components/editor/LiveCaptions.tsx, CaptionTextLayer.tsx, useCaptionLayer.ts, CaptionLane.tsx, TranscriptPanel.tsx (new)",
+        "ui/src/renderer/src/components/editor/Viewer.tsx, EditorScreen.tsx, TimelinePanel.tsx, Inspector.tsx, ExportDialog.tsx",
+        "ui/src/renderer/src/lib/editorApi.ts, editorTypes.ts, newEditor.ts",
+        "NOTICE (JASSUB and its bundled libraries)",
+        "tests/test_step9_captions.py, test_step9_routes.py, test_ui_caption_layer.py, test_ui_caption_lane.py (new); test_project_routes.py, test_fonts_routes.py, test_ui_caption_controls.py, test_ui_new_editor_part_c.py",
+        "docs/editor-suite/api/step9-captions.md (new), DECISIONS.md (ED47-ED49), USER-GUIDE.md, STATUS.md; CHANGELOG.md; docs/developers/api-reference.md",
+        "server/fonts_api.py (GET /fonts `system`, GET /fonts/system/{file}: this PC's Windows caption fonts for the live captions, 9-D9)",
+        "server/jobs.py, server/api.py, core/housekeeping.py (an export's .srt goes with its video and is listed by Storage, 9-D1)",
+        "video_editor/project/store.py (coalescing by the style keys that changed, 9-D7)",
+        "tests/test_project_ops.py (9-D7)"
       ],
       "notes": [
-        "The CSP gains 'wasm-unsafe-eval', worker-src blob: and font-src for 127.0.0.1:8765"
+        "Part A (engine and contract), part B (viewer layer) and part C (lane, list, panels, + Text, export choices) built 2026-11-16; QC, review, black-box, performance and UX checks next",
+        "The CSP gains only 'wasm-unsafe-eval' in script-src (no worker-src, no blob:), tested in Electron 31 from file://",
+        "JASSUB's rvfc-polyfill (GPL-3.0) is aliased to an empty file; no GPL-3.0 code is built in",
+        "Arial, Arial Black and the other Windows caption fonts are drawn live with this PC's own files (GET /fonts `system`, 9-D9); checked in headless Edge, not yet in the desktop app",
+        "A dragged caption (style x/y) makes a clip project Branch B, so x/y never reach a clip's render options (9-D11)",
+        "An export's .srt goes with its video when the export is replaced or the clip deleted; Storage lists a .srt whose video is gone (9-D1)",
+        "Lane zoom with 300 blocks in view: median 13.9 ms, 42 of 275 frames over 17.5 ms (dev build); scroll 7.0 ms every frame",
+        "QC fix round 1 (2026-11-16): 9-D1, D2, D5, D6, D7, D9, D10 fixed; D3 (JASSUB's LGPL/FTL WebAssembly parts, in NOTICE), D4 (Branch A 'none' leaves the clip's captions off, in the contract and the tooltip) and D8 (live letters vs burn SSIM about 0.88-0.95 on 9:16: two libass builds; live bar about 0.90) not changed",
+        "QC fix round 2 (2026-11-16): 9-D11 (dragged caption place took Branch A) and 9-D12 (Branch A burned a cut-through caption line whole) fixed by sending both to the compiler",
+        "QC fix round 3 (2026-11-16): 9-D13 (a whole caption list built from an old lane overwrote a word fix made just before) fixed by pinning such changes to the lane's revision",
+        "QC fix round 4 (2026-11-16): 9-D14 (a word fix of a line cut through brought the cut word back), 9-D15 (/fonts/system served Windows fonts to any web origin) and 9-D16 (old post-style caption keys made a project's captions undraggable) fixed",
+        "2026-11-16: built and checked. Four fix rounds (9-D1 to 9-D16), 9-D17 fixed by the orchestrator (lit-up words on a cut or sped-up clip export through Branch B). Last QC, review and render checks: no serious defect from normal use. Black-box 8/8 PASS. Performance PASS (300-line lane zoom misses 60 fps at p95). UX after one fix round; the orchestrator fixed the captions list's focus on Enter/Esc and the toolbar Delete for a selected caption (checked in the sandbox). Waiting for Colin's click-through; the list is in step9-captions.md 'Left for later'."
       ],
       "results": [],
-      "defects": []
+      "defects": [
+        {
+          "id": "9-D1",
+          "date": "2026-11-16",
+          "found_by": "QC",
+          "summary": "QC: a later export that replaced an earlier one left the earlier export's .srt behind, and Storage didn't list it. Fixed: the .srt beside a replaced or deleted file goes with it (compose_api Branch B replace, jobs.py Branch A re-render, DELETE /clips/{id}); core/housekeeping.orphan_export_captions lists an export's .srt whose video is gone under Storage's orphan clips (never a translation's <clip>.<language>.srt, never the person's own export folder). Test: test_step9_routes.py::test_an_srt_goes_with_the_video_it_describes.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "9-D2",
+          "date": "2026-11-16",
+          "found_by": "QC",
+          "summary": "QC: while a caption was dragged near an edge the live words sat at the pointer, and on the drop each caption moved in by its own size (ED47), so the words jumped. Fixed: lib/captionLayer.ts captionBounds + heldCentre (the engine's _place_bounds and _placed_at) hold each caption live by its measured size. Tests: test_ui_caption_layer.py::test_the_live_drag_keeps_a_caption_where_the_engine_will_place_it (84 cases equal to the engine), ::test_the_live_drag_holds_each_caption_by_its_own_size, ::test_the_caption_safe_zones_are_the_engines. Sandbox: pointer at 97% across, box centre 60.92% mid-drag and 60.83% after the drop.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "9-D3",
+          "date": "2026-11-16",
+          "found_by": "QC",
+          "summary": "QC: JASSUB's own code is MIT but its package licence expression also names LGPL-2.1+ (FriBidi) and FTL/GPL-2.0+ (FreeType) for the bundled WebAssembly; its GPL-3.0 rvfc-polyfill is aliased out of the build. No change: the notices are in NOTICE and the app is AGPL-3.0. For the owner to note.",
+          "routed_to": "Engineering",
+          "status": "wont_fix"
+        },
+        {
+          "id": "9-D4",
+          "date": "2026-11-16",
+          "found_by": "QC",
+          "summary": "QC: a Branch A export with 'Burn captions into the video' off writes captions off into the clip's saved render options, so today's editor then shows the clip with captions off. No change: it is in the contract, and the checkbox's tooltip already says so for a project made from a clip.",
+          "routed_to": "Engineering",
+          "status": "wont_fix"
+        },
+        {
+          "id": "9-D5",
+          "date": "2026-11-16",
+          "found_by": "Review",
+          "summary": "Review (serious): merging two caption lines that a cut had put side by side made one line over the cut-out stretch; its words were then spread over the whole line and those landing in the cut were dropped from the lane, the burn and the .srt. Fixed: Merge only when no cut lies between the two blocks (greyed with a tooltip otherwise; lib/captionLane.ts nextLine/cutBeforeNext), and compose._line_word_times spreads a saved line's words only over the parts that play. Tests: test_step9_captions.py (9-D5), test_ui_caption_lane.py (9-D5); the review's test_review_lane.py::test_merge_after_a_cut_keeps_every_word passes, also as originally written (old UI sends).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "9-D6",
+          "date": "2026-11-16",
+          "found_by": "Review",
+          "summary": "Review (serious): a caption line cut through by an edit showed as one block, and a retime, move or split sent only one end, leaving the other in the cut: the caption could vanish, a cut-out word come back, the block's word change or a split's right half go blank. Fixed: such a line is saved as the part that plays (lib/captionLane.ts trimmedLine: both ends held to its stretch, the words that play) by retime, move, split, merge and word fixes in the lane, on the viewer and in the transcript list; the engine never times words into a cut (compose._line_word_times). Tests: test_step9_captions.py (9-D6), test_ui_caption_lane.py (9-D6); the review's test_review_cutline.py and test_review_random.py (80 seeds, ported to the new sends) pass.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "9-D7",
+          "date": "2026-11-16",
+          "found_by": "Review",
+          "summary": "Review: every caption-layer change sends the whole style, so a drag and a resize within a second coalesced into one undo step. Fixed: a set_captions style's coalesce key is the style keys whose value changed (ops.coalesce_key with the documents before and after; store.apply_ops passes them). Tests: test_project_ops.py (9-D7), test_step9_routes.py (9-D7); the review's test_review_lane.py::test_drag_then_resize_are_two_undo_steps passes.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "9-D8",
+          "date": "2026-11-16",
+          "found_by": "Render",
+          "summary": "Render: live captions (JASSUB) vs the burn reach caption-area SSIM 0.88-0.95 on 9:16 and 0.97-0.998 on 16:9 with a bundled font, below the 0.98 bar: the two libass/FreeType builds space and smooth glyphs differently by under a pixel. Place, timing and colours agree. Accepted: the paused still stays the exact check; the bar for the live layer is about 0.90 on bundled fonts (step9-captions.md Known gaps).",
+          "routed_to": "Engineering",
+          "status": "wont_fix"
+        },
+        {
+          "id": "9-D9",
+          "date": "2026-11-16",
+          "found_by": "Render",
+          "summary": "Render: Arial (the default caption font) and Arial Black (a new text's) were drawn live in JASSUB's Liberation Sans: regular weight, and Arial Black about 8-10% bigger. Fixed: GET /fonts lists `system`, this PC's Windows caption fonts (server/fonts_api.py SYSTEM_FACES), served by GET /fonts/system/{file} (known names only, else 404); LiveCaptions adds the ones a script names. Tests: test_fonts_routes.py::test_the_windows_caption_fonts_this_pc_has_are_listed_and_served, test_ui_caption_layer.py::test_the_windows_fonts_a_script_names_are_added_from_this_pc_and_drawn_again. Sandbox (headless Edge): no 'Using default font family' fallback logged; not yet checked in the desktop app.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "9-D10",
+          "date": "2026-11-16",
+          "found_by": "Render",
+          "summary": "Render: on a fresh JASSUB the first draw of a script came out blank while its font loaded. Fixed: LiveCaptions draws every new script again at 250 ms and 1 s (REDRAW_MS). Test: test_ui_caption_layer.py::test_the_windows_fonts_a_script_names_are_added_from_this_pc_and_drawn_again.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "9-D11",
+          "date": "2026-11-16",
+          "found_by": "QC",
+          "summary": "QC (serious): a caption dragged in the new editor went out through Branch A with x/y copied into the clip's render_opts.caption_style; today's clip editor then showed the captions by top/middle/bottom and kept x/y on save, so its place choice did nothing in the render. Fixed: projection._read adds the reason 'The captions are placed by hand.' for a caption style with x or y, so the export goes through the compiler (Branch B) and today's editor asks first. Test: test_project_projection.py::test_captions_placed_by_hand_need_the_compiler.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "9-D12",
+          "date": "2026-11-16",
+          "found_by": "Review",
+          "summary": "Review (serious): after a cut through a caption line, a Branch A export burned the line whole (today's remap_lines: every word, the cut one included, over its whole span) while the .srt, the lane and the live viewer showed two pieces without the cut word. Fixed: the export route takes Branch B ('A caption line is cut through by an edit.') when the captions show (burned or srt) and compose.caption_line_cut finds a line reaching over a cut or past what plays by more than 0.05 s. Tests: test_step9_routes.py::test_a_cut_through_a_caption_line_is_exported_by_the_compiler (3 cases), ::test_a_cut_between_caption_lines_or_with_no_captions_shown_stays_todays; the review's test_r2_branch_a_srt.py passes (BRANCH B).",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "9-D13",
+          "date": "2026-11-16",
+          "found_by": "Review",
+          "summary": "Review (serious): a word fix (transcript list, lane or viewer, kept when the field loses focus) and then Merge, Split, + Caption, or Delete on lines still made from the transcript: the second change sent the whole caption list built from the lane before the fix, and useProject.apply stamped it with the fix's newer revision, so the engine accepted it and the fix was silently replaced by the old words. Fixed: apply takes the revision a change was built from (`at`); captionLane.laneRevisionFor pins every change that sends a whole caption list (set_captions with lines: Merge, Split, + Caption, and every withSave change while the lines are unsaved) to the lane's revision, in CaptionLane.send, TranscriptPanel.fix and CaptionTextLayer.finishEdit. When the editor's revision has moved on, the change is not sent and the person reads 'The captions changed just before this, so it was not made: please do it again.'; once the lane for the new revision arrives the same action works and keeps the fix. A change to one line (its words, times, delete of a saved line) is not pinned. Tests: test_ui_caption_lane.py::test_a_whole_caption_list_goes_at_the_lanes_revision; the review's test_r3_merge_after_fix.py and test_r2_stale_lines.py (now sending through a model of the fixed apply, originals in scratch/step9-review/old/before_r3_fix/) pass: Merge, Delete and Split NOT SENT, the fix kept.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "9-D14",
+          "date": "2026-11-16",
+          "found_by": "Review",
+          "summary": "Review (serious): after a cut through the middle of a caption line (pieces 'we' | 'it', 'did' cut out), the viewer's and the lane's edit boxes and the Captions list offered the whole line ('we did it'); a fix that changed the word count was shared over the parts that play, so the cut word burned again (burn, live view, .srt). Fixed: lib/captionLane.ts wordsToEdit offers a line in several pieces as its pieces' words in the source's order (a stretch played twice once); compose._line_word_times keeps any typed word that lines up (difflib, letters and digits only) with one of the line's own transcript words said inside the line in no part that plays at that word's time, so remap_captions drops it, and shares only the other words over the parts that play. Tests: test_step9_captions.py::test_a_word_fix_never_brings_back_a_word_cut_out (5 cases), test_ui_caption_lane.py::test_a_line_an_edit_cut_through_offers_only_the_words_that_play; the review's test_r4_two_piece_fix.py passes (6 of 6). Sandbox: clip 5's first line cut through shows pieces 'Welcome' | 'to' and the Captions list offers 'Welcome to'.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "9-D15",
+          "date": "2026-11-16",
+          "found_by": "Review",
+          "summary": "Review (serious): GET /fonts/system/{file} (9-D9) served this PC's Windows font files with Access-Control-Allow-Origin: * and GET /fonts listed which ones the PC has, to any web origin. Fixed: both use projects_api.local_origin (no Origin, null, file://, the dev server, the engine's own); another origin gets 403 and an empty `system`; the allowed request's Origin is named back instead of '*', cache private with Vary: Origin. The bundled /fonts/{file} stay public (step 3). Tests: test_fonts_routes.py::test_the_windows_caption_fonts_this_pc_has_are_listed_and_served; the review's test_r4_fonts_origin.py now prints 403 and system []. Sandbox: JASSUB in dev:web loads arial.ttf and arialbd.ttf (200, origin http://localhost:5173); a worker on a file:// page (Origin null, as the packaged app's) loads arial.ttf; a page on another port is refused. Not checked in the desktop app itself.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "9-D16",
+          "date": "2026-11-16",
+          "found_by": "Review",
+          "summary": "Review: a clip whose saved caption_style kept the removed Highlights post style's keys (post_style, card_position) gave a project whose caption drag, resize and restyle were refused with a 400. Fixed: importer.import_clip and AppEnv.caption_style drop importer.OLD_STYLE_KEYS (the same names as core.pipeline._OLD_STYLE_KEYS, which today's render drops). Test: test_step9_captions.py::test_the_old_highlights_post_style_keys_are_dropped_as_the_render_drops_them; the review's test_r2_legacy_style.py passes.",
+          "routed_to": "Engineering",
+          "status": "fixed"
+        },
+        {
+          "id": "9-D17",
+          "date": "2026-11-16",
+          "found_by": "Review",
+          "summary": "Review: a clip's project with the word highlight or karaoke and a cut between lines or a speed change still exported through Branch A, whose retimed path shares each line's time out over its words by length (karaoke_untimed), so the burned highlight fell up to 0.42 s from where the live viewer lit each word. Fixed by the orchestrator: compose.word_timing_retimed sends such an export (captions burned) through Branch B, as 9-D12 does for a cut-through line; today's render is untouched. Test: test_step9_routes.py::test_lit_up_words_on_a_cut_clip_are_exported_by_the_compiler; the review's test_probe6_branch_a_highlight.py and test_probe6b_uneven_words.py pass.",
+          "routed_to": "Orchestrator",
+          "status": "fixed"
+        }
+      ]
     },
     {
       "id": "10",

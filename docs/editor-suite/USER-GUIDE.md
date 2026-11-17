@@ -296,7 +296,7 @@ There's nothing to save: every change is saved as you make it. **Close** (top le
 ### Watching your video
 
 - **Play** plays the video as it is on the timeline, straight through its cuts.
-- **Pause** shows the frame exactly as the export will make it, with captions, text, watermark and colour. While it plays, the picture is a quick stand-in: the captions, text and an AI clip's moving crop show only when you pause. If a paused frame says **Approximate frame**, the AI framing of that part is worked out when you export or preview it, so the frame is close but not exact.
+- **Pause** shows the frame exactly as the export will make it, with captions, text, watermark and colour. While it plays, the picture is a quick stand-in: captions and text are drawn live (see [Captions and text in the editor](#captions-and-text-in-the-editor)), but an AI clip's moving crop and the colour show only when you pause. If a paused frame says **Approximate frame**, the AI framing of that part is worked out when you export or preview it, so the frame is close but not exact.
 - **Preview** makes a quick small copy of the whole video, with everything the export draws, and plays it. The bar shows how far it's got. **Back to editing** returns to the viewer.
 - **Fit** sizes the video to the window; you can also pick 25%, 50% or 100%.
 
@@ -350,9 +350,12 @@ Above the viewer, pick **TikTok preview**, **Instagram Reels preview** or **YouT
 | → or . | One frame forward (Shift: 10 frames) |
 | Home / End | Go to the start / the end |
 | I / O | Mark where the part starts / ends (a video on its own) |
-| S | Split at the playhead |
-| Delete | Delete the selected parts |
+| S | Split at the playhead (a selected caption: that caption) |
+| Delete | Delete the selected parts (or the selected caption) |
+| Enter | Type the words of the selected caption, on the lane or on the video |
+| ← → ↑ ↓ on a selected caption or text on the video | Move it a little (Shift: further) |
 | Alt+← / Alt+→ | Move the selected part one place earlier or later (main track) or one frame (other tracks; with Shift, one second) |
+| Alt+← / Alt+→ on a selected caption | Move the caption one frame earlier or later (Shift: one second) |
 | + / − | Zoom the timeline in or out (also Ctrl and the mouse wheel) |
 | Shift+Z | Fit the whole video in the timeline |
 | Esc | Select nothing |
@@ -383,7 +386,7 @@ While the box is open, the keyboard stays in it: **Tab** goes round its own butt
 
 When your changes in the new editor are ones today's clip editor can make too (a new start or end, a cut, a new speed, with the clip kept in its shape and exported as **Original**), exporting makes the clip the way today's editor would, and today's editor shows those changes: **Re-render** and **Apply edits** there carry on from them without asking.
 
-When they go further (parts in a new order, pieces from other places in the video, layers over the video, another shape or export size), today's editor can't make that clip again. Then if you click **Re-render**, use the chat edit, or **Apply edits & upload** on it in today's clip editor, Clips Kitty asks first: making it again there starts from the clip as it was before, so the new editor's changes would be lost. **Open in new editor** opens it there (only while the new editor is on), **Apply anyway** makes it again from the clip's own settings, **Cancel** leaves it as it is.
+When they go further (parts in a new order, pieces from other places in the video, layers over the video, another shape or export size, captions you dragged to a place of their own, or a cut through the middle of a caption line while the captions are burned or saved as a .srt), today's editor can't make that clip again. Then if you click **Re-render**, use the chat edit, or **Apply edits & upload** on it in today's clip editor, Clips Kitty asks first: making it again there starts from the clip as it was before, so the new editor's changes would be lost. **Open in new editor** opens it there (only while the new editor is on), **Apply anyway** makes it again from the clip's own settings, **Cancel** leaves it as it is.
 
 It works the other way round too. If you change a clip in today's clip editor after working on it in the new editor, **Edit in new editor** opens it as the clip is now when you hadn't changed anything there. If you had, it asks: **Start again from the clip as it is now** (Undo brings your earlier version back) or **Keep the project**. Exporting a kept project asks once more, because it puts the new editor's version in the clip's place.
 
@@ -395,11 +398,79 @@ The new editor keeps waveforms, pictures of your videos and quick copies for pla
 
 - If the project was changed somewhere else while you had it open (another window, for example), the editor loads it again and tells you; the change you were making wasn't made, so make it again.
 - A video Clips Kitty can't play straight away (HEVC, 10-bit or above 1080p60) is made ready in the background first. Until then, pausing still shows it. MKV recordings from OBS (H.264 with AAC sound) play straight away.
-- Text and captions on the timeline are shown but not edited yet, and music and sound effects are edited in a later version.
+- Music and sound effects are edited in a later version.
 
 ## Captions and text in the editor
 
-Coming in step 9
+In the new editor, captions and text are a layer over your video, as in CapCut: you see them while the video plays, and you can drag, resize and retype them right on the video. They're burned into the picture only when you export.
+
+### Seeing them live
+
+Captions and text are drawn on the video as it plays and as you drag the playhead, in the font, colour and animation they'll have in the export. Pause shows the exact frame. If the live captions can't start on your PC, the bar under the video says so; pausing still shows them as they'll look.
+
+The letters while playing can differ from the export by a hair at their edges. Pause, or the exported video, shows them exactly as they are.
+
+### Moving and resizing them
+
+- **Click a caption** on the video to select the captions: a box with a handle at each corner. **Drag** it to move all your captions together; every caption in the video goes to the same place. **Drag a corner** to make them bigger or smaller.
+- **Click a text** to select it. Each text moves and resizes on its own.
+- **Snap lines:** as soon as you start dragging, two dashed lines show the middle of the video across and down. The box sticks to them, to five heights named **Top**, **Higher middle**, **Middle**, **Lower middle** and **Bottom** (the name shows while it sticks), to the edges of the video, and to the edges of other captions and text. Hold **Alt** while dragging to place it freely.
+- **The app's buttons while you drag:** on a 9:16 video, the buttons and text of the app picked above the viewer (**TikTok preview**, **Instagram Reels preview** or **YouTube Shorts preview**) are drawn over the video while you drag, and their edges are snap lines too. If the menu says **No overlay**, the app you picked last (TikTok the first time) is drawn faintly, only while you drag. The apps' screens are 9:16, so on other shapes none is drawn.
+- **Amber outline:** a caption or text that ends up under the app's buttons, its text at the bottom or its top bar gets an amber outline; point at it to see which ("Under TikTok's buttons"). It's never moved for you: move it yourself if you want it clear.
+- **With the keyboard:** click a caption or text (or reach it with **Tab**), then use the **arrow keys** to move it a little, or **Shift** and an arrow to move it further. Elsewhere the arrow keys still step through frames.
+
+### Changing the words on the video
+
+**Double-click** a caption or a text on the video (or press **Enter** on a selected one) and type. **Enter** keeps it, **Esc** cancels, and in a text **Shift+Enter** starts a new line. The playhead stays where it is.
+
+### The caption lane
+
+Under the main track, the **Captions** lane shows each caption as a block, where it plays in your video. Captions you cut out of the video aren't shown.
+
+- **Click** a block to select it (the inspector shows the caption settings).
+- **Drag an edge** to make it start or end earlier or later; **drag the block** to move it. It sticks to cuts, the playhead and other captions, and never goes over another caption or across a cut.
+- **Alt+← / Alt+→** move the selected caption a frame earlier or later (with Shift, a second). To move just its start or its end, type the time in **Starts at** or **Ends at** in the inspector.
+- **Split** (or **S**) cuts the selected caption in two at the playhead; its words are shared out by length, so check them after.
+- **Merge** (in the timeline's bar) makes the selected caption and the next one a single caption.
+- **Delete** (or the Delete key) removes the selected caption.
+- **+ Caption** adds a caption at the playhead, where there isn't one yet, and lets you type its words straight away. In a project you made from a whole video or your own file, the first one also switches captions on.
+- **Double-click** a block (or press **Enter** on it) to type its words.
+- The eye at the start of the lane **hides** the captions (they're left out of the preview and the export) or shows them again. The lock **locks** them: nothing on the lane or on the video moves or changes until you unlock it.
+
+A caption cut through by an edit plays in two parts; you can change its words, but not its times on the lane.
+
+Each change is one step for **Undo**.
+
+### The caption settings
+
+With a caption selected on the lane or in the list, the inspector first shows when it plays: **Starts at** and **Ends at**. Type a time to move that end of the caption.
+
+With a caption selected (on the video or the lane), the inspector shows the same caption settings as the rest of the app: **Presets**, **Font**, **Text colour**, **Size**, **Position**, **Animation**, **Safe zone**, **UPPERCASE captions**, the word highlight and the second speaker's colour. **Words per caption** is there until you change a caption's words or times; after that your captions keep the way they're grouped.
+
+Under them, **Position** shows where the captions are as numbers: **Across** (0 is the left edge, 100 the right) and **Down** (0 the top, 100 the bottom). Type a number to place them exactly. **Reset position** puts them back to their place by name (bottom, middle or top). Picking a **Position** by name does the same; a **Preset** keeps the place you dragged them to.
+
+### All your captions as a list
+
+Click **Captions** at the top of the left column (beside **Media**) to see every caption as a list, with the time it plays. Click a time to go there. Click in a caption's words to fix them: **Enter** or clicking away keeps the change, **Esc** puts it back. **Search captions** at the top shows only the captions with those words. The caption playing now is marked as the video plays.
+
+### Text
+
+**+ Text** in the timeline's bar adds a text at the playhead, in the middle of the video, for 3 seconds, and lets you type its words in the inspector straight away. Drag it on the video to place it, and its edges on the text track to change how long it stays.
+
+With a text selected, the inspector shows its **Words**, its **Kind** (**Text**, or **Hook** for the line at the start that makes people keep watching), **Font** (the caption fonts; **Default** is Arial Black, the font of your clips' hooks), **Size**, **Text colour**, and its **Position** as **Across** and **Down** numbers with **Reset position** (back to the top of the video).
+
+### Exporting with or without captions
+
+The **Export** box has two more choices:
+
+- **Burn captions into the video** (on): the captions are drawn into the picture, styled as you see them. Untick it to export the video with no captions; your texts stay. While the captions are hidden on the lane, this box is unticked and greyed: show them again to burn them.
+- **Also save captions as a .srt file** (off): saves the captions as a subtitle file next to the video, with the same name and **.srt** at the end, for YouTube and other players. It has the words and the times only, without the style, and matches the burned captions to within a frame. When the export is done, the box names it under the video.
+
+### Good to know
+
+- The captions follow your edits: cut a part out and its captions go with it; slow a part down and its captions stay with the words.
+- A .srt file goes with its video: when a later export replaces the video, or you delete the clip, its .srt is deleted too.
+- The lock is for while the editor is open; it isn't saved with the project.
 
 ## Music, sound effects and voice in the editor
 

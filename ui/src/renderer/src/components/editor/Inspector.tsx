@@ -6,14 +6,18 @@
  *  a field is left, so one change is one undo step. An AI item (an imported
  *  clip's tracked crop or Gaming layout) shows its framing as "AI framing",
  *  never as crop numbers, with "Reset to AI framing" once it was changed. */
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { t } from '../../lib/i18n'
 import { formatLength, formatTime, frameAt, isAiItem, programLength } from '../../lib/editorProgram'
 import { parseTime } from '../../lib/editorTimeline'
-import type { Fps, Framing, Item, Op, Project, ProjectDoc, Track } from '../../lib/editorTypes'
+import type { CaptionLane, Fps, Framing, Item, Op, Project, ProjectDoc, Track } from '../../lib/editorTypes'
 import { CANVAS_CHOICES } from '../../lib/editorTypes'
-import type { FilterName } from '../../lib/types'
+import type { CaptionStyle, FilterName } from '../../lib/types'
+import { SNAP_ROWS } from '../../lib/captionLayer'
+import { blocksOf } from '../../lib/captionLane'
+import { captionFontWeight, useBundledFonts } from '../../lib/captionLook'
 import FilterPicker from '../FilterPicker'
+import CaptionStyleControls, { CAPTION_FONTS, DEFAULT_CAPTION_STYLE } from '../CaptionStyleControls'
 
 type Apply = (ops: Op[], label?: string) => Promise<unknown>
 
@@ -201,7 +205,21 @@ export function aiFramingOf(doc: ProjectDoc, item: Item): Framing | null {
   return out
 }
 
-function ItemSettings({ project, track, item, apply }: { project: Project; track: Track; item: Item; apply: Apply }): JSX.Element {
+function ItemSettings({
+  project,
+  track,
+  item,
+  apply,
+  focusText,
+  onTextFocused
+}: {
+  project: Project
+  track: Track
+  item: Item
+  apply: Apply
+  focusText: string | null
+  onTextFocused?: () => void
+}): JSX.Element {
   const doc = project.document
   const fps = doc.canvas.fps
   const ro = project.read_only
@@ -272,7 +290,7 @@ function ItemSettings({ project, track, item, apply }: { project: Project; track
         )}
       </Section>
 
-      {isText && <p className="text-[11px] text-muted">{t('Text is edited in a later version of the new editor.')}</p>}
+      {isText && item.text && <TextSettings item={item} readOnly={ro} focus={focusText === item.id} onFocused={onTextFocused} apply={apply} />}
 
       {!isText && (track.kind === 'video' || track.kind === 'audio') && (
         <Section title={t('Speed and sound')}>
@@ -604,15 +622,362 @@ function ProjectSettings({ project, apply }: { project: Project; apply: Apply })
   )
 }
 
+// ---- step 9: captions and text ----------------------------------------------------------------
+
+/** Where a caption placed by name sits, as % of the frame (lib/captionLayer.ts SNAP_ROWS). */
+function namedPlace(position: unknown): [number, number] {
+  const row = SNAP_ROWS.find((r) => r.id === position) ?? SNAP_ROWS.find((r) => r.id === 'bottom')
+  return [50, row ? row.y : 75]
+}
+
+/** Position x and y as numbers (% of the frame), and "Reset position".
+ *  Without a dragged place the fields show where it stands, greyed. */
+function PositionFields({
+  at,
+  named,
+  disabled,
+  onCommit,
+  onReset
+}: {
+  at: { x: number; y: number } | null
+  named: [number, number]
+  disabled: boolean
+  onCommit: (at: { x: number; y: number }) => void
+  onReset: () => void
+}): JSX.Element {
+  const [typed, setTyped] = useState<{ x?: string; y?: string }>({})
+  const shown = (k: 'x' | 'y'): string => typed[k] ?? (at ? String(Math.round(at[k] * 100) / 100) : '')
+  const commit = (): void => {
+    const num = (k: 'x' | 'y', fallback: number): number => {
+      const v = typed[k]
+      if (v === undefined || v.trim() === '' || !Number.isFinite(Number(v))) return fallback
+      return Math.min(100, Math.max(0, Math.round(Number(v) * 100) / 100))
+    }
+    const base = at ?? { x: named[0], y: named[1] }
+    const next = { x: num('x', base.x), y: num('y', base.y) }
+    setTyped({})
+    if (!at || next.x !== at.x || next.y !== at.y) {
+      if (typed.x !== undefined || typed.y !== undefined) onCommit(next)
+    }
+  }
+  const field = (k: 'x' | 'y', label: string, tip: string): JSX.Element => (
+    <label className="flex items-center justify-between gap-2 text-xs" title={tip}>
+      <span className="text-muted">{label}</span>
+      <span className="flex items-center gap-1">
+        <input
+          type="text"
+          inputMode="decimal"
+          className="input !py-0.5 !px-1.5 !w-16 text-xs text-right tabular-nums"
+          value={shown(k)}
+          placeholder={String(k === 'x' ? named[0] : named[1])}
+          disabled={disabled}
+          aria-label={`${label} (%)`}
+          title={tip}
+          onChange={(e) => setTyped((cur) => ({ ...cur, [k]: e.target.value }))}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+            if (e.key === 'Escape') setTyped({})
+          }}
+        />
+        <span className="text-muted">%</span>
+      </span>
+    </label>
+  )
+  return (
+    <div className="space-y-1.5">
+      {field('x', t('Across'), t('Where its middle is, from the left edge (0) to the right edge (100). Drag it on the video to place it by hand.'))}
+      {field('y', t('Down'), t('Where its middle is, from the top (0) to the bottom (100). Drag it on the video to place it by hand.'))}
+      <button
+        type="button"
+        className="btn-ghost !py-1 !px-2 text-xs w-full"
+        disabled={disabled || !at}
+        onClick={onReset}
+        title={t('Put it back in its place by name (top, middle or bottom)')}
+      >
+        {t('Reset position')}
+      </button>
+    </div>
+  )
+}
+
+function placeOf(value: unknown): { x: number; y: number } | null {
+  const v = value as { x?: unknown; y?: unknown } | null | undefined
+  return v && typeof v === 'object' && typeof v.x === 'number' && typeof v.y === 'number' ? { x: v.x, y: v.y } : null
+}
+
+/** The caption layer's settings (the caption layer or a caption line is
+ *  selected): the step-3 caption controls as they are, and the position.
+ *  Every change sends the whole style (set_captions), keeping a dragged
+ *  place unless "Reset position" (or a Position by name) takes it off. A
+ *  burst of changes (a slider, a colour being picked) is sent once, when it
+ *  rests. */
+function CaptionSettings({
+  project,
+  lane,
+  line,
+  onRetime,
+  apply
+}: {
+  project: Project
+  lane: CaptionLane | null
+  line: string | null
+  onRetime?: (start: number, end: number) => void
+  apply: Apply
+}): JSX.Element {
+  const doc = project.document
+  const ro = project.read_only
+  const own = doc.captions?.style
+  const base: Record<string, unknown> = own && typeof own === 'object' ? (own as Record<string, unknown>) : (lane?.style ?? {})
+  const [draft, setDraft] = useState<Record<string, unknown> | null>(null)
+  const timer = useRef<number | undefined>()
+  const current: Record<string, unknown> = { ...base, ...(draft ?? {}) }
+  const style = { ...DEFAULT_CAPTION_STYLE, ...current } as Required<CaptionStyle>
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+
+  const send = (next: Record<string, unknown>, label: string, now = false): void => {
+    setDraft(next)
+    window.clearTimeout(timer.current)
+    const go = (): void => {
+      const clean = Object.fromEntries(Object.entries(next).filter(([, v]) => v !== undefined))
+      void apply([{ op: 'set_captions', style: clean }], label).then(() => setDraft(null))
+    }
+    if (now) go()
+    else timer.current = window.setTimeout(go, 350)
+  }
+  const change = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
+    if (ro) return
+    // A position by name takes off a dragged place (else it would do nothing).
+    const patch: Record<string, unknown> = key === 'position' ? { position: value, x: undefined, y: undefined } : { [key]: value }
+    send({ ...current, ...patch }, t('Caption style'))
+  }
+  const at = placeOf(current)
+  // The selected caption line's times in the video, as on the lane. A line
+  // an edit cuts in parts is retimed on the main track only (as on the lane).
+  const fps = doc.canvas.fps
+  const pieces = line && lane && lane.revision === project.revision ? blocksOf(lane.lines).filter((b) => b.id === line) : []
+  const block = pieces[0]
+  const whole = pieces.length === 1 && block.pieces === 1
+  const partsTip = t('An edit cuts this caption in parts: its words can be changed, its times only on the main track.')
+  return (
+    <>
+      <h3 className="text-xs font-semibold">{t('Captions')}</h3>
+      {block && (
+        <Section title={t('Timing')}>
+          <TimeField
+            label={t('Starts at')}
+            tip={whole ? t('When this caption comes in, in the video. Type a time as m:ss.ff (minutes, seconds, frames) or in seconds.') : partsTip}
+            value={block.start}
+            fps={fps}
+            disabled={ro || !whole || !onRetime}
+            onCommit={(us) => onRetime?.(us, block.end)}
+          />
+          <TimeField
+            label={t('Ends at')}
+            tip={whole ? t('When this caption leaves the video. Type a time as m:ss.ff (minutes, seconds, frames) or in seconds.') : partsTip}
+            value={pieces[pieces.length - 1].end}
+            fps={fps}
+            disabled={ro || !whole || !onRetime}
+            onCommit={(us) => onRetime?.(block.start, us)}
+          />
+        </Section>
+      )}
+      <div className="space-y-3 text-xs [&_.input]:!text-xs [&_.input]:!py-1">
+        <CaptionStyleControls
+          idPrefix="new-editor-captions"
+          style={style}
+          onChange={change}
+          onPick={(next) => !ro && send({ ...current, ...next, x: current.x, y: current.y }, t('Caption style'), true)}
+          hideWordsPerCaption={lane?.saved === true}
+        />
+      </div>
+      <Section title={t('Position')}>
+        <PositionFields
+          at={at}
+          named={namedPlace(style.position)}
+          disabled={ro}
+          onCommit={(p) => send({ ...current, x: p.x, y: p.y }, t('Move captions'), true)}
+          onReset={() => send({ ...current, x: undefined, y: undefined }, t('Reset position'), true)}
+        />
+      </Section>
+    </>
+  )
+}
+
+/** A text item's settings: its words, its kind (text or hook), font, size,
+ *  colour and position. */
+function TextSettings({
+  item,
+  readOnly,
+  focus,
+  onFocused,
+  apply
+}: {
+  item: Item
+  readOnly: boolean
+  focus: boolean
+  onFocused?: () => void
+  apply: Apply
+}): JSX.Element {
+  const text = item.text as NonNullable<Item['text']> & { font?: string; size?: number; color?: string; role?: string; position?: unknown }
+  const bundled = useBundledFonts()
+  const [content, setContent] = useState<string | null>(null)
+  const area = useRef<HTMLTextAreaElement>(null)
+  const colourTimer = useRef<number | undefined>()
+  useEffect(() => () => window.clearTimeout(colourTimer.current), [])
+  // Just added with "+ Text": its words are ready to type over.
+  useEffect(() => {
+    if (!focus) return
+    area.current?.focus()
+    area.current?.select()
+    // Once only: the text selected again later keeps the focus where it is.
+    onFocused?.()
+  }, [focus])
+  const set = (fields: Record<string, unknown>, label: string): void =>
+    void apply([{ op: 'set_text', item_id: item.id, ...fields }], label)
+  const at = placeOf(text.position)
+  const value = content ?? text.content
+  return (
+    <Section title={t('Text')}>
+      <label className="block text-xs" title={t('The words on the video. Enter keeps them, Shift+Enter starts a new line.')}>
+        <span className="text-muted">{t('Words')}</span>
+        <textarea
+          ref={area}
+          className="input !py-1 text-xs mt-1 resize-none"
+          rows={Math.min(4, Math.max(2, value.split('\n').length))}
+          maxLength={500}
+          value={value}
+          disabled={readOnly}
+          aria-label={t('Words')}
+          onChange={(e) => setContent(e.target.value)}
+          onBlur={() => {
+            const next = (content ?? '').replace(/\r/g, '').trim()
+            if (content !== null && next && next !== text.content) set({ content: next }, t('Edit text'))
+            setContent(null)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              ;(e.target as HTMLTextAreaElement).blur()
+            }
+            if (e.key === 'Escape') {
+              setContent(null)
+              window.setTimeout(() => (e.target as HTMLTextAreaElement).blur(), 0)
+            }
+          }}
+        />
+      </label>
+      <label className="flex items-center justify-between gap-2 text-xs" title={t('Hook: the line at the start that makes people keep watching. Text: any other words on the video.')}>
+        <span className="text-muted">{t('Kind')}</span>
+        <select
+          className="input !py-0.5 !w-36 text-xs"
+          value={text.role === 'hook' ? 'hook' : 'text'}
+          disabled={readOnly}
+          aria-label={t('Kind')}
+          title={t('Hook: the line at the start that makes people keep watching. Text: any other words on the video.')}
+          onChange={(e) => set({ role: e.target.value }, t('Kind'))}
+        >
+          <option value="text">{t('Text')}</option>
+          <option value="hook">{t('Hook')}</option>
+        </select>
+      </label>
+      <label className="flex items-center justify-between gap-2 text-xs" title={t("The caption fonts. Default is Arial Black, the font of your clips' hooks.")}>
+        <span className="text-muted">{t('Font')}</span>
+        <select
+          className="input !py-0.5 !w-36 text-xs"
+          value={text.font ?? ''}
+          disabled={readOnly}
+          aria-label={t('Font')}
+          title={t("The caption fonts. Default is Arial Black, the font of your clips' hooks.")}
+          style={text.font ? { fontFamily: `'${text.font}', sans-serif`, fontWeight: captionFontWeight(text.font, bundled) } : undefined}
+          onChange={(e) => set({ font: e.target.value || null }, t('Font'))}
+        >
+          <option value="">{t('Default')}</option>
+          <optgroup label={t('Windows fonts')}>
+            {CAPTION_FONTS.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </optgroup>
+          {bundled.length > 0 && (
+            <optgroup label={t('Fonts that come with Clips Kitty')}>
+              {bundled.map((f) => (
+                <option key={f.family} value={f.family}>
+                  {f.family}
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+      </label>
+      <Slider
+        label={t('Size')}
+        tip={t('How big the letters are. Drag a corner of the text on the video to change it there.')}
+        value={typeof text.size === 'number' ? text.size : 96}
+        min={8}
+        max={400}
+        step={1}
+        unit="px"
+        disabled={readOnly}
+        onCommit={(v) => set({ size: Math.round(v) }, t('Resize text'))}
+      />
+      <label className="flex items-center justify-between gap-2 text-xs" title={t('Text colour')}>
+        <span className="text-muted">{t('Text colour')}</span>
+        <input
+          type="color"
+          className="w-9 h-6 bg-transparent"
+          defaultValue={text.color ?? '#FFFFFF'}
+          key={text.color ?? '#FFFFFF'}
+          disabled={readOnly}
+          aria-label={t('Text colour')}
+          title={t('Text colour')}
+          onChange={(e) => {
+            const c = e.target.value.toUpperCase()
+            window.clearTimeout(colourTimer.current)
+            colourTimer.current = window.setTimeout(() => set({ color: c }, t('Text colour')), 350)
+          }}
+        />
+      </label>
+      <h4 className="text-[11px] font-semibold text-muted uppercase tracking-wide pt-1">{t('Position')}</h4>
+      <PositionFields
+        at={at}
+        named={namedPlace(typeof text.position === 'string' ? text.position : 'top')}
+        disabled={readOnly}
+        onCommit={(p) => set({ position: p }, t('Move text'))}
+        onReset={() => set({ position: null }, t('Reset position'))}
+      />
+    </Section>
+  )
+}
+
 export default function Inspector({
   project,
   selected,
-  apply
+  apply,
+  captionLayer,
+  lane,
+  focusText,
+  onTextFocused,
+  captionLine = null,
+  onRetimeCaption
 }: {
   project: Project
   selected: string[]
   /** Changes go through the project's operations. */
   apply: Apply
+  /** Step 9: the caption layer (or a caption line) is selected. */
+  captionLayer: boolean
+  /** The caption lines and the style as drawn (useCaptionLayer). */
+  lane: CaptionLane | null
+  /** A text just added with "+ Text": its words are ready to type. */
+  focusText: string | null
+  /** The Words box took that focus: it is not taken again. */
+  onTextFocused?: () => void
+  /** The caption line selected on the lane or in the list, and how its
+   *  times change (the lane's, so typing a time lands as a drag does). */
+  captionLine?: string | null
+  onRetimeCaption?: (start: number, end: number) => void
 }): JSX.Element {
   const doc = project.document
   const found =
@@ -622,7 +987,9 @@ export default function Inspector({
   return (
     <aside className="min-h-0 overflow-y-auto bg-surface p-3 space-y-3" aria-label={t('Inspector')}>
       {found ? (
-        <ItemSettings key={found.it.id} project={project} track={found.tr} item={found.it} apply={apply} />
+        <ItemSettings key={found.it.id} project={project} track={found.tr} item={found.it} apply={apply} focusText={focusText} onTextFocused={onTextFocused} />
+      ) : captionLayer && selected.length === 0 ? (
+        <CaptionSettings project={project} lane={lane} line={captionLine} onRetime={onRetimeCaption} apply={apply} />
       ) : selected.length > 1 ? (
         <p className="text-xs text-muted">
           {selected.length} {t('items selected')}

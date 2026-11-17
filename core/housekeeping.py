@@ -33,6 +33,8 @@ person's finished videos: a manual project's export has no clip row, and
 a deleted project's export no row at all, so this folder is never swept
 for orphan clips (fix 7-D11). Its files are whole exports only: an export
 is made in the editor lane's work folder and moved here when complete.
+The one thing listed from it: an export's captions file ("<export>.srt",
+editor suite step 9) whose video is gone (9-D1, orphan_export_captions).
 """
 
 import re
@@ -75,6 +77,45 @@ def _size(paths) -> int:
         except OSError:
             pass  # vanished mid-scan; it contributes nothing to the total
     return total
+
+
+# A project export's own name (server/compose_api.py: "<project id>-r<rev>",
+# "-<n>" when taken), the only kind of .srt the app writes beside a video
+# under its own name ("<video>.srt", editor suite step 9). Translations are
+# "<clip>.<language>.srt" and are never matched.
+_EXPORT_STEM = re.compile(r"^.+-r\d+(?:-\d+)?$")
+
+
+def orphan_export_captions(db, data_dir: Path) -> list[Path]:
+    """A new-editor export's captions file ("<video>.srt", step 9) whose
+    video is gone (9-D1): beside a file a project_exports row names, or in
+    the projects' exports folder under an export's name. Only inside the
+    data folder; a .srt in the person's own export folder is theirs."""
+    root = Path(str(data_dir.resolve()).lower())
+    found: dict[str, Path] = {}
+
+    def consider(srt: Path) -> None:
+        try:
+            key = Path(str(srt.resolve()).lower())
+            if root in key.parents and srt.is_file() and not srt.with_suffix(".mp4").exists():
+                found.setdefault(str(key), srt)
+        except OSError:
+            pass   # vanished or unreadable: nothing to list
+
+    try:
+        rows = db.conn.execute("SELECT path FROM project_exports WHERE path IS NOT NULL AND path <> ''").fetchall()
+    except Exception:
+        rows = []                 # a database from before the new editor
+    for r in rows:
+        path = Path(str(r["path"]))
+        if path.suffix.lower() == ".mp4":
+            consider(path.with_suffix(".srt"))
+    exports = data_dir.joinpath(*PROJECT_EXPORTS)
+    if exports.is_dir():
+        for srt in exports.glob("*.srt"):
+            if _EXPORT_STEM.match(srt.stem):
+                consider(srt)
+    return sorted(found.values())
 
 
 def survey(db, data_dir: Path) -> dict:
@@ -147,6 +188,7 @@ def survey(db, data_dir: Path) -> dict:
                 continue
             else:
                 groups["orphan_clips"].append(f)
+    groups["orphan_clips"] += orphan_export_captions(db, data_dir)
 
     previews = data_dir / "previews"
     if previews.is_dir():

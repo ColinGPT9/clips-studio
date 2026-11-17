@@ -6,8 +6,10 @@ Every route is internal (server/api_stability.py lists none of them) and is
 protected exactly as the project routes are (projects_api.session_guard):
 the X-Clips-Kitty-Session header and an Origin of this PC's own.
 
-    POST /projects/{id}/export {revision, preset}
+    POST /projects/{id}/export {revision, preset, captions, srt}
     GET  /projects/{id}/exports
+    GET  /projects/{id}/captions.ass, GET /projects/{id}/captions,
+    POST /projects/{id}/captions/source_times      (step 9: the captions layer)
 
 An export is a job on the editor lane (server/editor_lane.py), listed with
 step 1's exports (GET /export/jobs, "export" events, POST
@@ -31,7 +33,7 @@ Either way the new file is complete and registered before the old one is
 deleted, and a failed or cancelled export leaves the clip, the project and
 every source as they were. Every export is a row of project_exports.
 
-docs/editor-suite/api/step7-compiler.md has the fields and answers.
+docs/editor-suite/api/step7-compiler.md has the fields and answers; step9-captions.md the captions'.
 """
 
 from __future__ import annotations
@@ -44,10 +46,10 @@ import shutil
 import threading
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import Depends, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from core.paths import discard
 from core.state import StateDB, _now
@@ -87,6 +89,13 @@ class ExportIn(BaseModel):
     # that clip's file, as before. Absent, or not an absolute path: the
     # file stays in data/clips/projects/ as <project id>-r<revision>.mp4.
     folder: str | None = None
+    # Step 9, the export dialog's caption choices. `captions`: "burn" (the
+    # default: as every export so far) or "none" (no captions in the
+    # picture; text, the hook and the watermark still burn). `srt`: also
+    # write the captions as "<the export's name>.srt" beside the file, from
+    # the same lines and times the burn uses (also with "none").
+    captions: Literal["burn", "none"] = "burn"
+    srt: StrictBool = False
 
 
 _RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
@@ -114,6 +123,24 @@ class DraftIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     revision: StrictInt | None = None
+
+
+class ProgramRange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    start_us: StrictInt = Field(ge=0)
+    end_us: StrictInt = Field(ge=0)
+
+
+class SourceTimesIn(BaseModel):
+    """Step 9: caption blocks placed on the lane, in program time
+    (microseconds), to be mapped to the source's time. `revision`: the
+    project's current revision (409 otherwise); absent means the current one."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    revision: StrictInt | None = None
+    ranges: list[ProgramRange] = Field(min_length=1, max_length=2000)
 
 
 DRAFT_PRODUCT, STILL_PRODUCT = "draft", "stills"     # in data/media_cache/project-<id>/ (cache.PRODUCTS)
@@ -338,7 +365,40 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
     def urls(project_id: str, revision: int) -> dict:
         t = project_token(session_secret, project_id)
         return {"still": f"/projects/{project_id}/still?rev={revision}&t={t}&t_us=",
-                "draft": f"/projects/{project_id}/draft?rev={revision}&t={t}"}
+                "draft": f"/projects/{project_id}/draft?rev={revision}&t={t}",
+                "captions_ass": f"/projects/{project_id}/captions.ass?rev={revision}&t={t}"}
+
+    def preview_inputs(project_id: str, doc: dict) -> compose.Inputs:
+        """The Inputs build_ass and the caption lines read (the transcript,
+        the settings' captions and watermark): no media, nothing run."""
+        return compose.Inputs(work=lane.work_root / "check", media={}, project_id=project_id, **facts(doc))
+
+    def write_srt(project_id: str, doc: dict, video: Path) -> dict:
+        """The export's captions as "<the video's name>.srt" beside it
+        (step 9): the lines and times the burn uses
+        (compose.program_caption_lines, through the unpadded timeline),
+        each time to the millisecond, the text as the person wrote it.
+        Written whether or not the captions are burned. {srt, srt_file}, or
+        {srt: null, srt_error} with a plain sentence: the export itself
+        stands either way."""
+        from multilingual import subtitles
+
+        try:
+            lines, _spoken = compose.program_caption_lines(doc, preview_inputs(project_id, doc))
+        except Exception as e:     # never fail a finished export over its subtitle file
+            return {"srt": None, "srt_error": f"The captions file couldn't be made: {e}"}
+        if not lines:
+            return {"srt": None, "srt_error": "There were no captions to save as a .srt file."}
+        target = video.with_suffix(".srt")
+        part = target.with_name(f"{target.stem}.{uuid.uuid4().hex[:8]}.srt.tmp")
+        try:
+            subtitles.write_srt([{"start": round(float(line["start"]), 3), "end": round(float(line["end"]), 3),
+                                  "text": line["text"]} for line in lines], part)
+            os.replace(part, target)
+        except OSError as e:
+            discard(part)
+            return {"srt": None, "srt_error": f"The captions file couldn't be saved: {e.strerror or e}"}
+        return {"srt": str(target), "srt_file": target.name}
 
     def current(project_id: str, revision) -> tuple[dict, int]:
         """The project and its revision, refused as the export refuses: 404,
@@ -426,6 +486,21 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
                     "reason": "clip_changed", "clip_id": project.get("clip_id")})
             preset = read_preset(body, doc)
             branch = branch_of(project, preset)
+            if branch["branch"] == "A":
+                # 9-D12: captions that show (burned, or in the .srt) are cut
+                # word by word only by the compiler, as the lane and the
+                # live viewer show them; today's re-render keeps a line cut
+                # through by an edit whole.
+                seen = preview_inputs(project_id, doc)
+                if ((body.srt or (body.captions == "burn" and compose.captions_on(doc, seen)))
+                        and compose.caption_line_cut(doc, seen)):
+                    branch = {"branch": "B", "reasons": ["A caption line is cut through by an edit."]}
+                # 9-D17: lit-up words (highlight or karaoke) on a cut or sped-up
+                # clip are timed by length in today's re-render, from the
+                # transcript in the compiler and the live viewer.
+                elif (body.captions == "burn" and compose.captions_on(doc, seen)
+                        and compose.word_timing_retimed(doc, seen, branch.get("render_opts"))):
+                    branch = {"branch": "B", "reasons": ["Words light up on a clip that is cut or sped up."]}
             name = f"{project_id}-r{revision}"
             folder = data_dir.joinpath(*PROJECTS_FOLDER)
             notes: list[str] = []
@@ -435,7 +510,8 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
                 try:
                     media = resolve_media(d.conn, data_dir, project_id, doc)
                     plan = compose.compile(doc, revision, preset, "export", inputs=compose.Inputs(
-                        work=lane.work_root / "check", media=media, project_id=project_id))
+                        work=lane.work_root / "check", media=media, project_id=project_id,
+                        burn_captions=body.captions == "burn"))
                     notes = plan.notes
                 except resolver.NotFound as e:
                     raise HTTPException(404, str(e)) from e
@@ -451,11 +527,13 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
         finally:
             d.close()
         extra = {"project_id": project_id, "revision": revision, "branch": branch["branch"],
-                 "project_export_id": export_id}
+                 "project_export_id": export_id, "captions": body.captions, "srt": body.srt}
         if branch["branch"] == "A":
-            work = _branch_a(project_id, export_id, revision, int(clip_id), branch)
+            work = _branch_a(project_id, export_id, revision, int(clip_id), branch, doc,
+                             captions=body.captions, srt=body.srt)
         else:
-            work = _branch_b(project_id, export_id, revision, doc, preset, clip_id, out)
+            work = _branch_b(project_id, export_id, revision, doc, preset, clip_id, out,
+                             captions=body.captions, srt=body.srt)
         job = lane.submit_project_export(work, folder=folder, name=name, preset=preset, clip_id=clip_id,
                                          extra=extra,
                                          on_dropped=lambda _job: _record(export_id, status="cancelled"))
@@ -644,6 +722,64 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
 
+    # ---- the captions layer (step 9) ---------------------------------------------------------
+
+    @app.get("/projects/{project_id}/captions.ass")
+    def captions_ass(project_id: str, request: Request, rev: int | None = None):
+        """The ASS file the export burns (compose.build_ass, exactly the
+        export's: captions, text, the hook, the text watermark, at the
+        canvas's size), for the viewer to draw live over the video (JASSUB).
+        The session header or the project's token (urls()'s
+        `captions_ass`), as a still. An empty script (a header, no events)
+        when nothing would be burned, so the viewer simply draws nothing.
+        X-Clips-Kitty-Ass-Fonts names the app's own fonts it uses (GET
+        /fonts serves them)."""
+        read_guard(request, project_id)
+        project, revision = current(project_id, rev)
+        doc = project["document"]
+        canvas = (int(doc["canvas"]["width"]), int(doc["canvas"]["height"]))
+        try:
+            padded = compose.with_end_pad(doc, compose.end_pad_us(doc))
+            text, fonts = compose.build_ass(padded, preview_inputs(project_id, doc), canvas, caption_doc=doc)
+        except (compose.CompileError, KeyError, TypeError, ValueError) as e:
+            raise HTTPException(400, f"The captions couldn't be made: {e}") from e
+        if text is None:
+            from video_editor import overlay
+
+            text = overlay._MINIMAL_HEADER.format(w=canvas[0], h=canvas[1], style=overlay._hook_style(canvas))
+        return Response(text.encode("utf-8"), media_type="text/x-ssa; charset=utf-8",
+                        headers={"Cache-Control": "no-cache", "X-Clips-Kitty-Revision": str(revision),
+                                 "X-Clips-Kitty-Ass-Fonts": ",".join(fonts)})
+
+    @app.get("/projects/{project_id}/captions")
+    def caption_lines(project_id: str, request: Request, rev: int | None = None):
+        """The caption lines in program time, for the caption lane and the
+        transcript list (compose.caption_lane: the same remap the export
+        burns). The session header or the project's token."""
+        read_guard(request, project_id)
+        project, revision = current(project_id, rev)
+        doc = project["document"]
+        try:
+            lane_answer = compose.caption_lane(doc, preview_inputs(project_id, doc))
+        except (compose.CompileError, KeyError, TypeError, ValueError) as e:
+            raise HTTPException(400, f"The captions couldn't be read: {e}") from e
+        return sent({**lane_answer, "revision": revision, "urls": urls(project_id, revision)})
+
+    @app.post("/projects/{project_id}/captions/source_times", dependencies=guarded)
+    def caption_source_times(project_id: str, body: SourceTimesIn):
+        """Caption blocks placed on the lane, in program time, as source
+        times for edit_caption_words / set_captions
+        (compose.caption_source_range: the spans the export maps with). Each
+        range answers {in_us, out_us}, or null where no captioned video
+        plays at its start. Nothing is changed."""
+        project, revision = current(project_id, body.revision)
+        doc = project["document"]
+        out = []
+        for entry in body.ranges:
+            found = compose.caption_source_range(doc, entry.start_us, entry.end_us)
+            out.append({"in_us": found[0], "out_us": found[1]} if found else None)
+        return sent({"revision": revision, "ranges": out})
+
     @app.get("/projects/{project_id}/exports", dependencies=guarded)
     def project_exports(project_id: str):
         """The project's exports, newest first (project_exports rows)."""
@@ -743,7 +879,7 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
         return result
 
     def _branch_b(project_id: str, export_id: int, revision: int, doc: dict, preset: dict, clip_id,
-                  out: tuple[Path, str] | None = None):
+                  out: tuple[Path, str] | None = None, *, captions: str = "burn", srt: bool = False):
         def work(ctx) -> dict:
             workdir = lane.work_root / f"job-{ctx.job.id}"
 
@@ -770,12 +906,15 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
                     encoder=None if preset["kind"] == "original" else export_presets.pick_encoder(preset),
                     render_args=encoding.video_encoder_args() if preset["kind"] == "original" else None,
                     card_seconds=outro.DURATION if outro.enabled(config) else None, project_id=project_id,
-                    **facts(doc))
+                    burn_captions=captions == "burn", **facts(doc))
                 plan = compose.compile(doc, revision, preset, "export", inputs=inputs)
                 made = compose.run_plan(plan, ctx, config=config)
                 ctx.check()
-                return _register_b(project_id, revision, Path(made["path"]), clip_id, made, ctx, start_file,
-                                   export_id=export_id, out=out)
+                result = _register_b(project_id, revision, Path(made["path"]), clip_id, made, ctx, start_file,
+                                     export_id=export_id, out=out)
+                if srt:
+                    result.update(write_srt(project_id, doc, Path(result["path"])))
+                return result
 
             try:
                 return _finish(export_id, run)
@@ -866,11 +1005,16 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
             d.close()
         if old is not None and old != target and old.exists() and _inside(data_dir, old):
             discard(old)
+            # Its captions file ("<video>.srt", written beside an export
+            # asked with srt) goes with it (9-D1).
+            if old.with_suffix(".srt").is_file():
+                discard(old.with_suffix(".srt"))
         discard(data_dir / "previews" / f"clip_{int(clip_id)}.mp4")
         broadcaster.publish({"type": "clip_file_replaced", "clip_id": int(clip_id), "project_id": project_id})
         return result
 
-    def _branch_a(project_id: str, export_id: int, revision: int, clip_id: int, branch: dict):
+    def _branch_a(project_id: str, export_id: int, revision: int, clip_id: int, branch: dict, doc: dict,
+                  *, captions: str = "burn", srt: bool = False):
         def work(ctx) -> dict:
             workdir = lane.work_root / f"job-{ctx.job.id}"
 
@@ -898,8 +1042,14 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
                         rendered.append(Path(final_path))
                         ctx.check()       # a cancel asked for during the render stops it here
 
+                    render_opts = dict(branch["render_opts"])
+                    if captions == "none":
+                        # "Burn captions into the video" off (step 9): the
+                        # re-render's own captions switch, as projection
+                        # writes a project's captions turned off.
+                        render_opts["captions"] = False
                     payload = {"clip_id": clip_id, "start": branch["start"], "end": branch["end"],
-                               "render_opts": branch["render_opts"], "render_opts_replace": True}
+                               "render_opts": render_opts, "render_opts_replace": True}
                     owner = worker if worker is not None else _ConfigOnly(config)
                     ctx.progress(0.0, {"stage": "render"})
                     try:
@@ -928,9 +1078,12 @@ def install(app, *, db, data_dir: Path, session_secret: str, lane, worker=None, 
                     duration_us = int(round(export_presets.probe(path).duration * 1_000_000))
                 except export_presets.ExportError:
                     duration_us = 0
-                return {"path": str(path), "file": path.name, "bytes": path.stat().st_size,
-                        "duration_us": duration_us, "clip_id": int(new_id),
-                        "replaced": str(old) if old is not None else None}
+                result = {"path": str(path), "file": path.name, "bytes": path.stat().st_size,
+                          "duration_us": duration_us, "clip_id": int(new_id),
+                          "replaced": str(old) if old is not None else None}
+                if srt:
+                    result.update(write_srt(project_id, doc, path))
+                return result
 
             try:
                 return _finish(export_id, run)

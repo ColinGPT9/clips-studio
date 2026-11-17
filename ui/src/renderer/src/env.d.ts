@@ -90,3 +90,16 @@ interface Window {
     }
   }
 }
+
+/** A file's built address (Vite): JASSUB's WebAssembly, copied into the
+ *  build beside the page, so it loads from the app itself. */
+declare module '*?url' {
+  const src: string
+  export default src
+}
+/** A worker script's built address (Vite): JASSUB's worker, bundled with
+ *  what it imports. */
+declare module '*?worker&url' {
+  const src: string
+  export default src
+}

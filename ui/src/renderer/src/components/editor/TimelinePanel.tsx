@@ -1,8 +1,8 @@
 /** The timeline, across the bottom, laid out as creators know it from CapCut:
  *  text tracks on top, the overlays (V2 and up, the higher above), the main
  *  track (V1) with its pictures and its sound's waveform, then the sound
- *  tracks (A2 and up) with theirs. Step 9's caption lane goes between the
- *  main track and the sounds.
+ *  tracks (A2 and up) with theirs. The caption lane (step 9, CaptionLane.tsx)
+ *  is its own row under the main track, above the sounds.
  *
  *  - Click an item to select it (Shift or Ctrl for more); click the ruler or
  *    an empty part of a track to move the playhead there.
@@ -20,9 +20,9 @@
  *  the view scrolls. */
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { t } from '../../lib/i18n'
-import { formatTime, frameUs, v1Items } from '../../lib/editorProgram'
-import type { PlayheadStore } from '../../lib/editorPlayhead'
-import type { Item, Op, OpsAnswer, ProjectDoc, Track } from '../../lib/editorTypes'
+import { formatTime, frameUs, programLength, v1Items } from '../../lib/editorProgram'
+import { usePlayheadTime, type PlayheadStore } from '../../lib/editorPlayhead'
+import type { CaptionLane as Lane, Item, Op, OpsAnswer, ProjectDoc, Track } from '../../lib/editorTypes'
 import {
   ZOOM_STEP,
   clampPps,
@@ -43,6 +43,7 @@ import {
   type Row
 } from '../../lib/editorTimeline'
 import { TimelineMedia, drawThumbs, drawWave } from './timelineMedia'
+import CaptionLane, { canAddAt, canMerge, mergeTitle, type CaptionLaneHandle } from './CaptionLane'
 import type { MediaInfos } from './useMediaInfos'
 
 export interface TimelineHandle {
@@ -57,13 +58,17 @@ export interface TimelineHandle {
   /** Alt+← →: move the one selected item a place (main track) or a frame
    *  (Shift: a second) earlier or later. */
   nudge: (dir: 1 | -1, big: boolean) => void
+  /** The inspector's Starts at / Ends at for the selected caption line. */
+  retimeCaption: (start: number, end: number) => void
 }
 
 /** The timeline's keys, for its tooltip and the editor's. */
 export const TIMELINE_SHORTCUTS: [string, string][] = [
   ['S', 'Split at the playhead'],
   ['Delete', 'Delete the selected items'],
+  ['Enter', 'Type the words of the selected caption'],
   ['Alt+← →', 'Move the selected item earlier or later'],
+  ['Alt+← →', 'Move the selected caption a frame earlier or later (Shift: a second)'],
   ['+ −', 'Zoom the timeline in or out'],
   ['Ctrl+wheel', 'Zoom the timeline in or out'],
   ['Shift+Z', 'Fit the whole video in the timeline'],
@@ -74,6 +79,8 @@ export const TIMELINE_SHORTCUTS: [string, string][] = [
 export const MEDIA_DRAG = 'application/x-clips-kitty-media'
 /** A picture added to a track lasts 3 seconds (trim it to change that). */
 export const PICTURE_US = 3_000_000
+/** A text added with "+ Text" lasts 3 seconds, centred (step 9). */
+export const NEW_TEXT_US = 3_000_000
 
 /** Key names in tooltips (not words to translate). */
 const KEYS = { split: 'S', zoomOut: '−, Ctrl+wheel', zoomIn: '+, Ctrl+wheel', fit: 'Shift+Z' }
@@ -91,9 +98,21 @@ interface Props {
   selected: string[]
   onSelect: (ids: string[]) => void
   onSeek: (tUs: number) => void
-  apply: (ops: Op[], label?: string) => Promise<OpsAnswer | null>
+  apply: (ops: Op[], label?: string, at?: number | null) => Promise<OpsAnswer | null>
   infos: MediaInfos
   readOnly: boolean
+  /** Step 9: the project's id and revision (the lane's engine calls) and
+   *  the caption lines in program time (useCaptionLayer). */
+  projectId: string
+  revision: number
+  lane: Lane | null
+  /** The caption line selected on the lane, or null. */
+  selectedLine: string | null
+  onSelectLine: (id: string | null) => void
+  captionsLocked: boolean
+  onCaptionsLock: (locked: boolean) => void
+  /** A text was added with "+ Text": select it and type its words. */
+  onTextAdded: (itemId: string) => void
 }
 
 interface Drag {
@@ -216,9 +235,27 @@ const ItemButton = memo(function ItemButton({
 })
 
 const TimelinePanel = forwardRef<TimelineHandle, Props>(function TimelinePanel(
-  { doc, playhead, selected, onSelect, onSeek, apply, infos, readOnly },
+  {
+    doc,
+    playhead,
+    selected,
+    onSelect,
+    onSeek,
+    apply,
+    infos,
+    readOnly,
+    projectId,
+    revision,
+    lane,
+    selectedLine,
+    onSelectLine,
+    captionsLocked,
+    onCaptionsLock,
+    onTextAdded
+  },
   ref
 ) {
+  const captionLane = useRef<CaptionLaneHandle>(null)
   const fps = doc.canvas.fps
   const rows = useMemo(() => rowsOf(doc), [doc])
   const mainItems = useMemo(() => v1Items(doc), [doc])
@@ -617,7 +654,10 @@ const TimelinePanel = forwardRef<TimelineHandle, Props>(function TimelinePanel(
   const onLaneDown = (e: React.PointerEvent<HTMLDivElement>): void => {
     if (e.button !== 0) return
     if ((e.target as HTMLElement).closest('[data-item]')) return
-    if (!e.shiftKey && !e.ctrlKey) onSelect([])
+    if (!e.shiftKey && !e.ctrlKey) {
+      onSelect([])
+      onSelectLine(null)
+    }
     onRulerDown(e)
   }
 
@@ -648,6 +688,8 @@ const TimelinePanel = forwardRef<TimelineHandle, Props>(function TimelinePanel(
 
   // ---- the toolbar's and the keys' actions ----
   const split = (): void => {
+    // A caption line selected on the lane: it is split, not the items.
+    if (captionLane.current?.split()) return
     if (readOnly) return
     const at = playhead.get()
     const inside = (it: Item): boolean => it.start_us < at && at < itemEnd(it)
@@ -660,6 +702,7 @@ const TimelinePanel = forwardRef<TimelineHandle, Props>(function TimelinePanel(
     )
   }
   const remove = (): void => {
+    if (captionLane.current?.remove()) return
     if (readOnly || selected.length === 0) return
     void apply([{ op: 'delete_items', item_ids: [...selected] }], t('Delete'))
   }
@@ -679,6 +722,7 @@ const TimelinePanel = forwardRef<TimelineHandle, Props>(function TimelinePanel(
     setBucket(0)
   }
   const nudge = (dir: 1 | -1, big: boolean): void => {
+    if (captionLane.current?.nudge(dir, big)) return
     if (readOnly || selected.length !== 1) return
     const found = findItem(selected[0])
     if (!found) return
@@ -693,7 +737,23 @@ const TimelinePanel = forwardRef<TimelineHandle, Props>(function TimelinePanel(
       void apply([{ op: 'move_item', item_id: item.id, start_us: start }], t('Move'))
     }
   }
-  useImperativeHandle(ref, () => ({ split, remove, zoom: zoomBy, fit, nudge }))
+  const retimeCaption = (start: number, end: number): void => captionLane.current?.retime(start, end)
+  useImperativeHandle(ref, () => ({ split, remove, zoom: zoomBy, fit, nudge, retimeCaption }))
+
+  // "+ Text": a text at the playhead, 3 s, centred, in the default font; on
+  // the first text track, made in the same change when there is none.
+  const addText = async (): Promise<void> => {
+    if (readOnly) return
+    const end = programLength(doc)
+    // On the hundredth of a second at or before the playhead: the burn's
+    // times are hundredths (ASS), so the text shows on the frame it was added at.
+    const start = Math.max(0, Math.min(Math.floor(playhead.get() / 10_000) * 10_000, end - NEW_TEXT_US))
+    const add: Op = { op: 'add_text', content: t('New text'), start_us: Math.round(start), duration_us: NEW_TEXT_US, position: { x: 50, y: 50 } }
+    const hasTrack = doc.tracks.some((tr) => tr.kind === 'text')
+    const answer = await apply(hasTrack ? [add] : [{ op: 'add_track', kind: 'text' }, add], t('Add text'))
+    const made = answer?.created?.find((c) => c.kind === 'item')
+    if (made) onTextAdded(made.id)
+  }
 
   const toggleTrack = (track: Track): void => {
     if (readOnly) return
@@ -769,10 +829,38 @@ const TimelinePanel = forwardRef<TimelineHandle, Props>(function TimelinePanel(
           type="button"
           className={btn}
           onClick={remove}
-          disabled={readOnly || selected.length === 0}
+          disabled={readOnly || (selected.length === 0 && (selectedLine === null || captionsLocked))}
           title={`${t('Delete the selected items')} (${t('Delete')}). ${t('The main track closes the gap.')}`}
         >
           {t('Delete')}
+        </button>
+        <span className="w-px h-4 bg-raised mx-1" aria-hidden />
+        <button
+          type="button"
+          className={btn}
+          onClick={() => void addText()}
+          disabled={readOnly || mainItems.length === 0}
+          title={t('Add a text at the playhead, in the middle of the video. Drag it on the video to place it.')}
+        >
+          {t('+ Text')}
+        </button>
+        <AddCaptionButton
+          playhead={playhead}
+          lane={lane}
+          fresh={lane !== null && lane.revision === revision}
+          disabled={readOnly || captionsLocked}
+          doc={doc}
+          className={btn}
+          onAdd={() => captionLane.current?.add()}
+        />
+        <button
+          type="button"
+          className={btn}
+          onClick={() => captionLane.current?.merge()}
+          disabled={readOnly || captionsLocked || !canMerge(lane, selectedLine)}
+          title={mergeTitle(lane, selectedLine)}
+        >
+          {t('Merge')}
         </button>
         <span className="w-px h-4 bg-raised mx-1" aria-hidden />
         <button
@@ -940,7 +1028,29 @@ const TimelinePanel = forwardRef<TimelineHandle, Props>(function TimelinePanel(
                     )}
                   </div>
                 </div>
-                {/* Step 9's caption lane goes here, under the main track. */}
+                {/* The caption lane: one row, under the main track. */}
+                {row.kind === 'main' && (
+                  <CaptionLane
+                    ref={captionLane}
+                    projectId={projectId}
+                    doc={doc}
+                    revision={revision}
+                    lane={lane}
+                    playhead={playhead}
+                    pps={pps}
+                    contentW={contentW}
+                    headerW={HEADER_W}
+                    win={win}
+                    snapOn={snapOn}
+                    selectedLine={selectedLine}
+                    onSelectLine={onSelectLine}
+                    onSeek={onSeek}
+                    apply={apply}
+                    readOnly={readOnly}
+                    locked={captionsLocked}
+                    onLock={onCaptionsLock}
+                  />
+                )}
               </div>
             )
           })}
@@ -959,5 +1069,39 @@ const TimelinePanel = forwardRef<TimelineHandle, Props>(function TimelinePanel(
     </section>
   )
 })
+
+/** "+ Caption": a caption line at the playhead, where none is yet and the
+ *  captions' video plays. Its own component, so only it follows the playhead. */
+function AddCaptionButton({
+  playhead,
+  lane,
+  fresh,
+  disabled,
+  doc,
+  className,
+  onAdd
+}: {
+  playhead: PlayheadStore
+  lane: Lane | null
+  fresh: boolean
+  disabled: boolean
+  doc: ProjectDoc
+  className: string
+  onAdd: () => void
+}): JSX.Element {
+  const now = usePlayheadTime(playhead)
+  const can = fresh && !disabled && canAddAt(lane, doc, now)
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={onAdd}
+      disabled={!can}
+      title={t('Add a caption at the playhead. Move the playhead to where the video plays and there is no caption yet.')}
+    >
+      {t('+ Caption')}
+    </button>
+  )
+}
 
 export default TimelinePanel

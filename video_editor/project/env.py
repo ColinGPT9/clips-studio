@@ -12,10 +12,17 @@ import re
 from pathlib import Path
 
 from video_editor.project import model
+from video_editor.project.importer import OLD_STYLE_KEYS
 from video_editor.project.ops import Env
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _COLOUR = re.compile(r"#[0-9A-Fa-f]{6}")
+
+
+def _number(value) -> bool:
+    """A real number: not true/false, not NaN or infinite."""
+    return (isinstance(value, (int, float)) and not isinstance(value, bool) and value == value
+            and value not in (float("inf"), float("-inf")))
 
 
 class AppEnv(Env):
@@ -132,9 +139,25 @@ class AppEnv(Env):
         from video import captions
 
         out = {}
+        # Step 9: x and y, the caption's centre dragged on the viewer, in %
+        # of the frame (captions.place_of). Both or neither; null leaves
+        # them out (the caption goes back to its `position`).
+        place = [key for key in captions.PLACE_KEYS if style.get(key) is not None]
+        if len(place) == 1:
+            raise ValueError("x and y go together: give both, or neither")
         for key, value in style.items():
+            if key in OLD_STYLE_KEYS:
+                continue        # 9-D16: dropped, as today's render drops them
+            if key in captions.PLACE_KEYS:
+                if value is None:
+                    continue
+                if not _number(value) or not 0 <= value <= 100:
+                    raise ValueError(f"{key} must be a number from 0 to 100 (% of the frame)")
+                out[key] = value
+                continue
             if key not in captions.DEFAULT_STYLE:
-                raise ValueError(f"has no {str(key)[:40]!r}. It takes {', '.join(captions.DEFAULT_STYLE)}")
+                raise ValueError(f"has no {str(key)[:40]!r}. It takes "
+                                 f"{', '.join((*captions.DEFAULT_STYLE, *captions.PLACE_KEYS))}")
             default = captions.DEFAULT_STYLE[key]
             if key == "font":
                 found = self.font(value) if isinstance(value, str) else None

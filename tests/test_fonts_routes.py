@@ -76,6 +76,50 @@ def test_a_damaged_font_is_not_served(client, monkeypatch):
     assert client.get("/fonts/Anton-Regular.ttf").status_code == 404
 
 
+def test_the_windows_caption_fonts_this_pc_has_are_listed_and_served(client, monkeypatch, tmp_path):
+    # Editor suite step 9, 9-D9: the live captions draw Arial, Arial Black...
+    # with this PC's own files (the ones the burn uses). Only SYSTEM_FACES'
+    # names, from the Windows font folders; anything else is 404.
+    from server import fonts_api
+    from video import caption_fit
+
+    (tmp_path / "arialbd.ttf").write_bytes(b"bold face")
+    (tmp_path / "arial.ttf").write_bytes(b"regular face")
+    (tmp_path / "ariblk.ttf").write_bytes(b"black face")
+    (tmp_path / "secret.ttf").write_bytes(b"not a caption font")
+    monkeypatch.setattr(caption_fit, "_windows_fonts", lambda: [tmp_path / "missing", tmp_path])
+    system = client.get("/fonts").json()["system"]
+    assert system == [
+        {"family": "Arial", "files": ["arial.ttf", "arialbd.ttf"],
+         "urls": ["/fonts/system/arial.ttf", "/fonts/system/arialbd.ttf"]},
+        {"family": "Arial Black", "files": ["ariblk.ttf"], "urls": ["/fonts/system/ariblk.ttf"]}]
+    r = client.get("/fonts/system/arialbd.ttf")
+    assert r.status_code == 200 and r.content == b"bold face" and r.headers["content-type"] == "font/ttf"
+    assert "access-control-allow-origin" not in r.headers
+    for name in ("secret.ttf", "verdana.ttf", "..%2Farial.ttf", "..%5Carial.ttf", "ARIAL.TTF"):
+        assert client.get(f"/fonts/system/{name}").status_code == 404, name
+    # 9-D15: the app's own origins (the packaged app's file page, the dev
+    # server) get the files with their origin named back, never "*"; any other
+    # web page gets 403 and no list of this PC's fonts.
+    for origin in ("null", "file://", "http://localhost:5173", "http://127.0.0.1:5173"):
+        r = client.get("/fonts/system/arial.ttf", headers={"origin": origin})
+        assert r.status_code == 200 and r.content == b"regular face", origin
+        assert r.headers["access-control-allow-origin"] == origin, origin
+        assert client.get("/fonts", headers={"origin": origin}).json()["system"] == system, origin
+    for origin in ("https://evil.example", "http://127.0.0.1:9999", "http://localhost:5174"):
+        r = client.get("/fonts/system/arial.ttf", headers={"origin": origin})
+        assert r.status_code == 403 and r.headers.get("access-control-allow-origin") != "*", origin
+        listing = client.get("/fonts", headers={"origin": origin}).json()
+        assert listing["system"] == [] and listing["fonts"], origin
+    # The bundled fonts stay public (step 3).
+    bundled = client.get("/fonts").json()["fonts"][0]["urls"][0]
+    r = client.get(bundled, headers={"origin": "https://evil.example"})
+    assert r.status_code == 200 and r.headers["access-control-allow-origin"] == "*"
+    # Every bold face the burn measures with (caption_fit) is among the files served.
+    for family, bold in caption_fit._WINDOWS_FILES.items():
+        assert bold in fonts_api.SYSTEM_FACES[family], family
+
+
 def test_the_presets_are_the_presets_file(client):
     r = client.get("/caption-presets")
     assert r.status_code == 200
@@ -90,8 +134,10 @@ def test_the_engine_installs_the_routes():
 def test_the_renderer_may_load_fonts_from_the_engine_and_nothing_else_changed():
     html = (ROOT / "ui" / "src" / "renderer" / "index.html").read_text(encoding="utf-8")
     csp = html.split('content="', 2)[2].split('"', 1)[0]
+    # Editor suite step 9 adds only script-src 'self' 'wasm-unsafe-eval' (JASSUB's WebAssembly).
     assert csp == (
-        "default-src 'self'; connect-src 'self' http://127.0.0.1:8765 ws://127.0.0.1:8765; "
+        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; "
+        "connect-src 'self' http://127.0.0.1:8765 ws://127.0.0.1:8765; "
         "media-src http://127.0.0.1:8765; img-src 'self' data: http://127.0.0.1:8765; "
         "style-src 'self' 'unsafe-inline'; font-src 'self' http://127.0.0.1:8765"
     )

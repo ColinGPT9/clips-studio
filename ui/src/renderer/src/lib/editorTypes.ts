@@ -262,7 +262,18 @@ export interface ProjectExportJob {
   fraction?: number
   smaller?: boolean
   attempt_fraction?: number | null
-  result?: { path: string; file: string; folder?: string; bytes: number; duration_us?: number; clip_id?: number } | null
+  result?: {
+    path: string
+    file: string
+    folder?: string
+    bytes: number
+    duration_us?: number
+    clip_id?: number
+    /** Step 9: the .srt written beside the file (asked with `srt`), or null and why. */
+    srt?: string | null
+    srt_file?: string
+    srt_error?: string
+  } | null
   error?: string | null
   project_id?: string
   revision?: number
@@ -286,4 +297,49 @@ export interface ThumbIndex {
   count: number
   times_us: number[]
   sheets: { index: number; url: string; first: number; count: number; width: number; height: number }[]
+}
+
+/** GET /projects/{id}/captions (step 9): one stretch of the captions' video
+ *  on the main track, in program time, with its source times. */
+export interface CaptionSpan {
+  src_in_us: number
+  src_out_us: number
+  start_us: number
+  end_us: number
+  speed: number
+}
+
+/** Where a caption line plays, in program time, with the words that play there. */
+export interface CaptionPiece {
+  start_us: number
+  end_us: number
+  text: string
+}
+
+/** One caption line: as saved (source time), and where it plays. `id` is
+ *  `tx<n>` for a line made from the transcript (that revision only). */
+export interface CaptionLine {
+  id: string
+  in_us: number
+  out_us: number
+  text: string
+  speaker: number
+  pieces: CaptionPiece[]
+  hidden: boolean
+}
+
+/** GET /projects/{id}/captions: the caption lines in program time, built
+ *  from the same remap the export burns (docs/editor-suite/api/
+ *  step9-captions.md). */
+export interface CaptionLane {
+  revision: number
+  saved: boolean
+  burned: boolean
+  enabled: boolean | null
+  media_id: string | null
+  style: Record<string, unknown>
+  program_us: number
+  spans: CaptionSpan[]
+  lines: CaptionLine[]
+  urls: { still: string; draft: string; captions_ass: string }
 }

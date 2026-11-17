@@ -13,7 +13,10 @@ import ExportDialog from './ExportDialog'
 import MediaBin from './MediaBin'
 import Inspector from './Inspector'
 import TimelinePanel, { type TimelineHandle } from './TimelinePanel'
+import TranscriptPanel from './TranscriptPanel'
 import Viewer, { type ViewerHandle } from './Viewer'
+import type { LayerTarget } from './CaptionTextLayer'
+import { useCaptionLayer } from './useCaptionLayer'
 import { useMediaInfos } from './useMediaInfos'
 import { useProject } from './useProject'
 
@@ -49,6 +52,42 @@ export default function EditorScreen({
   const exportButton = useRef<HTMLButtonElement>(null)
   const [source, setSource] = useState<string | null>(null)
   const [selected, setSelected] = useState<string[]>([])
+  // The caption layer selected on the viewer (step 9). A text item selected
+  // there is an item: it is in `selected`.
+  const [captionLayer, setCaptionLayer] = useState(false)
+  const layer = useCaptionLayer(projectId, project?.revision ?? -1)
+  // The caption line selected on the lane or in the list (step 9, part C);
+  // selecting one selects the caption layer too. The lane's Lock, kept
+  // while the editor is open. A text just added, whose words are typed.
+  const [captionLine, setCaptionLine] = useState<string | null>(null)
+  const [captionsLocked, setCaptionsLocked] = useState(false)
+  const [focusText, setFocusText] = useState<string | null>(null)
+  // The left column: the media bin, or the captions as a list.
+  const [leftTab, setLeftTab] = useState<'media' | 'captions'>('media')
+  const selectItems = (ids: string[]): void => {
+    setSelected(ids)
+    setFocusText(null)
+    if (ids.length > 0) {
+      setCaptionLayer(false)
+      setCaptionLine(null)
+    }
+  }
+  const selectLayer = (target: LayerTarget | null): void => {
+    // A text picked again on the viewer keeps the keys there: the inspector's
+    // Words box takes focus only right after "+ Text".
+    setFocusText(null)
+    setCaptionLayer(target?.kind === 'captions')
+    setSelected(target?.kind === 'text' ? [target.id] : [])
+    if (target?.kind !== 'captions') setCaptionLine(null)
+  }
+  const selectLine = (id: string | null): void => {
+    setFocusText(null)
+    setCaptionLine(id)
+    if (id !== null) {
+      setCaptionLayer(true)
+      setSelected([])
+    } else setCaptionLayer(false)
+  }
   // Focus comes into the editor when it opens. App.tsx notes what opened it
   // and gives that focus back when it closes.
   const root = useRef<HTMLDivElement>(null)
@@ -150,13 +189,15 @@ export default function EditorScreen({
         v.markOut()
       } else if (key === 'Escape' && source) {
         setSource(null)
-      } else if (key === 'Escape' && selected.length > 0) {
+      } else if (key === 'Escape' && (selected.length > 0 || captionLayer)) {
         setSelected([])
+        setCaptionLayer(false)
+        setCaptionLine(null)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [undo, redo, source, exporting, selected.length])
+  }, [undo, redo, source, exporting, selected.length, captionLayer])
 
   const addRange = async (mediaId: string, inUs: number, outUs: number): Promise<void> => {
     const answer = await apply(
@@ -186,6 +227,15 @@ export default function EditorScreen({
   }
 
   const length = programLength(doc)
+  // What the viewer shows as selected: the caption layer, or the one text item selected.
+  const textTracks = new Set(doc.tracks.filter((tr) => tr.kind === 'text').map((tr) => tr.id))
+  const selectedText =
+    selected.length === 1 ? doc.tracks.find((tr) => textTracks.has(tr.id) && tr.items.some((it) => it.id === selected[0])) : undefined
+  const layerSelection: LayerTarget | null = captionLayer
+    ? { kind: 'captions' }
+    : selectedText
+      ? { kind: 'text', id: selected[0] }
+      : null
   const iconBtn = 'px-2 py-1 rounded-md text-sm bg-raised text-muted hover:text-ink disabled:opacity-40'
 
   return (
@@ -253,15 +303,56 @@ export default function EditorScreen({
 
       {/* ---- bin, viewer, inspector ---- */}
       <div className="flex-1 min-h-0 grid grid-cols-[minmax(180px,15rem)_minmax(0,1fr)_minmax(200px,17rem)]">
-        <MediaBin
-          doc={doc}
-          infos={infos}
-          source={source}
-          onSource={setSource}
-          apply={apply}
-          playhead={playhead}
-          readOnly={project.read_only}
-        />
+        <div className="min-h-0 flex flex-col bg-surface">
+          <div className="flex border-b border-raised/60 text-xs" role="tablist" aria-label={t('Media and captions')}>
+            {(
+              [
+                ['media', 'Media', 'The videos, pictures and sounds of this project'],
+                ['captions', 'Captions', 'Every caption as a list: click a time to go there, type to fix the words']
+              ] as const
+            ).map(([id, label, tip]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={leftTab === id}
+                className={`flex-1 px-2 py-1.5 border-b-2 ${leftTab === id ? 'border-accent text-ink' : 'border-transparent text-muted hover:text-ink'}`}
+                onClick={() => setLeftTab(id)}
+                title={t(tip)}
+              >
+                {t(label)}
+              </button>
+            ))}
+          </div>
+          {leftTab === 'media' ? (
+            <div className="min-h-0 flex-1 flex flex-col" role="tabpanel" aria-label={t('Media')}>
+              <MediaBin
+                doc={doc}
+                infos={infos}
+                source={source}
+                onSource={setSource}
+                apply={apply}
+                playhead={playhead}
+                readOnly={project.read_only}
+              />
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1 flex flex-col" role="tabpanel" aria-label={t('Captions')}>
+              <TranscriptPanel
+                lane={layer.lane}
+                revision={project.revision}
+                fps={doc.canvas.fps}
+                playhead={playhead}
+                selectedLine={captionLine}
+                onSelectLine={selectLine}
+                onSeek={(tUs) => viewer.current?.seek(tUs)}
+                apply={apply}
+                readOnly={project.read_only}
+                locked={captionsLocked}
+              />
+            </div>
+          )}
+        </div>
         <div className="min-w-0 min-h-0 border-x border-raised/60">
           <Viewer
             ref={viewer}
@@ -271,9 +362,24 @@ export default function EditorScreen({
             source={source}
             onSource={setSource}
             onAddRange={(m, a, b) => void addRange(m, a, b)}
+            layer={layer}
+            layerSelection={layerSelection}
+            onLayerSelect={selectLayer}
+            captionsLocked={captionsLocked}
+            apply={apply}
           />
         </div>
-        <Inspector project={project} selected={selected} apply={applyOps} />
+        <Inspector
+          project={project}
+          selected={selected}
+          apply={applyOps}
+          captionLayer={captionLayer}
+          lane={layer.lane}
+          focusText={focusText}
+          onTextFocused={() => setFocusText(null)}
+          captionLine={captionLine}
+          onRetimeCaption={(start, end) => timeline.current?.retimeCaption(start, end)}
+        />
       </div>
 
       {/* ---- the timeline ---- */}
@@ -282,15 +388,27 @@ export default function EditorScreen({
         doc={doc}
         playhead={playhead}
         selected={selected}
-        onSelect={setSelected}
+        onSelect={selectItems}
         onSeek={(tUs) => viewer.current?.seek(tUs)}
         apply={apply}
         infos={infos}
         readOnly={project.read_only}
+        projectId={projectId}
+        revision={project.revision}
+        lane={layer.lane}
+        selectedLine={captionLine}
+        onSelectLine={selectLine}
+        captionsLocked={captionsLocked}
+        onCaptionsLock={setCaptionsLocked}
+        onTextAdded={(id) => {
+          selectItems([id])
+          setFocusText(id)
+        }}
       />
       {exporting && (
         <ExportDialog
           project={project}
+          captionsShown={layer.lane ? layer.lane.burned : true}
           onClose={() => {
             setExporting(false)
             window.setTimeout(() => exportButton.current?.focus(), 0)

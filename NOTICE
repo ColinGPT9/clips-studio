@@ -155,6 +155,11 @@ significant ones, with their licences:
   FastAPI / Uvicorn         MIT          the local API the desktop app talks to
   Electron                  MIT          the desktop shell
   React                     MIT          the interface
+  JASSUB 2.5.23             MIT          draws the captions and text live over
+                                         the new editor's viewer; bundled into
+                                         the interface at build time, with the
+                                         libraries below inside its
+                                         WebAssembly (full note below)
   Material Icons            Apache-2.0   a few icon shapes in the layout
                                          editor's platform preview (Google)
   Lucide                    ISC          a few icon shapes in the same preview;
@@ -172,6 +177,39 @@ E-BARD extends BARD: G. Giudici, A. Maurino and P. Zuccolotto, "BARD: A
 Basketball Action Recognition Dataset for multi-label classification",
 Computer Vision and Image Understanding 267 (2026) 104713,
 https://doi.org/10.1016/j.cviu.2026.104713.
+
+JASSUB (https://github.com/ThaUnknown/jassub, npm package "jassub", version
+2.5.23, unmodified) is MIT-licensed: Copyright (c) 2021-2022 JASSUB
+contributors, Copyright (c) 2017-2021 JavascriptSubtitlesOctopus
+contributors; its MIT notice is in the package's LICENSE file. Its
+WebAssembly build contains, as the package declares ("LGPL-2.1-or-later AND
+(FTL OR GPL-2.0-or-later) AND MIT AND MIT-Modern-Variant AND ISC AND NTP AND
+Zlib AND BSL-1.0"):
+  libass                    ISC          the ASS subtitle renderer
+                                         (https://github.com/libass/libass)
+  FreeType                  FTL or       font rendering; used under the
+                            GPL-2.0+     FreeType License (FTL): portions of
+                                         this software are copyright (c) The
+                                         FreeType Project (www.freetype.org).
+                                         All rights reserved.
+  HarfBuzz                  MIT ("Old    text shaping
+                            MIT")        (https://github.com/harfbuzz/harfbuzz)
+  FriBidi                   LGPL-2.1+    right-to-left text
+                                         (https://github.com/fribidi/fribidi);
+                                         the AGPL-3.0 terms of this program
+                                         allow it, and its source is at that
+                                         address
+  Brotli                    MIT          WOFF2 fonts (Google)
+and the package's other declared licences (NTP, Zlib, BSL-1.0) for the
+smaller pieces its build links in. Its default font, Liberation Sans
+(default.woff2, used when a caption's Windows font such as Arial is not on
+hand), is under the SIL Open Font License 1.1. JASSUB's own dependencies
+bundled with it: abslink (Apache-2.0), lfa-ponyfill (MIT) and throughput
+(MIT). It also depends on rvfc-polyfill (GPL-3.0), which is NOT built into
+the app: Electron's Chromium has what it adds, and the build points its name
+at an empty file (ui/src/renderer/src/lib/rvfcNone.ts). The JASSUB package is
+a development dependency only; nothing of it is shipped as a package, only
+what the build bundles.
 
 FFmpeg is fetched at build time by scripts/fetch_ffmpeg.py rather than kept
 in this repository. The builds used are LGPL-2.1-or-later, or GPL-2.0-or-later

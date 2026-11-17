@@ -1776,6 +1776,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             size = clip_file.stat().st_size
             if _unlink_best_effort(clip_file, data_dir):
                 freed = size
+            # A new-editor export's captions file beside it (step 9's
+            # "<video>.srt", 9-D1) goes with it.
+            srt = clip_file.with_suffix(".srt")
+            if srt.is_file():
+                _unlink_best_effort(srt, data_dir)
         _unlink_best_effort(data_dir / "previews" / f"clip_{clip_id}.mp4", data_dir)
         return {"deleted": clip_id, "bytes_freed": freed}
 

@@ -461,3 +461,18 @@ def test_through_the_store_and_back(db):
     back = store.undo(db.conn, made["id"], out["revision"], now=2)
     assert _exactly(projection.to_clip(back["document"]), {"branch": "A", "start": 120.0, "end": 150.0,
                                                            "render_opts": clip["render_opts"]})
+
+
+@pytest.mark.parametrize("place", [{"x": 50, "y": 30}, {"x": 20}, {"y": 75}])
+def test_captions_placed_by_hand_need_the_compiler(place):
+    """9-D11: a caption place set by dragging (step 9's style x/y) is never
+    written into a clip's render options, where today's clip editor would
+    keep it and its top/middle/bottom choice would do nothing."""
+    doc = importer.import_clip(_clip({"caption_style": {"position": "bottom"}}), MEDIA[1])
+    dragged = model.clone(doc)
+    dragged["captions"]["style"] = {"position": "bottom", **place}      # as set_captions saves it
+    assert projection.to_clip(dragged) == {"branch": "B", "reasons": ["The captions are placed by hand."]}
+    named = model.clone(doc)
+    named["captions"]["style"] = {"position": "top"}
+    back = projection.to_clip(named)
+    assert back["branch"] == "A" and back["render_opts"]["caption_style"] == {"position": "top"}

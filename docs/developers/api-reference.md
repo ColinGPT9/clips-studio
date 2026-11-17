@@ -4,7 +4,7 @@
 
 API version **1** (`GET /health` → `api_version`). The engine listens on `http://127.0.0.1:8765`. How to call it, with examples and the gotchas, is in [`docs/API.md`](../API.md); what the labels promise is in [API](api.md).
 
-305 routes: **60 stable**, **47 experimental**, 198 internal.
+309 routes: **60 stable**, **47 experimental**, 202 internal.
 
 | Label | Promise |
 |---|---|
@@ -227,11 +227,11 @@ Everything else. Grouped by the first part of the path; the module is where it i
 | `/discord` | `GET /discord/callback`<br>`POST /discord/clips/{clip_id}/send`<br>`POST /discord/connect`<br>`GET /discord/destinations`<br>`POST /discord/destinations`<br>`POST /discord/destinations/authorize`<br>`DELETE /discord/destinations/{destination_id}`<br>`PATCH /discord/destinations/{destination_id}`<br>`POST /discord/destinations/{destination_id}/test`<br>`POST /discord/disconnect`<br>`GET /discord/guilds`<br>`POST /discord/parse-link`<br>`PATCH /discord/settings`<br>`GET /discord/status` | `server.discord_api` |
 | `/export` | `GET /export/codecs`<br>`POST /export/estimate`<br>`GET /export/jobs`<br>`GET /export/jobs/{export_id}`<br>`POST /export/jobs/{export_id}/cancel`<br>`GET /export/presets` | `server.api` |
 | `/feedback` | `GET /feedback/diagnostics`<br>`POST /feedback/submit` | `server.api` |
-| `/fonts` | `GET /fonts`<br>`GET /fonts/{file}` | `server.fonts_api` |
+| `/fonts` | `GET /fonts`<br>`GET /fonts/system/{file}`<br>`GET /fonts/{file}` | `server.fonts_api` |
 | `/jobs` | `POST /jobs/{job_id}/move` | `server.api` |
 | `/media` | `POST /media/cache/clear`<br>`GET /media/cache/size`<br>`POST /media/import`<br>`GET /media/import/{job_id}`<br>`GET /media/preview/{clip_id}`<br>`GET /media/source/{media_id}`<br>`GET /media/{media_id}/info`<br>`GET /media/{media_id}/peaks`<br>`GET /media/{media_id}/proxy`<br>`POST /media/{media_id}/proxy`<br>`POST /media/{media_id}/proxy/cancel`<br>`GET /media/{media_id}/thumbs`<br>`GET /media/{media_id}/thumbs/{sheet}` | `server.api`, `server.media_api` |
 | `/models` | `GET /models/pulls`<br>`DELETE /models/{tag:path}` | `server.api` |
-| `/projects` | `GET /projects`<br>`POST /projects`<br>`DELETE /projects/{project_id}`<br>`GET /projects/{project_id}`<br>`GET /projects/{project_id}/draft`<br>`POST /projects/{project_id}/draft`<br>`POST /projects/{project_id}/export`<br>`GET /projects/{project_id}/exports`<br>`GET /projects/{project_id}/exports/{export_row}/file`<br>`POST /projects/{project_id}/ops`<br>`POST /projects/{project_id}/redo`<br>`GET /projects/{project_id}/revisions`<br>`GET /projects/{project_id}/still`<br>`POST /projects/{project_id}/undo` | `server.compose_api`, `server.projects_api` |
+| `/projects` | `GET /projects`<br>`POST /projects`<br>`DELETE /projects/{project_id}`<br>`GET /projects/{project_id}`<br>`GET /projects/{project_id}/captions`<br>`GET /projects/{project_id}/captions.ass`<br>`POST /projects/{project_id}/captions/source_times`<br>`GET /projects/{project_id}/draft`<br>`POST /projects/{project_id}/draft`<br>`POST /projects/{project_id}/export`<br>`GET /projects/{project_id}/exports`<br>`GET /projects/{project_id}/exports/{export_row}/file`<br>`POST /projects/{project_id}/ops`<br>`POST /projects/{project_id}/redo`<br>`GET /projects/{project_id}/revisions`<br>`GET /projects/{project_id}/still`<br>`POST /projects/{project_id}/undo` | `server.compose_api`, `server.projects_api` |
 | `/publish` | `POST /publish/{job_id}/cancel` | `server.youtube_api` |
 | `/queue` | `POST /queue/clear` | `server.api` |
 | `/remote-render` | `GET /remote-render`<br>`PUT /remote-render`<br>`POST /remote-render/jobs/{job_id}/retry`<br>`POST /remote-render/pairing-code`<br>`PUT /remote-render/this-pc`<br>`POST /remote-render/this-pc/unpair`<br>`POST /remote-render/videos/{video_id}/render-locally`<br>`DELETE /remote-render/workers/{worker_id}`<br>`POST /remote-render/workers/{worker_id}/hold` | `remote_render.service` |

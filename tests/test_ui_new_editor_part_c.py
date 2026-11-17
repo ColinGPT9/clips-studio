@@ -8,14 +8,16 @@ JavaScript test runner). They hold the rules the plan sets for these parts:
 - every change goes through step 5's operations (the project's `apply`),
   and a drag or a slider sends one change when it ends (one undo step);
 - the timeline draws only what is near the view (a canvas per track for
-  pictures and waveforms, buttons only for the items near it), leaves room
-  for step 9's caption lane, and its keys are the ones its tooltip lists;
+  pictures and waveforms, buttons only for the items near it), has step 9's
+  caption lane as one row under the main track, and its keys are the ones
+  its tooltip lists;
 - an AI item shows "AI framing" and "Reset to AI framing", never crop
   numbers;
 - the export dialog never names the engine's branch, offers Play and Show in
   folder only for a finished export whose file is there, says in its tooltip
-  that a clip's project replaces the clip's file, and has no caption choices
-  (step 9's);
+  that a clip's project replaces the clip's file, and (step 9) offers
+  "Burn captions into the video" (on) and "Also save captions as a .srt
+  file" (off);
 - today's editor sends Apply and the chat edit exactly as before, and asks
   only when the engine says the clip's file is a new-editor export;
 - Settings shows the editor cache's line only while the switch is on.
@@ -51,7 +53,11 @@ def test_the_timeline_changes_the_project_only_through_its_operations():
     for op in ("split_item", "delete_items", "move_item", "trim_item", "insert_clip", "set_track_props"):
         assert f"op: '{op}'" in timeline, op
     # Every operation goes through apply (useProject's: the revision, a 409 reloads).
-    assert timeline.count("op: '") == len(re.findall(r"apply\(\s*\[?\s*\{ op: '|targets\.map\(\(it\) => \(\{ op: '", timeline))
+    # Step 9's "+ Text" builds its add_text (and a text track when there is none) and sends it the same way.
+    add_text = _between(timeline, "const addText = ", "const toggleTrack = ")
+    assert add_text.count("op: '") == 2 and "await apply(hasTrack ? [add] : [{ op: 'add_track', kind: 'text' }, add]" in add_text
+    rest = timeline.replace(add_text, "")
+    assert rest.count("op: '") == len(re.findall(r"apply\(\s*\[?\s*\{ op: '|targets\.map\(\(it\) => \(\{ op: '", rest))
 
 
 def test_a_drag_is_sent_once_when_it_ends():
@@ -77,9 +83,12 @@ def test_the_timeline_draws_only_what_is_near_the_view():
     assert "requestAnimationFrame" in _between(timeline, "const onWheel = ", "el.addEventListener('scroll'")
 
 
-def test_the_timeline_leaves_room_for_the_caption_lane():
+def test_the_caption_lane_is_one_row_under_the_main_track():
     timeline = _read("components/editor/TimelinePanel.tsx")
-    assert "Step 9's caption lane goes here, under the main track." in timeline
+    # Step 9 put it where step 8 left room: drawn once, after the main track's row.
+    assert "Step 9's caption lane goes here" not in timeline
+    lane = _between(timeline, "{/* The caption lane: one row, under the main track. */}", "{/* The playhead. */}")
+    assert lane.count("<CaptionLane") == 1 and "{row.kind === 'main' && (" in lane
     rows = _read("lib/editorTimeline.ts")
     order = _code(_between(rows, "export function rowsOf(", "/** Items of a track"))
     # Text, then overlays (the higher first), the main track, then the sounds (A1 is V1's own).
@@ -167,9 +176,23 @@ def test_a_clips_project_says_its_export_replaces_the_clip():
         assert "This project was made from a clip. Exporting replaces that clip's video in your Library" in source, path
 
 
-def test_no_caption_choices_in_step_8s_export():
-    code = _code(_read("components/editor/ExportDialog.tsx")).lower()
-    assert "srt" not in code and "burn" not in code and "captions" not in code
+def test_the_export_offers_burning_the_captions_and_a_srt():
+    # Step 9 (was step 8's "no caption choices"): two checkboxes, burn on and .srt off by default.
+    code = _code(_read("components/editor/ExportDialog.tsx"))
+    assert "const [burn, setBurn] = useState(true)" in code and "const [srt, setSrt] = useState(false)" in code
+    assert "{t('Burn captions into the video')}" in code and "{t('Also save captions as a .srt file')}" in code
+    assert "{ captions: burns ? 'burn' : 'none', srt }" in code
+    # Captions hidden on the lane are never burned: the box is shown off and
+    # greyed, its tooltip saying why (the Hide button's own words).
+    assert "const burns = burn && captionsShown" in code
+    assert "checked={burns} disabled={active || !captionsShown}" in code
+    assert "t('Hide captions: they are left out of the video and the preview. Click again to show them.')" in code
+    screen = _code(_read("components/editor/EditorScreen.tsx"))
+    assert "captionsShown={layer.lane ? layer.lane.burned : true}" in screen
+    # The .srt is named beside the video when it is done (or why there is none).
+    assert "{t('Captions saved as')} {job.result.srt_file}" in code and "job.result.srt_error" in code
+    api = _code(_read("lib/editorApi.ts"))
+    assert "captions: captions.captions" in api and "srt: captions.srt" in api
 
 
 def test_show_in_folder_takes_only_an_existing_video_file():
