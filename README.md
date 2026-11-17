@@ -77,6 +77,8 @@ there is no cap on how many clips you make.
 
 <sub>38 clips from one video in 19 minutes, on one PC, with nothing uploaded.</sub>
 
+<a href="docs/GAMING.md"><img src="docs/store-screenshots/gaming-layout.png" width="100%" alt="Clips Kitty's Gaming / Reaction layout picker, with adjustable Webcam and Game boxes, layout presets, and a vertical clip preview"></a>
+
 ---
 
 ## Contents
