@@ -1,0 +1,193 @@
+{
+  "about": "video_editor/watermark.py: the logo's overlay pass, in a corner, moving, and dragged and turned.",
+  "cpu": {
+    "commands": [
+      {
+        "step": "in a corner",
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.mp4",
+          "-i",
+          "<TMP>/assets/logo.png",
+          "-filter_complex",
+          "[1:v]scale=194:-1:flags=lanczos,format=rgba,colorchannelmixer=aa=0.850[wm];[0:v][wm]overlay=W-w-43:H-h-43",
+          "-map",
+          "0:a?",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "20",
+          "-c:a",
+          "copy",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/clip.wm.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "moving",
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.mp4",
+          "-i",
+          "<TMP>/assets/logo.png",
+          "-filter_complex",
+          "[1:v]scale=194:-1:flags=lanczos,format=rgba,colorchannelmixer=aa=0.850[wm];[0:v][wm]overlay=if(lt(mod(t\\,6.8)\\,3.4)\\,(W-w-67)\\,67)+24*cos((2*PI*t/3.4)):(H-h)/2+24*sin((2*PI*t/3.4))",
+          "-map",
+          "0:a?",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "20",
+          "-c:a",
+          "copy",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/clip.wm.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "dragged, turned and faded",
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.mp4",
+          "-i",
+          "<TMP>/assets/logo.png",
+          "-filter_complex",
+          "[1:v]scale=270:-1:flags=lanczos,format=rgba,colorchannelmixer=aa=0.600,rotate=15.0*PI/180:ow=rotw(15.0*PI/180):oh=roth(15.0*PI/180):c=none[wm];[0:v][wm]overlay=W*0.2500-w/2:H*0.7000-h/2",
+          "-map",
+          "0:a?",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "20",
+          "-c:a",
+          "copy",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/clip.wm.mp4"
+        ],
+        "via": "run"
+      }
+    ],
+    "files": [
+      "assets/logo.png",
+      "clip.mp4"
+    ]
+  },
+  "nvenc": {
+    "commands": [
+      {
+        "step": "in a corner",
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.mp4",
+          "-i",
+          "<TMP>/assets/logo.png",
+          "-filter_complex",
+          "[1:v]scale=194:-1:flags=lanczos,format=rgba,colorchannelmixer=aa=0.850[wm];[0:v][wm]overlay=W-w-43:H-h-43",
+          "-map",
+          "0:a?",
+          "-c:v",
+          "h264_nvenc",
+          "-preset",
+          "p5",
+          "-rc",
+          "vbr",
+          "-cq",
+          "23",
+          "-b:v",
+          "0",
+          "-c:a",
+          "copy",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/clip.wm.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "moving",
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.mp4",
+          "-i",
+          "<TMP>/assets/logo.png",
+          "-filter_complex",
+          "[1:v]scale=194:-1:flags=lanczos,format=rgba,colorchannelmixer=aa=0.850[wm];[0:v][wm]overlay=if(lt(mod(t\\,6.8)\\,3.4)\\,(W-w-67)\\,67)+24*cos((2*PI*t/3.4)):(H-h)/2+24*sin((2*PI*t/3.4))",
+          "-map",
+          "0:a?",
+          "-c:v",
+          "h264_nvenc",
+          "-preset",
+          "p5",
+          "-rc",
+          "vbr",
+          "-cq",
+          "23",
+          "-b:v",
+          "0",
+          "-c:a",
+          "copy",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/clip.wm.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "dragged, turned and faded",
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.mp4",
+          "-i",
+          "<TMP>/assets/logo.png",
+          "-filter_complex",
+          "[1:v]scale=270:-1:flags=lanczos,format=rgba,colorchannelmixer=aa=0.600,rotate=15.0*PI/180:ow=rotw(15.0*PI/180):oh=roth(15.0*PI/180):c=none[wm];[0:v][wm]overlay=W*0.2500-w/2:H*0.7000-h/2",
+          "-map",
+          "0:a?",
+          "-c:v",
+          "h264_nvenc",
+          "-preset",
+          "p5",
+          "-rc",
+          "vbr",
+          "-cq",
+          "23",
+          "-b:v",
+          "0",
+          "-c:a",
+          "copy",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/clip.wm.mp4"
+        ],
+        "via": "run"
+      }
+    ],
+    "files": [
+      "assets/logo.png",
+      "clip.mp4"
+    ]
+  }
+}

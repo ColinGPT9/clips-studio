@@ -1,0 +1,5 @@
+{
+  "about": "Background music from the Shorts editor (render_opts.edit.music), ducked under the voice: a second input looped to the clip's length and sidechain-compressed by the speech, in the editor's pass.",
+  "media": {"music.mp3": {"duration": 95.0}},
+  "render_opts": {"edit": {"music": {"path": "<TMP>/music.mp3", "volume": 0.3, "duck": true}}}
+}

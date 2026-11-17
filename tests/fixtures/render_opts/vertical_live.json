@@ -1,0 +1,5 @@
+{
+  "about": "Vertical Live (clips.vertical_live) from a 720x1280 vertical stream recording: one encode of the whole frame, fitted to 1080x1920, nothing tracked or cropped.",
+  "source": {"w": 720, "h": 1280, "rate": "30/1", "duration": 600.0},
+  "config": {"clips": {"vertical_live": true}}
+}

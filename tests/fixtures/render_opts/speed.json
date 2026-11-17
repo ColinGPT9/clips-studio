@@ -1,0 +1,5 @@
+{
+  "about": "A clip played at 1.25x from the Shorts editor (render_opts.edit.speed), captions on: setpts and atempo in the editor's pass, the captions compressed to match.",
+  "config": {"clips": {"captions": true}},
+  "render_opts": {"edit": {"speed": 1.25}}
+}

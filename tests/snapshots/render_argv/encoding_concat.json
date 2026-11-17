@@ -1,0 +1,425 @@
+{
+  "about": "video/encoding.py concat(): stream-copy joins through a listing.",
+  "cpu": {
+    "commands": [
+      {
+        "step": "a clip and its card, from a folder whose name has a quote",
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-v",
+          "error",
+          "-f",
+          "concat",
+          "-safe",
+          "0",
+          "-i",
+          "<TMP>/I'll be fine [abc123]/.clip.outro.txt",
+          "-copyts",
+          "-c",
+          "copy",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/I'll be fine [abc123]/.clip.joined.mp4"
+        ],
+        "via": "run",
+        "listing": {
+          "<TMP>/I'll be fine [abc123]/.clip.outro.txt": [
+            "file '<TMP>/I'\\''ll be fine [abc123]/clip.mp4'",
+            "file '<TMP>/I'\\''ll be fine [abc123]/clip.card.mp4'"
+          ]
+        }
+      },
+      {
+        "step": "a clip and its card, from a folder whose name has a quote",
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-select_streams",
+          "v:0",
+          "-read_intervals",
+          "%+#5",
+          "-show_entries",
+          "frame=pts_time",
+          "-of",
+          "csv=p=0",
+          "<TMP>/I'll be fine [abc123]/.clip.joined.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "a clip and its card, from a folder whose name has a quote",
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-ignore_editlist",
+          "1",
+          "-select_streams",
+          "v:0",
+          "-read_intervals",
+          "%+#5",
+          "-show_entries",
+          "frame=pts_time",
+          "-of",
+          "csv=p=0",
+          "<TMP>/I'll be fine [abc123]/.clip.joined.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "a part whose video starts late: the join as before is tried beside it",
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-v",
+          "error",
+          "-f",
+          "concat",
+          "-safe",
+          "0",
+          "-i",
+          "<TMP>/I'll be fine [abc123]/.late.outro.txt",
+          "-copyts",
+          "-c",
+          "copy",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/I'll be fine [abc123]/.late.joined.mp4"
+        ],
+        "via": "run",
+        "listing": {
+          "<TMP>/I'll be fine [abc123]/.late.outro.txt": [
+            "file '<TMP>/I'\\''ll be fine [abc123]/late.mp4'",
+            "file '<TMP>/I'\\''ll be fine [abc123]/late.card.mp4'"
+          ]
+        }
+      },
+      {
+        "step": "a part whose video starts late: the join as before is tried beside it",
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-select_streams",
+          "v:0",
+          "-read_intervals",
+          "%+#5",
+          "-show_entries",
+          "frame=pts_time",
+          "-of",
+          "csv=p=0",
+          "<TMP>/I'll be fine [abc123]/.late.joined.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "a part whose video starts late: the join as before is tried beside it",
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-ignore_editlist",
+          "1",
+          "-select_streams",
+          "v:0",
+          "-read_intervals",
+          "%+#5",
+          "-show_entries",
+          "frame=pts_time",
+          "-of",
+          "csv=p=0",
+          "<TMP>/I'll be fine [abc123]/.late.joined.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "a part whose video starts late: the join as before is tried beside it",
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-v",
+          "error",
+          "-f",
+          "concat",
+          "-safe",
+          "0",
+          "-i",
+          "<TMP>/I'll be fine [abc123]/.late.outro.txt",
+          "-c",
+          "copy",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/I'll be fine [abc123]/..late.joined.before.mp4"
+        ],
+        "via": "run",
+        "listing": {
+          "<TMP>/I'll be fine [abc123]/.late.outro.txt": [
+            "file '<TMP>/I'\\''ll be fine [abc123]/late.mp4'",
+            "file '<TMP>/I'\\''ll be fine [abc123]/late.card.mp4'"
+          ]
+        }
+      },
+      {
+        "step": "a part whose video starts late: the join as before is tried beside it",
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-select_streams",
+          "v:0",
+          "-read_intervals",
+          "%+#5",
+          "-show_entries",
+          "frame=pts_time",
+          "-of",
+          "csv=p=0",
+          "<TMP>/I'll be fine [abc123]/..late.joined.before.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "a part whose video starts late: the join as before is tried beside it",
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-ignore_editlist",
+          "1",
+          "-select_streams",
+          "v:0",
+          "-read_intervals",
+          "%+#5",
+          "-show_entries",
+          "frame=pts_time",
+          "-of",
+          "csv=p=0",
+          "<TMP>/I'll be fine [abc123]/..late.joined.before.mp4"
+        ],
+        "via": "run"
+      }
+    ],
+    "files": [
+      "I'll be fine [abc123]/.clip.joined.mp4",
+      "I'll be fine [abc123]/.clip.outro.txt",
+      "I'll be fine [abc123]/.late.joined.mp4",
+      "I'll be fine [abc123]/.late.outro.txt",
+      "I'll be fine [abc123]/clip.card.mp4",
+      "I'll be fine [abc123]/clip.mp4",
+      "I'll be fine [abc123]/late.card.mp4",
+      "I'll be fine [abc123]/late.mp4"
+    ]
+  },
+  "nvenc": {
+    "commands": [
+      {
+        "step": "a clip and its card, from a folder whose name has a quote",
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-v",
+          "error",
+          "-f",
+          "concat",
+          "-safe",
+          "0",
+          "-i",
+          "<TMP>/I'll be fine [abc123]/.clip.outro.txt",
+          "-copyts",
+          "-c",
+          "copy",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/I'll be fine [abc123]/.clip.joined.mp4"
+        ],
+        "via": "run",
+        "listing": {
+          "<TMP>/I'll be fine [abc123]/.clip.outro.txt": [
+            "file '<TMP>/I'\\''ll be fine [abc123]/clip.mp4'",
+            "file '<TMP>/I'\\''ll be fine [abc123]/clip.card.mp4'"
+          ]
+        }
+      },
+      {
+        "step": "a clip and its card, from a folder whose name has a quote",
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-select_streams",
+          "v:0",
+          "-read_intervals",
+          "%+#5",
+          "-show_entries",
+          "frame=pts_time",
+          "-of",
+          "csv=p=0",
+          "<TMP>/I'll be fine [abc123]/.clip.joined.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "a clip and its card, from a folder whose name has a quote",
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-ignore_editlist",
+          "1",
+          "-select_streams",
+          "v:0",
+          "-read_intervals",
+          "%+#5",
+          "-show_entries",
+          "frame=pts_time",
+          "-of",
+          "csv=p=0",
+          "<TMP>/I'll be fine [abc123]/.clip.joined.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "a part whose video starts late: the join as before is tried beside it",
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-v",
+          "error",
+          "-f",
+          "concat",
+          "-safe",
+          "0",
+          "-i",
+          "<TMP>/I'll be fine [abc123]/.late.outro.txt",
+          "-copyts",
+          "-c",
+          "copy",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/I'll be fine [abc123]/.late.joined.mp4"
+        ],
+        "via": "run",
+        "listing": {
+          "<TMP>/I'll be fine [abc123]/.late.outro.txt": [
+            "file '<TMP>/I'\\''ll be fine [abc123]/late.mp4'",
+            "file '<TMP>/I'\\''ll be fine [abc123]/late.card.mp4'"
+          ]
+        }
+      },
+      {
+        "step": "a part whose video starts late: the join as before is tried beside it",
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-select_streams",
+          "v:0",
+          "-read_intervals",
+          "%+#5",
+          "-show_entries",
+          "frame=pts_time",
+          "-of",
+          "csv=p=0",
+          "<TMP>/I'll be fine [abc123]/.late.joined.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "a part whose video starts late: the join as before is tried beside it",
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-ignore_editlist",
+          "1",
+          "-select_streams",
+          "v:0",
+          "-read_intervals",
+          "%+#5",
+          "-show_entries",
+          "frame=pts_time",
+          "-of",
+          "csv=p=0",
+          "<TMP>/I'll be fine [abc123]/.late.joined.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "a part whose video starts late: the join as before is tried beside it",
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-v",
+          "error",
+          "-f",
+          "concat",
+          "-safe",
+          "0",
+          "-i",
+          "<TMP>/I'll be fine [abc123]/.late.outro.txt",
+          "-c",
+          "copy",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/I'll be fine [abc123]/..late.joined.before.mp4"
+        ],
+        "via": "run",
+        "listing": {
+          "<TMP>/I'll be fine [abc123]/.late.outro.txt": [
+            "file '<TMP>/I'\\''ll be fine [abc123]/late.mp4'",
+            "file '<TMP>/I'\\''ll be fine [abc123]/late.card.mp4'"
+          ]
+        }
+      },
+      {
+        "step": "a part whose video starts late: the join as before is tried beside it",
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-select_streams",
+          "v:0",
+          "-read_intervals",
+          "%+#5",
+          "-show_entries",
+          "frame=pts_time",
+          "-of",
+          "csv=p=0",
+          "<TMP>/I'll be fine [abc123]/..late.joined.before.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "a part whose video starts late: the join as before is tried beside it",
+        "argv": [
+          "ffprobe",
+          "-v",
+          "error",
+          "-ignore_editlist",
+          "1",
+          "-select_streams",
+          "v:0",
+          "-read_intervals",
+          "%+#5",
+          "-show_entries",
+          "frame=pts_time",
+          "-of",
+          "csv=p=0",
+          "<TMP>/I'll be fine [abc123]/..late.joined.before.mp4"
+        ],
+        "via": "run"
+      }
+    ],
+    "files": [
+      "I'll be fine [abc123]/.clip.joined.mp4",
+      "I'll be fine [abc123]/.clip.outro.txt",
+      "I'll be fine [abc123]/.late.joined.mp4",
+      "I'll be fine [abc123]/.late.outro.txt",
+      "I'll be fine [abc123]/clip.card.mp4",
+      "I'll be fine [abc123]/clip.mp4",
+      "I'll be fine [abc123]/late.card.mp4",
+      "I'll be fine [abc123]/late.mp4"
+    ]
+  }
+}

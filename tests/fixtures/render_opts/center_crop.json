@@ -1,0 +1,4 @@
+{
+  "about": "Center picked in the editor (render_opts.crop): a fixed 9:16 crop in the middle of the frame, the tracker never asked.",
+  "render_opts": {"crop": "center"}
+}

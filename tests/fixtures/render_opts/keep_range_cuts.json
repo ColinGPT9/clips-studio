@@ -1,0 +1,5 @@
+{
+  "about": "A clip cut in the Shorts editor: two sections kept (render_opts.edit.keep), captions on. The editor's pass cuts the staging file before the tracker sees it, and the captions move to the edited timeline.",
+  "config": {"clips": {"captions": true}},
+  "render_opts": {"edit": {"keep": [[0.0, 3.2], [4.6, 10.0]]}}
+}

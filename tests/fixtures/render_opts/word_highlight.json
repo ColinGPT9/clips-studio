@@ -1,0 +1,4 @@
+{
+  "about": "Captions with the word being spoken lit up, from the job's caption style (clips.caption_style.highlight): one ASS event per word, timed from the transcript's word timings.",
+  "config": {"clips": {"captions": true, "caption_style": {"highlight": true}}}
+}

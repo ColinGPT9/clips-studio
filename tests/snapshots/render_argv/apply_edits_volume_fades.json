@@ -1,0 +1,153 @@
+{
+  "about": "video_editor/export.py: volume and fades on the final timeline, loudness first.",
+  "cpu": {
+    "commands": [
+      {
+        "step": "louder, faded in and out, written as the clip",
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.source.mp4",
+          "-filter_complex",
+          "[0:a]loudnorm=I=-14:TP=-1.5:LRA=11,volume=1.50,afade=t=in:st=0:d=0.50,afade=t=out:st=8.750:d=1.25,aresample=async=1[aout]",
+          "-map",
+          "0:v",
+          "-map",
+          "[aout]",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "20",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-fps_mode",
+          "cfr",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/clip.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "muted throughout: no loudness pass",
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.source.mp4",
+          "-filter_complex",
+          "[0:a]volume=0,afade=t=out:st=9.000:d=1.00,aresample=async=1[aout]",
+          "-map",
+          "0:v",
+          "-map",
+          "[aout]",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "20",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-fps_mode",
+          "cfr",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/muted.mp4"
+        ],
+        "via": "run"
+      }
+    ],
+    "files": [
+      "clip.mp4",
+      "clip.source.mp4",
+      "muted.mp4"
+    ]
+  },
+  "nvenc": {
+    "commands": [
+      {
+        "step": "louder, faded in and out, written as the clip",
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.source.mp4",
+          "-filter_complex",
+          "[0:a]loudnorm=I=-14:TP=-1.5:LRA=11,volume=1.50,afade=t=in:st=0:d=0.50,afade=t=out:st=8.750:d=1.25,aresample=async=1[aout]",
+          "-map",
+          "0:v",
+          "-map",
+          "[aout]",
+          "-c:v",
+          "h264_nvenc",
+          "-preset",
+          "p5",
+          "-rc",
+          "vbr",
+          "-cq",
+          "23",
+          "-b:v",
+          "0",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-fps_mode",
+          "cfr",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/clip.mp4"
+        ],
+        "via": "run"
+      },
+      {
+        "step": "muted throughout: no loudness pass",
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.source.mp4",
+          "-filter_complex",
+          "[0:a]volume=0,afade=t=out:st=9.000:d=1.00,aresample=async=1[aout]",
+          "-map",
+          "0:v",
+          "-map",
+          "[aout]",
+          "-c:v",
+          "h264_nvenc",
+          "-preset",
+          "p5",
+          "-rc",
+          "vbr",
+          "-cq",
+          "23",
+          "-b:v",
+          "0",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-fps_mode",
+          "cfr",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "<TMP>/muted.mp4"
+        ],
+        "via": "run"
+      }
+    ],
+    "files": [
+      "clip.mp4",
+      "clip.source.mp4",
+      "muted.mp4"
+    ]
+  }
+}

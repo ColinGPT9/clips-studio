@@ -1,0 +1,89 @@
+{
+  "about": "The facecam layout with the webcam band at the bottom.",
+  "cpu": {
+    "commands": [
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.source.mp4",
+          "-filter_complex",
+          "[0:v]crop=498:410:0:669,scale=1080:672:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:672,setsar=1[cam];[0:v]crop=934:1080:493:0,scale=1080:1248:flags=lanczos,setsar=1[game];[game][cam]vstack=inputs=2[v]",
+          "-map",
+          "[v]",
+          "-map",
+          "0:a:0?",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "20",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-af",
+          "aresample=async=1,loudnorm=I=-14:TP=-1.5:LRA=11",
+          "-fps_mode",
+          "cfr",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "-shortest",
+          "<OUT>"
+        ],
+        "via": "run"
+      }
+    ],
+    "files": [
+      "clip.mp4",
+      "clip.source.mp4"
+    ]
+  },
+  "nvenc": {
+    "commands": [
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.source.mp4",
+          "-filter_complex",
+          "[0:v]crop=498:410:0:669,scale=1080:672:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:672,setsar=1[cam];[0:v]crop=934:1080:493:0,scale=1080:1248:flags=lanczos,setsar=1[game];[game][cam]vstack=inputs=2[v]",
+          "-map",
+          "[v]",
+          "-map",
+          "0:a:0?",
+          "-c:v",
+          "h264_nvenc",
+          "-preset",
+          "p5",
+          "-rc",
+          "vbr",
+          "-cq",
+          "23",
+          "-b:v",
+          "0",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-af",
+          "aresample=async=1,loudnorm=I=-14:TP=-1.5:LRA=11",
+          "-fps_mode",
+          "cfr",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "-shortest",
+          "<OUT>"
+        ],
+        "via": "run"
+      }
+    ],
+    "files": [
+      "clip.mp4",
+      "clip.source.mp4"
+    ]
+  }
+}

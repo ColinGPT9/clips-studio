@@ -1,0 +1,58 @@
+{
+  "about": "What every pipeline case in this folder starts from: a plain auto-clipping render of one 10-second clip from a 1080p30 stream recording, cut with the 0.4 s end pad, followed by the tracker, cropped to 9:16, no captions, the end card on. A case's own file replaces any key here; its config is laid over this one key by key. \"<TMP>/\" in a value is the test's own folder. Read by tests/test_render_argv_snapshots.py.",
+  "candidate": {"start": 10.0, "end": 20.0, "score": 80},
+  "language": "en",
+  "source": {"w": 1920, "h": 1080, "rate": "30/1", "duration": 600.0},
+  "canvas": [1080, 1920],
+  "config": {
+    "clips": {"vertical": true, "captions": false, "outro": true},
+    "tracking": {"detector": "yolov8n-pose.pt", "sample_fps": 8},
+    "video": {"encoder": "auto", "parallel_renders": 3}
+  },
+  "render_opts": null,
+  "tracking": {"mode": "track", "path": [[0.0, 0.42], [3.0, 0.46], [6.5, 0.55], [10.4, 0.52]], "face_y": 0.34},
+  "segments": [
+    {
+      "start": 9.6, "end": 12.7, "text": "okay so this is the part where it all goes wrong",
+      "words": [
+        {"start": 9.62, "end": 9.95, "word": "okay"},
+        {"start": 10.02, "end": 10.18, "word": "so"},
+        {"start": 10.22, "end": 10.41, "word": "this"},
+        {"start": 10.44, "end": 10.55, "word": "is"},
+        {"start": 10.58, "end": 10.66, "word": "the"},
+        {"start": 10.7, "end": 11.02, "word": "part"},
+        {"start": 11.08, "end": 11.3, "word": "where"},
+        {"start": 11.33, "end": 11.41, "word": "it"},
+        {"start": 11.45, "end": 11.7, "word": "all"},
+        {"start": 11.76, "end": 12.05, "word": "goes"},
+        {"start": 12.1, "end": 12.62, "word": "wrong"}
+      ]
+    },
+    {
+      "start": 13.1, "end": 18.4, "text": "watch the left side, right there. no way that just happened!",
+      "words": [
+        {"start": 13.12, "end": 13.45, "word": "watch"},
+        {"start": 13.5, "end": 13.58, "word": "the"},
+        {"start": 13.62, "end": 13.9, "word": "left"},
+        {"start": 13.95, "end": 14.4, "word": "side,"},
+        {"start": 14.8, "end": 15.05, "word": "right"},
+        {"start": 15.1, "end": 15.62, "word": "there."},
+        {"start": 16.4, "end": 16.62, "word": "no"},
+        {"start": 16.68, "end": 17.02, "word": "way"},
+        {"start": 17.1, "end": 17.32, "word": "that"},
+        {"start": 17.36, "end": 17.64, "word": "just"},
+        {"start": 17.7, "end": 18.35, "word": "happened!"}
+      ]
+    },
+    {
+      "start": 18.9, "end": 20.5, "text": "chat did you see that",
+      "words": [
+        {"start": 18.92, "end": 19.3, "word": "chat"},
+        {"start": 19.38, "end": 19.52, "word": "did"},
+        {"start": 19.56, "end": 19.7, "word": "you"},
+        {"start": 19.75, "end": 19.98, "word": "see"},
+        {"start": 20.02, "end": 20.4, "word": "that"}
+      ]
+    }
+  ]
+}

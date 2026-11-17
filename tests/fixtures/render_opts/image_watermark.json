@@ -1,0 +1,5 @@
+{
+  "about": "The job's branding as a logo (clips.watermark, type image): one overlay pass over the finished render, put in its place before the end card is joined on.",
+  "files": {"data/branding/assets/logo.png": "a logo"},
+  "config": {"clips": {"watermark": {"type": "image", "image_asset": "logo.png", "position": "top_right", "scale": 0.18, "opacity": 0.85, "padding": 0.04}}}
+}

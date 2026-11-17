@@ -1,0 +1,89 @@
+{
+  "about": "Letterbox of the whole frame on a blurred backdrop.",
+  "cpu": {
+    "commands": [
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.source.mp4",
+          "-filter_complex",
+          "[0:v]split=2[a][b];[a]crop=iw*1.0000:ih*1.0000:iw*0.0000:ih*0.0000,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,scale=135:240,gblur=sigma=12,scale=1080:1920:flags=bilinear[bg];[b]crop=iw*1.0000:ih*1.0000:iw*0.0000:ih*0.0000,scale=1080:-2:flags=lanczos,crop=w=1080:h=min(ih\\,1920)[fg];[bg][fg]overlay=0:(H-h)/2,setsar=1[v]",
+          "-map",
+          "[v]",
+          "-map",
+          "0:a:0?",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "20",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-af",
+          "aresample=async=1,loudnorm=I=-14:TP=-1.5:LRA=11",
+          "-fps_mode",
+          "cfr",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "-shortest",
+          "<OUT>"
+        ],
+        "via": "run"
+      }
+    ],
+    "files": [
+      "clip.mp4",
+      "clip.source.mp4"
+    ]
+  },
+  "nvenc": {
+    "commands": [
+      {
+        "argv": [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<TMP>/clip.source.mp4",
+          "-filter_complex",
+          "[0:v]split=2[a][b];[a]crop=iw*1.0000:ih*1.0000:iw*0.0000:ih*0.0000,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,scale=135:240,gblur=sigma=12,scale=1080:1920:flags=bilinear[bg];[b]crop=iw*1.0000:ih*1.0000:iw*0.0000:ih*0.0000,scale=1080:-2:flags=lanczos,crop=w=1080:h=min(ih\\,1920)[fg];[bg][fg]overlay=0:(H-h)/2,setsar=1[v]",
+          "-map",
+          "[v]",
+          "-map",
+          "0:a:0?",
+          "-c:v",
+          "h264_nvenc",
+          "-preset",
+          "p5",
+          "-rc",
+          "vbr",
+          "-cq",
+          "23",
+          "-b:v",
+          "0",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-af",
+          "aresample=async=1,loudnorm=I=-14:TP=-1.5:LRA=11",
+          "-fps_mode",
+          "cfr",
+          "-movflags",
+          "+faststart+negative_cts_offsets",
+          "-shortest",
+          "<OUT>"
+        ],
+        "via": "run"
+      }
+    ],
+    "files": [
+      "clip.mp4",
+      "clip.source.mp4"
+    ]
+  }
+}
