@@ -231,6 +231,10 @@ jobs:
           # check passed by coincidence and failed the rest of the time.
           fetch-depth: 0
 
+      - name: Windows download links match the release version
+        # Prevent a version bump from leaving the static site pointing at old installers.
+        run: python scripts/check_site_downloads.py
+
       - name: Links and paths
         # The site is published to GitHub Pages AND a Hugging Face Space. A
         # project Pages site lives in a subdirectory while a Space serves from
