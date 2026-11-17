@@ -21,7 +21,7 @@
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
 [![Docker](https://img.shields.io/badge/docker-compose%20up-2496ED?logo=docker&logoColor=white)](docs/DOCKER.md)
 
-<img src="docs/demo/clips-kitty-gta6-stream-to-short.gif" alt="Clips Kitty turning Asmongold's GTA 6 trailer reaction into a captioned vertical clip" width="100%">
+<a href="https://youtu.be/BVlAzSWb-d8"><img src="docs/demo/clips-kitty-gta6-stream-to-short.gif" alt="Watch the Clips Kitty setup guide on YouTube: turn a gaming stream into a captioned vertical clip" width="100%"></a>
 
 <a href="https://youtu.be/g1dMqrq-YaI"><img src="https://github.com/user-attachments/assets/2a1bdd85-723e-46d6-b74b-00579c71b6a7" alt="Clips Kitty turning an NBA broadcast into a 9:16 clip that follows the ball" width="100%"></a>
 
