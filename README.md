@@ -79,6 +79,8 @@ there is no cap on how many clips you make.
 
 <a href="docs/GAMING.md"><img src="docs/store-screenshots/gaming-layout.png" width="100%" alt="Clips Kitty's Gaming / Reaction layout picker, with adjustable Webcam and Game boxes, layout presets, and a vertical clip preview"></a>
 
+<sub>Frame your webcam and game, then preview the vertical clip before generating it.</sub>
+
 ---
 
 ## Contents
