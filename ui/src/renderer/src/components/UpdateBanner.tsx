@@ -51,10 +51,31 @@ export default function UpdateBanner(): JSX.Element | null {
 
   // Nothing to say when there's no update, we're mid-check or we're in dev.
   if (!s || s.state === 'none' || s.state === 'checking' || s.state === 'dev') return null
-  // A failed background check is not the user's problem; Settings shows it.
-  if (s.state === 'error') return null
 
   const bar = 'w-full px-4 py-2.5 flex items-center gap-3 text-sm border-b'
+
+  if (s.state === 'error') {
+    if (s.quiet) return null
+    return (
+      <div className={`${bar} bg-red-500/10 border-red-500/30`} role="alert">
+        <span className="font-medium shrink-0">Update failed.</span>
+        <span className="text-xs text-muted flex-1 min-w-0 break-words">
+          {s.message ?? 'The update could not be completed.'}
+        </span>
+        <span className="text-xs text-muted shrink-0">Details saved to update.log.</span>
+        <button
+          className="btn-accent !py-1 shrink-0"
+          onClick={() =>
+            void (s.action === 'download'
+              ? window.studio.update.download()
+              : window.studio.update.check())
+          }
+        >
+          Retry
+        </button>
+      </div>
+    )
+  }
 
   // A Store copy: the Store installs updates, on its own schedule. When it has
   // a newer version than this one, say so and offer the way there. Nothing is
