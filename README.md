@@ -498,31 +498,29 @@ language-agnostic.
 ### Help wanted: the maintainer only speaks English
 
 18 of those 19 interface translations have never been read by somebody who speaks
-the language. Half of them aren't finished. Every language has its own issue,
+the language. Every language has its own issue,
 written in English and in that language, and **reporting a bad word is a complete
 contribution**: no pull request needed. [How it works](docs/TRANSLATING.md).
 
-**Needs finishing** (about 68 strings still in English):
+**Needs checking** (complete, but nobody has verified it reads naturally):
+[العربية (Arabic)](../../issues/52) ·
 [বাংলা (Bengali)](../../issues/43) ·
+[Deutsch (German)](../../issues/53) ·
+[Español (Spanish)](../../issues/54) ·
+[Français (French)](../../issues/55) ·
+[हिन्दी (Hindi)](../../issues/56) ·
+[Bahasa Indonesia (Indonesian)](../../issues/57) ·
 [Italiano](../../issues/44) ·
+[日本語 (Japanese)](../../issues/58) ·
 [한국어 (Korean)](../../issues/45) ·
+[Português (Portuguese)](../../issues/59) ·
+[Русский (Russian)](../../issues/60) ·
 [ไทย (Thai)](../../issues/46) ·
 [Tagalog (Filipino)](../../issues/47) ·
 [Türkçe (Turkish)](../../issues/48) ·
 [اردو (Urdu)](../../issues/49) ·
 [Tiếng Việt (Vietnamese)](../../issues/50) ·
 [中文 (Chinese)](../../issues/51)
-
-**Needs checking** (complete, but nobody has verified it reads naturally):
-[العربية (Arabic)](../../issues/52) ·
-[Deutsch (German)](../../issues/53) ·
-[Español (Spanish)](../../issues/54) ·
-[Français (French)](../../issues/55) ·
-[हिन्दी (Hindi)](../../issues/56) ·
-[Bahasa Indonesia (Indonesian)](../../issues/57) ·
-[日本語 (Japanese)](../../issues/58) ·
-[Português (Portuguese)](../../issues/59) ·
-[Русский (Russian)](../../issues/60)
 
 Want a language that isn't here? [#61](../../issues/61).
 
