@@ -84,11 +84,14 @@ def look(profile, finalists: list, video_path, llm, grab=None) -> int:
 
 def _look(profile, todo: list, llm, grab) -> int:
     from analysis.game_vision import _jpeg
-    from core import cancel
+    from core import cancel, progress
 
     looked = 0
-    for c in todo:
+    for li, c in enumerate(todo, 1):
         cancel.check_active()
+        # Same shape as the game's look pass (analysis/game_vision.py): one
+        # image call per shot, so the bar keeps moving while they run.
+        progress.emit(stage="looking", current=li, total=len(todo))
         at = float(c.subscores.get("sport_t", c.start))
         images = [_jpeg(f) for f in (grab(at + 0.5 + i) for i in range(FRAMES)) if f is not None]
         images = [b for b in images if b]

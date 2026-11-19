@@ -1615,7 +1615,9 @@ types:
 - **`job`** fires on status transitions. `error` is present when it failed.
 - **`progress`** is the pipeline talking. `stage` moves through `download`,
   `downloaded`, `converting source to H.264`, `transcribe`, `analyze`,
-  `ranking`, `render`, `done`. Render events carry `clip` and `total`. A job
+  `looking`, `ranking`, `render`, `done`. `looking` events, one per clip the
+  local vision model is shown (`current` and `total`), only come from gaming
+  and sport jobs. Render events carry `clip` and `total`. A job
   with `understand` or `rate` also has `understand` events (a plugin saying
   what happens in the moments) and `ranking` events from each plugin that
   rates them; both carry `plugin`, the plugin's name, and the job's progress
