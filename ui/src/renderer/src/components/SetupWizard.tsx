@@ -258,7 +258,11 @@ export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.E
   const steps = ['Welcome', 'Setting up', 'Ready']
 
   return (
-    <div className="fixed inset-0 z-50 bg-base/95 backdrop-blur-sm grid place-items-center p-6">
+    // The overlay scrolls, not the card: the card is overflow-hidden, so on a
+    // short window (or when the checklist is long) its footer buttons were
+    // clipped with nothing to scroll.
+    <div className="fixed inset-0 z-50 bg-base/95 backdrop-blur-sm overflow-y-auto">
+    <div className="min-h-full grid place-items-center p-6">
       <div className="w-full max-w-2xl bg-surface border border-raised/60 rounded-2xl shadow-2xl overflow-hidden">
         {/* progress rail */}
         <div className="flex">
@@ -452,6 +456,7 @@ export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.E
           )}
         </div>
       </div>
+    </div>
     </div>
   )
 }
