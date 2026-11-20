@@ -17,6 +17,7 @@ from video.encoding import (
     using_hardware_encoder,
     video_encoder_args,
 )
+from video.filters import subtitles_filter
 
 
 def cut_clip(
@@ -57,7 +58,7 @@ def cut_clip(
     vf_parts = [p for p in (vf_extra,) if p]
     if ass_path is not None:
         # Bare filename + cwd avoids Windows path escaping in filter args.
-        vf_parts.append(f"subtitles={ass_path.name}")
+        vf_parts.append(subtitles_filter(ass_path.name))
     if vf_parts:
         cmd.extend(["-vf", ",".join(vf_parts)])
     cmd.append(str(output_path.resolve()))
