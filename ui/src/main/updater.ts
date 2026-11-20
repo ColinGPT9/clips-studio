@@ -124,6 +124,33 @@ async function check(): Promise<{ ok: boolean; reason?: string }> {
 let offered: { version: string; packageSize: number } | null = null
 let packageTimer: ReturnType<typeof setInterval> | null = null
 let packageStarted = false
+let downloadingUpdate = false
+
+const UPDATE_LOG_LIMIT = 64 * 1024
+
+function writeUpdateLog(level: string, ...parts: unknown[]): void {
+  const path = join(app.getPath('userData'), 'update.log')
+  const entry = `${new Date().toISOString()} [${level}] ${parts.map(String).join(' ')}\n`
+  try {
+    let previous = ''
+    try {
+      previous = readFileSync(path, 'utf8')
+    } catch {
+      // The log is created on the first updater message.
+    }
+    writeFileSync(path, (previous + entry).slice(-UPDATE_LOG_LIMIT), 'utf8')
+  } catch (error) {
+    console.warn('could not write update log:', error)
+  }
+}
+
+function isOfflineError(error: unknown): boolean {
+  const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
+  const message = error instanceof Error ? error.message : String(error)
+  return /err_internet_disconnected|err_name_not_resolved|err_network_changed|enotfound|eai_again|network is unreachable|internet connection is unavailable/i.test(
+    `${code} ${message}`
+  )
+}
 
 function packageSize(info: UpdateInfo): number {
   const packages = (info as UpdateInfo & { packages?: Record<string, { size?: number }> }).packages
@@ -240,7 +267,12 @@ export function setupUpdater(win: BrowserWindow): void {
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = false
   applyChannel(loadPrefs().channel)
-  autoUpdater.logger = null
+  autoUpdater.logger = {
+    info: (...args: any[]) => writeUpdateLog('INFO', ...args),
+    warn: (...args: any[]) => writeUpdateLog('WARN', ...args),
+    error: (...args: any[]) => writeUpdateLog('ERROR', ...args),
+    debug: (...args: any[]) => writeUpdateLog('DEBUG', ...args)
+  }
 
   autoUpdater.on('checking-for-update', () => send('update:state', { state: 'checking' }))
 
@@ -287,7 +319,13 @@ export function setupUpdater(win: BrowserWindow): void {
     if (willRetryOnStable) return
     // Being unable to check is not worth interrupting anyone over — they may
     // simply be offline. The renderer shows this only if a check was asked for.
-    send('update:state', { state: 'error', message: String(err?.message ?? err) })
+    const message = String(err?.message ?? err)
+    send('update:state', {
+      state: 'error',
+      message,
+      quiet: isOfflineError(err),
+      action: downloadingUpdate ? 'download' : 'check'
+    })
   })
 
   ipcMain.handle('update:check', async () => {
@@ -301,13 +339,20 @@ export function setupUpdater(win: BrowserWindow): void {
 
   ipcMain.handle('update:download', async () => {
     watchPackageDownload()
+    downloadingUpdate = true
     try {
       await autoUpdater.downloadUpdate()
       return { ok: true }
     } catch (e) {
-      send('update:state', { state: 'error', message: String(e) })
+      send('update:state', {
+        state: 'error',
+        message: String(e),
+        quiet: isOfflineError(e),
+        action: 'download'
+      })
       return { ok: false }
     } finally {
+      downloadingUpdate = false
       stopPackageWatch()
     }
   })

@@ -30,6 +30,10 @@ interface UpdateState {
   total?: number
   bytesPerSecond?: number
   message?: string
+  /** Network failures stay quiet in the banner; Settings still shows the reason. */
+  quiet?: boolean
+  /** Retry the operation that failed, rather than always starting a new check. */
+  action?: 'check' | 'download'
 }
 
 interface Window {
