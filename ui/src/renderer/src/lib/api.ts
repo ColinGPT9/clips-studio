@@ -150,6 +150,7 @@ export const api = {
         podcast: opts.podcast ?? null,
         vertical_live: opts.vertical_live ?? null,
         gaming: opts.gaming ?? null,
+        gaming_scoring: opts.gaming_scoring ?? null,
         gaming_layout: opts.gaming_layout ?? null,
         gaming_remember: opts.gaming_remember ?? null,
         source_url: opts.source_url ?? '',
@@ -157,7 +158,13 @@ export const api = {
         watermark_profile_id: opts.watermark_profile_id ?? null,
         filter: opts.filter ?? null,
         min_score: opts.min_score ?? null,
+        focus: opts.focus ?? null,
+        sport: opts.sport ?? null,
         max_clips: opts.max_clips ?? null,
+        pipeline: opts.pipeline ?? null,
+        rate: opts.rate ?? null,
+        understand: opts.understand ?? null,
+        edit: opts.edit ?? null,
         force: opts.force ?? false
       })
     }),
