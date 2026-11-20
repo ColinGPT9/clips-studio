@@ -30,11 +30,11 @@
 
 <a href="https://youtu.be/g1dMqrq-YaI"><img src="https://github.com/user-attachments/assets/2a1bdd85-723e-46d6-b74b-00579c71b6a7" alt="Clips Kitty turning an NBA broadcast into a 9:16 clip that follows the ball" width="100%"></a>
 
-<a id="star-and-share-clips-kitty--goal-500"></a>
+<a id="star-and-share-clips-kitty--goal-550"></a>
 
-### Gib Clips Kitty einen Stern und teile es ⭐ Ziel: 500
+### Gib Clips Kitty einen Stern und teile es ⭐ Ziel: 550
 
-[![Stars so far](https://badgen.net/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&color=0969da&scale=1.6)](https://github.com/ColinGPT9/clips-studio/stargazers) **von 500**
+[![Stars so far](https://badgen.net/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&color=0969da&scale=1.6)](https://github.com/ColinGPT9/clips-studio/stargazers) **von 550**
 
 **Bitte gib dem Repo einen Stern und teile es.** Es kostet dich nichts, und hinter
 dem Projekt steht kein Marketingbudget. Mundpropaganda ist also der einzige Weg,
