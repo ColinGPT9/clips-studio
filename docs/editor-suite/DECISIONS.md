@@ -427,3 +427,103 @@ The Kokoro voice that Voicebox uses by default was already in the repo as an opt
 **Rejected:** Shipping Voicebox (ED12; the costs above); shipping VoiceStudio (ED12's reasons stand); starting the person's Voicebox for them (its lifetime is theirs); calling the voice apps from the app's window (both refuse a browser's origin, so the engine calls them, with no Origin header); adding the Japanese and Chinese dictionaries now (248 MiB and 30 MiB in Voicebox's bundle).
 
 **Undo:** The layer is its own package, and dubbing's Piper path is untouched behind it. Removing `voice/`, `server/voice_api.py`, the Kokoro entries in `clips-studio.spec` and `requirements.txt`, and the Settings → Voice card puts dubbing back on Piper alone.
+
+## ED24 · The editor is Clips Kitty Editor, built from Concat, inside the Clips Kitty window
+
+**Date:** 2026-11-16 · **Steps:** K1 to K8 · Colin's choice, replacing ED1's "borrowed, not shipped" and the hand-built editor of steps 8 and 9
+
+**Context:** Steps 8 and 9 built an editor by hand inside the app (PRs #243 and #246, unmerged). At his click-through Colin asked for "a full editor like Concat, Premiere and CapCut… meant to edit full videos too", and decided: "take concat its opensource as the plan… dont make a copy", "i want my branding overtop concat with my app. it can't just be an api endpoint it needs to ship with the whole app for windows", "i want it in my app not a 2nd window that opens".
+
+**Decision:**
+- The editor is a fork of Concat (Rust, AGPL-3.0-or-later, the same licence family as Clips Kitty), named **Clips Kitty Editor**, in its own repository. Concat's trademark rules ask a modified build to carry another name; Concat is named only in the credit "Based on Concat" and in the notices.
+- It runs **inside the Clips Kitty window** as a child window (the fork's `--embed` option), as the app's Editor page. It ships with the Windows app (bundling is step K3).
+- Clips Kitty **builds the project** for a clip, a whole video or a file through the editor's own automation, with no window, and the editor's **exports come back** into Clips Kitty.
+- Today's clip editor stays, as "Quick edit" where a name is needed.
+- The hand-built editor's code is not continued. Its rule that nothing of a person's is lost silently is kept (ED25).
+
+**Why:** a finished multi-track editor (timeline, captions, audio, export) in place of one built by hand; the licences fit; the person never leaves the app.
+
+**Trade-offs accepted:** a second program of a few hundred MB (to be measured in step K3) and its own graphics use; the editor is Windows only; a child window is always drawn over the web page, so the app hides the editor while something of its own must show there.
+
+**Rejected:** a second window; an editor in the web page (porting Concat's interface would be the hand-made copy he did not want); shipping Concat unmodified under its own name.
+
+**To undo:** the Editor page and every way in exist only while `GET /editor/status` says the editor was found. Without the editor's folder the app looks and works as before.
+
+## ED25 · A clip's editor project stands on a framed, caption-free render, and an editor export is known by its folder
+
+**Date:** 2026-11-18 · **Step:** K2 · Supersedes ED20 and ED21 for the new editor
+
+**Context:** The editor knows nothing of the AI's framing, and Clips Kitty's render knows nothing of the editor's timeline. Two questions follow: what video does a clip's project hold, and what happens to the clip when the editor exports it.
+
+**Decision:**
+- **The project's video** is the clip's whole window rendered once with the AI's framing, layout, colour and sound levelling and nothing else: no captions, no cuts, no hook, no music, no watermark, no end card. The clip's cuts, speed, sound levels, captions, hook, music and watermark are put on the editor's timeline as items, so each can be changed or taken back there. What the editor has no equivalent for is said plainly when the project opens (the lit-up word, caption animations, music dipping under speech, re-aiming the framing).
+- **Projects are folders,** `data/editor/projects/<id>/` with a manifest; no database table.
+- **An export of a clip's project becomes that clip's video** only when the clip is still on the file the project was made from. A clip changed in Quick edit meanwhile keeps its file, and the export is kept beside it. An export of a whole video or a file goes to the export folder from Settings as "<name> - <date>".
+- **An editor export is known by where its file is** (`data/clips/projects/`), with or without its project. The clip's window and options stay the AI's, so everything that would re-make the clip from them asks first (Quick edit's Apply, the chat edit, the caption save, "Apply edits & upload", Export in other languages) or keeps the export (a forced run, story reels, Make clips again, Storage clean-up).
+- No end card on anything the editor exports.
+
+**Why:** the framing is the part of a clip only Clips Kitty can make, so it is made once and kept; everything else is better edited in the editor than baked in. The folder rule needs no table and still holds after a project is deleted.
+
+**Trade-offs accepted:** one render of the clip's window before the editor opens the first time (82 s for a 45 s clip, measured cold on Colin's PC); the framing can't be re-aimed in the editor (step K7); captions arrive as plain text.
+
+**Rejected:** `multilingual.burn.clean_base` as it is (it keeps the cuts, hook, music and watermark in the picture); a table of exports (a migration, and a deleted project would un-protect its export); changing the clip's window and options to describe the editor's result (nothing can re-make it from them).
+
+**To undo:** the guards are one path comparison that says no for every clip the editor never exported; without the editor nothing is ever written to `data/clips/projects/`.
+
+## ED26 · The app shows the editor as a child window it never kills, hidden whenever the app draws over it
+
+**Date:** 2026-11-18 · **Step:** K2 (the app's half)
+
+**Context:** Clips Kitty Editor is a native window laid over the Editor page. A native window is always drawn above the web page, holds its own unsaved work, and has its own API with a token.
+
+**Decision:**
+- The main process alone starts and stops it: detached, no pipes, no console window, the token only in its environment, a loopback port chosen at each start. The page names a project by its id; every path comes from the engine.
+- It is closed only with `host.close` (it saves first), on every quit route (before-quit after the existing question, window-all-closed, the updater's install), and never killed. One whose window is gone (an app crash) saves and leaves by itself.
+- Anything of the app's own drawn into the editor's area holds a cover while open (`useEditorCover`), and the editor is hidden for that time; questions over the editor are native dialogs; notices go in the page's 36 px strip; clip approval cards wait behind a "Clip approvals" button while a project is shown.
+- Every way in switches to the Editor page at once and shows a project's making there.
+
+**Why:** nothing of the person's is lost when the app quits or crashes, the token never reaches a web page or a log, and nothing of the app is ever hidden under the editor.
+
+**Trade-offs accepted:** a scale change restarts the editor (about 2 s); the editor is polled every 500 ms while shown; the quit question is in English, as the other main-process questions are.
+
+**Rejected:** an in-page modal over the editor (it would be drawn under it); killing the editor on quit (unsaved work); reading exports from the editor's stdout (lost when the app is gone).
+
+**To undo:** `GET /editor/status` saying "not found" hides all of it; the main process starts nothing until a project is opened.
+
+## ED27 · UX round on K1 and K2: a name of its own, panels that fit, and the export's destination said before it is made
+
+**Date:** 2026-11-19 · **Step:** K1 and K2 (UX fix round)
+
+**Context:** the UX pass found that every project opened with the timeline on empty lanes, that a plain "Edit" beside "Edit this clip" opened a different editor, that the editor's panels were cut off in the app's 1056-pixel area, that the Export sheet did not say where the file would go (and the file was not called what it showed), and that export notices never reached a screen reader.
+
+**Decision:**
+- The fork, embedded only: each time a project opens, the timeline shows the lanes from the top one with something on it, until the person scrolls; the panels start as library, picture and inspector across the top with the timeline the whole width under them, the library and the inspector at least 300 px where the area allows, and the arrangement is not remembered between embedded starts; `--export-note` / `host.open_project {destination}` put a read-only line under the name in the Export sheet.
+- The app: the new ways in say "Open in editor"; the old editor keeps its words, and the app's sentences call it "the Clip Editor" until the owner says whether its button becomes "Quick edit". The destination line is the page's (translated). A whole video's or a file's export is called what the sheet says, which starts as "<name> - <date>". Notices are in live regions that are always there; an export is announced by quarters; the percent shown never goes back.
+
+**Why:** the first look at a project must show what was carried over; two buttons with one word must not open two things; nothing of the editor may be cut off at the app's default size; what will be exported and where it goes is clear before the export.
+
+**Trade-offs accepted:** an embedded editor forgets panel sizes a person dragged when it restarts; the app's sidebar is not narrowed (the panels fit without it at 1280 x 860); an editor build older than 211c751d cannot be started by this app (it does not know `--export-note`).
+
+**Rejected:** renaming "Edit this clip" to "Quick edit" (needs the owner's OK); collapsing the inspector under 1300 px (captions are edited there).
+
+**To undo:** the fork's changes are behind `embed::active()`; the app's are the labels, `showOptions` in lib/editor.ts and the live regions in pages/Editor.tsx.
+
+## ED28 · A clip's base video is made from the clip's own framing, and kept
+
+**Date:** 2026-11-19 · **Step:** K2 (first-open speed) · Changes how ED25's base is made, not what it is
+
+**Context:** the first "Open in editor" on a clip took 63 s on the owner's PC (24.8 s clip, 1080x1920 60 fps), 62.5 s of it the engine re-running the whole render for the caption-free base: the cut, YOLO and TalkNet tracking (about 31 s), and a frame-by-frame crop through Python with a CPU encode (about 24 s; this PC's driver gives Clips Kitty's FFmpeg no NVENC). All the tracking finds again is where the crop sits in each frame, which the clip in the Library already shows.
+
+**Decision:**
+- For a clip framed by the tracker's moving crop (the 9:16 crop filling the screen, or the face-safe 4:5 crop under the apps' top bar), the crop is read back from the clip's own file (`kitty_editor/fastbase.py`) and the base is one FFmpeg pass over the source: crop, layout, colour filter, loudness, untagged BT.601 colours as the standard render's piped frames give, encoded with x264 `ultrafast` CRF 16 (as good as the renders' veryfast CRF 20 by SSIM against the unencoded picture, twice as fast, about four times the size; the editor encodes again on export).
+- Anything else (letterbox, split screen, podcast, gaming, sport, Vertical Live, Longform, a clip with its own edit) and any frame that does not match is made the full way, as before, with the pipeline's own encoder and the tracking models loaded while it cuts.
+- The base is kept with a key (window, framing options, the clip's and the source's files, the tracking settings) and reused by a rebuild or a new project of the same clip until one of them changes.
+- The page's bar follows the base's own progress, never goes back, and says at most 99% until the editor shows the project.
+
+**Why:** 15 s instead of 63 s to the editor showing the clip, with the same crop to a tenth of a pixel (SSIM 0.98 to 0.99 against the old base at 5 points, the same loudness); and the base now follows the clip as it is in the Library rather than a fresh guess: re-tracking can choose differently (a faster encode of the full render's cut turned this very clip's face-safe layout into the plain crop).
+
+**Trade-offs accepted:** the 10 s target is not met on this PC: reading the crop decodes the clip and the source once each (about 3 s, CPU-bound) and the base is one CPU encode of every frame (6 to 7 s), plus the editor's own start (about 2 s); a 9:16 clip is faster (its video in about 7.7 s). A base is about four times the size it was (58 to 83 MB for the three 21 to 25 s test clips, against 15 to 22 MB). A clip with a strong vignette or sharpen in its colour may not match and is made the full way.
+
+**Rejected:** a faster encoder setting for the full render (it changed the tracker's framing); re-running tracking with fewer samples or without the shot check (a different framing from the clip's); the editor's own FFmpeg with NVENC (the owner's rule); making the base ahead of time for every clip (work and disk for clips never opened).
+
+**To undo:** `fastbase.make` returning None sends every clip to the full render, which is the code before this change with only the models' loading moved earlier; `video.encoding.cpu_encoder_args` changes nothing outside its block.

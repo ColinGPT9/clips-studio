@@ -433,6 +433,7 @@ def test_the_routes_are_internal(env):
             ("POST", "/projects/{project_id}/redo"), ("GET", "/projects/{project_id}/revisions"),
             ("DELETE", "/projects/{project_id}")}
     assert mine <= served
-    assert {route for route in served if "project" in route[1]} == mine
+    # The editor's own /editor/... routes are checked in tests/test_kitty_editor_routes.py.
+    assert {route for route in served if "project" in route[1] and not route[1].startswith("/editor/")} == mine
     for route in mine:
         assert st.label(*route) == st.INTERNAL

@@ -21,6 +21,8 @@ with encoder_for(), which has probes and a cache of its own: an export can
 never change the encoder the renders use.
 """
 
+import contextlib
+import contextvars
 import subprocess
 import threading
 import time
@@ -242,7 +244,30 @@ def video_encoder_args(config: dict | None = None) -> list[str]:
         _selected = _select(mode)
         if mode != "auto" and _selected[0] != mode:
             _refused.add(mode)
+    here = _cpu_args_here.get()
+    if here is not None and _selected[0] == "cpu":
+        return here
     return _selected[1]
+
+
+# The CPU encoder's settings for the renders of one block of code, and only
+# there: a context variable, so another thread's render never sees them.
+# None unless cpu_encoder_args() set it, so every other render encodes
+# exactly as configured. A hardware encoder in use is never replaced.
+_cpu_args_here: contextvars.ContextVar = contextvars.ContextVar("cpu_encoder_args", default=None)
+
+
+@contextlib.contextmanager
+def cpu_encoder_args(args: list[str]):
+    """Inside this block, renders that would encode on the CPU use `args`
+    instead of CPU_ARGS. For a file that is encoded again before anyone
+    sees it, such as the editor's caption-free base video (kitty_editor),
+    where a faster preset costs nothing visible. Local to the thread."""
+    token = _cpu_args_here.set(list(args))
+    try:
+        yield
+    finally:
+        _cpu_args_here.reset(token)
 
 
 def using_hardware_encoder() -> bool:

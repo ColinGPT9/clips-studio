@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
+import { useEditorCover } from '../lib/editorCover'
 import type { Video } from '../lib/types'
 import NoClipsExplanation from './NoClipsExplanation'
 import { Bug, Bulb, Chat, Image as ImageIcon, TrendUp } from './icons'
@@ -36,6 +37,9 @@ const KINDS: { id: Kind; icon: JSX.Element; title: string; blurb: string }[] = [
 
 export default function FeedbackHub(): JSX.Element {
   const [open, setOpen] = useState(false)
+  // Opened from the sidebar beside Clips Kitty Editor: the editor is hidden
+  // while it is open, or it would be drawn over this dialog.
+  useEditorCover(open)
   const [kind, setKind] = useState<Kind | null>(null)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [areas, setAreas] = useState<string[]>([])

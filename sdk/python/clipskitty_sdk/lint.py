@@ -38,7 +38,8 @@ from .host import APP_PYTHON
 # them, and the app stops a run that tries (_clipskitty_script_host.py
 # ENGINE_PACKAGES; tests/test_script_host.py checks the two lists agree).
 ENGINE_PACKAGES = frozenset({
-    "analysis", "campaigns", "connected_accounts", "core", "creator", "gaming", "llm", "longform",
+    "analysis", "campaigns", "connected_accounts", "core", "creator", "gaming", "kitty_editor", "llm",
+    "longform",
     "main", "multilingual", "plugins", "publish", "remote_render", "server", "sources", "sports",
     "stream_workflows", "third_party", "transcription", "video", "video_editor", "voice",
     "_clipskitty_script_host",

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
+import { noticeText } from '../lib/projectExportPrompt'
 import type { Clip } from '../lib/types'
 import { t } from '../lib/i18n'
 
@@ -45,7 +46,7 @@ export default function EditChat({
     } catch (e) {
       setMessages((m) => [
         ...m,
-        { role: 'assistant', text: `Something went wrong: ${e instanceof Error ? e.message : e}` }
+        { role: 'assistant', text: noticeText(e, 'Something went wrong: ') }
       ])
     } finally {
       setBusy(false)

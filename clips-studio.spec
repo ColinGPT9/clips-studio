@@ -83,6 +83,10 @@ hiddenimports += collect_submodules("campaigns")
 # The voice layer (voice/): every import of it sits inside a function, and
 # its engines are imported only when something speaks.
 hiddenimports += collect_submodules("voice")
+# Clips Kitty Editor's projects and exports (kitty_editor/): the app asks it
+# things inside functions (server/api.py, server/jobs.py). The editor's own
+# program is not part of this build: bundling it is a later step.
+hiddenimports += collect_submodules("kitty_editor")
 # Cloud AI adapters (llm/providers/adapters/): adapter_for imports each by the
 # name its provider spec gives, which the analyser can't follow. 2.0.0 shipped
 # without them and saving any cloud key failed with a 500 (#135).

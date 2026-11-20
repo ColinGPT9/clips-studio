@@ -206,6 +206,45 @@ def kokoro_dir() -> Path | None:
     return None
 
 
+# Clips Kitty Editor (the editor behind the Editor page, editor suite step
+# K2): its program file, in the folder it ships in with its own DLLs.
+EDITOR_BINARY = "clips-kitty-editor"
+
+
+def _editor_file(folder: Path) -> Path:
+    return folder / (f"{EDITOR_BINARY}.exe" if os.name == "nt" else EDITOR_BINARY)
+
+
+def editor_dir() -> Path | None:
+    """The folder holding Clips Kitty Editor, or None.
+
+    Found only where it was put on purpose: CLIPS_KITTY_EDITOR_DIR names the
+    folder, else the installed app carries it in resources/editor (beside
+    resources/engine, where this program runs from when frozen). No PATH
+    lookup and no repo vendor folder: another program of the same name is
+    never taken for it, and a checkout without the variable has no editor.
+    """
+    roots: list[Path] = []
+    override = os.environ.get("CLIPS_KITTY_EDITOR_DIR")
+    if override:
+        roots.append(Path(override))
+    elif getattr(sys, "frozen", False):
+        roots.append(Path(sys.executable).parent.parent / "editor")
+    for root in roots:
+        try:
+            if _editor_file(root).is_file():
+                return root
+        except OSError:
+            continue
+    return None
+
+
+def editor_exe() -> str | None:
+    """Clips Kitty Editor's program file (editor_dir), or None."""
+    folder = editor_dir()
+    return str(_editor_file(folder)) if folder is not None else None
+
+
 def haar_cascade(filename: str) -> str | None:
     """An absolute path to a bundled OpenCV Haar cascade, or None.
 

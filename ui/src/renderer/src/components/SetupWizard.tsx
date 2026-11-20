@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, errorText } from '../lib/api'
 import { isChecking, pullPercent, pullStep } from '../lib/modelPull'
 import { useEvents } from '../lib/useEvents'
+import { useEditorCover } from '../lib/editorCover'
 import type { ModelPull, Preflight, PreflightCheck, SystemStats } from '../lib/types'
 import OpenRouterPrompt from './OpenRouterPrompt'
 
@@ -70,6 +71,9 @@ function CheckRow({ check }: { check: PreflightCheck }): JSX.Element {
  *  asks for nothing and installs nothing. It starts that one download by
  *  itself and shows how far along it is. */
 export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.Element {
+  // Settings can open it while Clips Kitty Editor is shown: the editor is
+  // hidden while it is open, or it would be drawn over the wizard.
+  useEditorCover(true)
   const [step, setStep] = useState(0)
   const [pre, setPre] = useState<Preflight | null>(null)
   const [stats, setStats] = useState<SystemStats | null>(null)

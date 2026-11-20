@@ -121,15 +121,38 @@ function ApprovalCard({item, onOpen}: {item: PendingApproval; onOpen: (videoId: 
   </article>
 }
 
-export function ApprovalCards({onOpen}: {onOpen: (videoId: string) => void}): JSX.Element | null {
+/** How many clip approvals are waiting (0 when Clip updates is off). */
+export function usePendingApprovals(): number {
   const {status, pending} = useClipUpdates()
+  return status?.enabled ? pending.length : 0
+}
+
+/** The cards at the bottom right. While Clips Kitty Editor is shown they
+ *  would be drawn under it (lib/editorCover.ts), so the Editor page's strip
+ *  shows "Clip approvals" instead: `hidden` until it is pressed, then shown
+ *  with a Close button (`onClose`). `onRequestShow`: a notification was
+ *  clicked while they are hidden. */
+export function ApprovalCards({onOpen, hidden = false, onClose, onRequestShow}: {
+  onOpen: (videoId: string) => void
+  hidden?: boolean
+  onClose?: () => void
+  onRequestShow?: () => void
+}): JSX.Element | null {
+  const {status, pending} = useClipUpdates()
+  const show = useRef(onRequestShow)
+  show.current = hidden ? onRequestShow : undefined
   useEffect(() => window.studio?.onClipApproval?.(() => {
+    if (show.current) {
+      show.current()
+      return
+    }
     const card = document.querySelector<HTMLElement>('[data-clip-approval]')
     card?.scrollIntoView({block:'nearest'})
     card?.focus()
   }), [])
-  if (!status?.enabled || !pending.length) return null
+  if (!status?.enabled || !pending.length || hidden) return null
   return <section aria-label={t("Clip approvals")} className="fixed right-5 bottom-5 z-50 w-96 max-w-[90vw] max-h-[80vh] overflow-y-auto space-y-3">
+    {onClose && <div className="flex justify-end"><button className="btn-ghost !py-1 text-sm" onClick={onClose}>{t('Close')}</button></div>}
     {pending.map(item => <ApprovalCard key={item.item_id} item={item} onOpen={onOpen} />)}
   </section>
 }

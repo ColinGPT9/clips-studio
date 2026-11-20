@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { noticeText } from '../lib/projectExportPrompt'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
 import { Folder } from './icons'
 import { activeLocale, t } from '../lib/i18n'
@@ -284,7 +285,7 @@ export default function MultilingualExport({
       })
       watchJob(res.job_id)
     } catch (e) {
-      setNotice(`Error: ${e instanceof Error ? e.message : String(e)}`)
+      setNotice(noticeText(e, 'Error: '))
       setRun(null)
       setBusy(false)
     }
@@ -351,7 +352,7 @@ export default function MultilingualExport({
       })
       watchJob(res.job_id, 'export')
     } catch (e) {
-      setNotice(`Error: ${e instanceof Error ? e.message : String(e)}`)
+      setNotice(noticeText(e, 'Error: '))
       setRun(null)
       setBusy(false)
     }

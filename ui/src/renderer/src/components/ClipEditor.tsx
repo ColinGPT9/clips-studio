@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
+import { noticeText } from '../lib/projectExportPrompt'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
 import { Folder, Scissors } from './icons'
 import ExportProgress from './ExportProgress'
@@ -30,11 +31,14 @@ export default function ClipEditor({
   onChanged,
   onOpenEditor,
   onPublish,
-  exports
+  exports,
+  onOpenInEditor
 }: {
   clip: Clip
   onChanged: () => void
   onOpenEditor: () => void
+  /** Open this clip in Clips Kitty Editor. Absent while the editor is not found. */
+  onOpenInEditor?: () => void
   /** Publish this one clip. Absent when no provider is set up, which hides
    *  the button rather than showing one that can only apologise. */
   onPublish?: () => void
@@ -75,7 +79,7 @@ export default function ClipEditor({
     try {
       await fn()
     } catch (e) {
-      flash(`Error: ${e instanceof Error ? e.message : String(e)}`)
+      flash(noticeText(e, 'Error: '))
     } finally {
       setBusy(null)
     }
@@ -138,15 +142,22 @@ export default function ClipEditor({
         className="w-full rounded-lg bg-base max-h-96"
       />
 
-      <button
-        onClick={onOpenEditor}
-        className="btn-accent w-full !py-3 text-base font-semibold"
-        title={t("Open the editor: trim, cut, mute words, censor, color, captions, AI edit")}
-      >
-        <span className="inline-flex items-center gap-2 justify-center">
-          <Scissors size={16} /> Edit this clip
-        </span>
-      </button>
+      <div className="flex gap-2">
+        <button
+          onClick={onOpenEditor}
+          className="btn-accent flex-1 !py-3 text-base font-semibold"
+          title={t("Open the editor: trim, cut, mute words, censor, color, captions, AI edit")}
+        >
+          <span className="inline-flex items-center gap-2 justify-center">
+            <Scissors size={16} /> Edit this clip
+          </span>
+        </button>
+        {onOpenInEditor && (
+          <button className="btn-ghost !py-3 font-semibold" onClick={onOpenInEditor} title={t('Open this clip in the editor')}>
+            {t('Open in editor')}
+          </button>
+        )}
+      </div>
 
       <div className="flex gap-2 flex-wrap text-xs items-center">
         {CHANNELS.map((ch) => (

@@ -144,11 +144,14 @@ const NOT_TYPING = new Set(['range', 'checkbox', 'radio', 'color', 'button', 'su
 export default function EditorView({
   clip,
   onClose,
-  onChanged
+  onChanged,
+  onOpenInEditor
 }: {
   clip: Clip
   onClose: () => void
   onChanged: () => void
+  /** Open this clip in Clips Kitty Editor. Absent while the editor is not found. */
+  onOpenInEditor?: () => void
 }): JSX.Element {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
@@ -238,11 +241,20 @@ export default function EditorView({
         <p className="font-semibold truncate inline-flex items-center gap-2">
           <Scissors size={15} /> Editing — {clip.title || clip.hook || 'Untitled clip'}
         </p>
+        {onOpenInEditor && (
+          <button
+            onClick={onOpenInEditor}
+            className="ml-auto shrink-0 px-3 py-1.5 rounded-lg bg-raised text-sm hover:bg-raised/70"
+            title={t('Open this clip in the editor')}
+          >
+            {t('Open in editor')}
+          </button>
+        )}
         {/* Nothing at all when publishing is switched off in Settings. */}
         {ytEnabled && (
           <button
             onClick={() => setTabRequest({ tab: 'youtube', n: (tabRequest?.n ?? 0) + 1 })}
-            className="ml-auto shrink-0 px-3 py-1.5 rounded-lg bg-raised text-sm hover:bg-raised/70 inline-flex items-center gap-1.5"
+            className={`${onOpenInEditor ? '' : 'ml-auto '}shrink-0 px-3 py-1.5 rounded-lg bg-raised text-sm hover:bg-raised/70 inline-flex items-center gap-1.5`}
             title={t("Publish this clip to YouTube")}
           >
             <YouTube size={15} /> YouTube

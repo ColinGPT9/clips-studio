@@ -308,10 +308,16 @@ class RenderIn(BaseModel):
     # editor used them: {"used": [{"id", "applied"}]} (plugins/edit_marks.py).
     # The worker keeps only what the render really changed.
     suggestions: dict | None = None
+    # The clip's file is an export of Clips Kitty Editor (editor suite step
+    # K2, E5): a render from the clip's own settings would replace it with
+    # the clip as it was before the editor's changes. Refused (409) unless
+    # the person said that is what they want.
+    replace_project_edits: bool = False
 
 
 class CaptionsIn(BaseModel):
     lines: list[dict]  # [{"start", "end", "text"}] clip-relative
+    replace_project_edits: bool = False     # as RenderIn's (editor suite step K2)
 
 
 class TightenIn(BaseModel):
@@ -342,6 +348,7 @@ class CancelIn(BaseModel):
 
 class AiEditIn(BaseModel):
     message: str
+    replace_project_edits: bool = False     # as RenderIn's (editor suite step K2)
 
 
 class AgentIn(BaseModel):
@@ -416,6 +423,9 @@ class TranslateIn(BaseModel):
     voices: dict | None = None    # {language: voice id} chosen by the creator
     style: dict | None = None     # subtitle font/size/colour/position; falls
                                   # back to the clip's own caption style
+    without_project_edits: bool = False  # "Make it anyway": a clip whose file is
+                                  # an editor export is translated from the
+                                  # clip as the AI made it (project_edits_left_out)
 
 
 class FeedbackIn(BaseModel):
@@ -939,6 +949,16 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     from server import projects_api
 
     projects_api.install(app, db=db, data_dir=data_dir, session_secret=desktop_session)
+
+    # Clips Kitty Editor (kitty_editor/, editor suite step K2): where the
+    # editor is, its projects for a clip, a whole video or a file, and taking
+    # its exports back in. Guarded like the project routes; nothing here runs
+    # unless one of these routes is called.
+    from server import kitty_editor_api
+
+    kitty_editor_api.install(app, db=db, data_dir=data_dir, session_secret=desktop_session,
+                             broadcaster=broadcaster, config=config,
+                             clip_captions=lambda row: _clip_captions(row))
 
     # Settings → Voice and speech on request (voice/, editor suite step V1):
     # the built-in voice, or the person's own Voicebox, VoiceStudio or other
@@ -1784,7 +1804,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     def clips_for_video(video_id: str):
         d = db()
         try:
-            return [_clip_json(r) for r in d.clips_for_video(video_id)]
+            return _with_editor_exports([_clip_json(r) for r in d.clips_for_video(video_id)], data_dir)
         finally:
             d.close()
 
@@ -1996,7 +2016,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 for l in body.lines
                 if "start" in l and "end" in l
             ]
+            # A render from the clip's own settings, as Apply's (K2, E5).
+            project_edits_kept(d, clip_id, body.replace_project_edits)
             payload = {"clip_id": clip_id, "render_opts": {"caption_lines": lines}}
+            if body.replace_project_edits:
+                payload["replace_project_edits"] = True     # the person chose to (jobs.py)
             job_id = d.add_job("render", json.dumps(payload))
             # The typed lines are only in the job until its render works:
             # Make clips again keeps the clip meanwhile, and after (StateDB.mark_edited).
@@ -2065,6 +2089,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             row = d.get_clip(clip_id)
             if row is None:
                 raise HTTPException(404, "no such clip")
+            project_edits_kept(d, clip_id, body.replace_project_edits)
 
             opts = json.loads(row["render_opts"]) if row["render_opts"] else {}
             caption_lines = _clip_captions(row, as_burned=True)
@@ -2101,6 +2126,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                     payload["end"] = result["end"]
                 if result["render_opts"]:
                     payload["render_opts"] = result["render_opts"]
+                if body.replace_project_edits:
+                    payload["replace_project_edits"] = True     # the person chose to (jobs.py)
                 job_id = d.add_job("render", json.dumps(payload))
                 d.mark_edited(clip_id)   # Make clips again keeps it, the render failing too
                 _log_feedback(
@@ -2128,6 +2155,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             row = d.get_clip(clip_id)
             if row is None:
                 raise HTTPException(404, "no such clip")
+            project_edits_kept(d, clip_id, body.replace_project_edits)
             payload = {"clip_id": clip_id}
             if body.start is not None:
                 payload["start"] = body.start
@@ -2137,6 +2165,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 payload["render_opts"] = _clean_render_gaming(dict(body.render_opts))
             if body.suggestions is not None:
                 payload["suggestions"] = used_suggestions(body.suggestions)
+            if body.replace_project_edits:
+                payload["replace_project_edits"] = True     # the person chose to (jobs.py)
             job_id = d.add_job("render", json.dumps(payload))
             d.mark_edited(clip_id)   # Make clips again keeps it, the render failing too
             _log_feedback(
@@ -2586,6 +2616,15 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         stage = body.stage if body.stage in ("translate", "export") else "export"
         if stage == "export" and not body.folder:
             raise HTTPException(400, "choose an export folder")
+        if stage == "export" and (body.burn or body.dub or body.subtitles):
+            # Burned subtitles, a dub and subtitle files are made from the
+            # clip's own window and caption lines: ask first for a clip whose
+            # file is an editor export (K2, E5).
+            d = db()
+            try:
+                project_edits_left_out(d, body.clip_ids[:50], body.without_project_edits)
+            finally:
+                d.close()
         # Held until the job naming them is queued (core/in_use.py).
         with in_use.holding(body.clip_ids[:50]):
             job_id = _queue_translation(body, langs, stage)
@@ -2607,6 +2646,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 "post_text": body.post_text,
                 "voices": body.voices or {},
                 "style": body.style or {},
+                # Only when chosen, so every other job's payload is as before.
+                **({"without_project_edits": True} if body.without_project_edits else {}),
             }))
         finally:
             d.close()
@@ -3914,6 +3955,87 @@ def _clip_json(row) -> dict:
     d["render_opts"] = json.loads(d["render_opts"]) if d.get("render_opts") else {}
     d["media_version"] = _media_version(d.get("path"))
     return d
+
+
+def _with_editor_exports(clips: list[dict], data_dir: Path) -> list[dict]:
+    """Each clip whose file is an export of Clips Kitty Editor gains
+    `editor_export`: {"seconds": the file's real length, "project_id": the
+    project it came from, or ""} (editor suite step K2). The clip's own start
+    and end still describe the AI's window. A clip the editor never exported
+    is given back untouched, and the editor's package is not loaded for it."""
+    from core.state import in_project_exports
+
+    mine = [c for c in clips if in_project_exports(c.get("path"), data_dir)]
+    if not mine:
+        return clips
+    from kitty_editor import registry
+
+    known = registry.exports_for(data_dir, [c["path"] for c in mine])
+    for clip in mine:
+        clip["editor_export"] = known.get(clip["path"]) or {"seconds": 0.0, "project_id": ""}
+    return clips
+
+
+def project_edits_kept(d, clip_id: int, replace: bool) -> None:
+    """Refuse a render of a clip whose file is an export of Clips Kitty
+    Editor, made from the clip's own (older) settings, unless the person
+    chose to replace it (editor suite step K2, E5). Every route that queues
+    such a render asks this first: Apply (POST /clips/{id}/render), the chat
+    edit, PUT /clips/{id}/captions and "Apply edits & upload"
+    (server/youtube_api.py, render_first). A clip with no such export renders
+    exactly as before.
+
+    The clip's file is told to be an export by the file itself, so a deleted
+    project still asks: then `project_id` is null and there is no project to
+    open."""
+    if replace or d.project_export_of(clip_id) is None:
+        return
+    message = ("This clip was changed in the editor. Applying changes here starts again from the clip as "
+               "it was before, so those changes would be lost.")
+    raise HTTPException(409, {"message": message, "reason": "project_export",
+                              "project_id": _editor_project_of(d, clip_id)})
+
+
+def project_edits_left_out(d, clip_ids, go_ahead: bool) -> None:
+    """Refuse to make a SEPARATE file (a translation, a dub, subtitle files)
+    from the clip's own window when the clip's file is an editor export,
+    unless the person chose "Make it anyway" (editor suite step K2, E5).
+    project_edits_kept's sibling: that one guards renders that replace the
+    clip's file; this one guards new files made beside it, which would be
+    the clip as the AI made it, without the editor's changes. A batch is
+    asked about once, naming every clip it affects (`clip_ids`, `count` of
+    `total`); `project_id` is there only when one clip is affected and its
+    project still exists, so the app can offer to open it. A batch with no
+    such clip goes ahead exactly as before."""
+    if go_ahead:
+        return
+    ids = list(clip_ids or [])
+    found = d.project_export_clips(ids)
+    if not found:
+        return
+    if len(found) == 1:
+        message = ("This clip was changed in the editor. The new files are made from the clip as the AI "
+                   "made it, without the editor's changes.")
+    else:
+        message = (f"{len(found)} of these clips were changed in the editor. The new files are made from "
+                   "those clips as the AI made them, without the editor's changes.")
+    only = _editor_project_of(d, next(iter(found))) if len(found) == 1 else None
+    raise HTTPException(409, {"message": message, "reason": "project_export", "separate_file": True,
+                              "clip_ids": list(found), "count": len(found), "total": len(ids),
+                              "project_id": only})
+
+
+def _editor_project_of(d, clip_id) -> str | None:
+    """The editor project whose export this clip's file is, when that
+    project is still there; None otherwise. Only asked for a clip already
+    known to be an editor export."""
+    try:
+        from kitty_editor import registry
+
+        row = d.get_clip(int(clip_id))
+        return registry.project_of_export(row["path"], d.data_dir()) or None if row is not None else None
+    except Exception:
+        return None
 
 
 def _media_version(path) -> str:

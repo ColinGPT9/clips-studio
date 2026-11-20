@@ -264,9 +264,60 @@ Some voices may not be used in videos that earn money. Clips Kitty marks those w
 - A voice you save as your usual one in Settings → Voice is the voice of your dubs in that language, unless you pick another in the dubbing window.
 - If the voice you picked can't speak when the dub is made, the dub ends as failed and tells you why. It never says it exported a dubbed video that wasn't made.
 
-## The new editor (beta)
+## The editor
 
-Coming in step 8
+Clips Kitty has a full editor for when you want to do more than a quick fix: a timeline with tracks, cuts, captions, text, sound and export. It's called **Clips Kitty Editor** and it opens inside the Clips Kitty window, on the **Editor** page. It's based on Concat, an open-source video editor.
+
+If you don't see **Editor** in the menu on the left, your copy of Clips Kitty doesn't have the editor installed, and everything else works as before.
+
+### Open a clip in the editor
+
+1. Go to **Clip Editor** and pick a video.
+2. Point at a clip and click **Edit** (next to **Publish**). You can also click **Edit** next to **Edit this clip**.
+3. The **Editor** page opens. The first time, Clips Kitty gets the clip ready, which takes a minute or two; you see how far it is. After that it opens straight away.
+
+In the editor:
+
+- The video is your clip with the AI's framing. The parts you cut are separate pieces on the timeline: drag a piece's edge to take a cut back.
+- The captions are text on their own track. Click one to change its words, colour or size.
+- The hook, music and watermark are there as their own items when the clip has them.
+- If something from the clip couldn't come along (for example the lit-up word in your captions), the bar at the top says **Some things from the clip are not carried over.** Point at it to read what.
+
+The editor saves by itself as you work. **← Projects** at the top saves and closes the project.
+
+### Export
+
+Click **Export** in the editor (top right), then **Export**.
+
+- **A clip:** the export becomes that clip's video in your Library. The bar says **Saved as this clip's video.**
+- **A whole video or a file:** it's saved to your export folder (the one in Settings). If you haven't chosen one, it goes to your Downloads folder, the same place the app's other Export buttons use. The name box starts as "project name - date"; change it if you like, and that is the file's name. The bar says where, with **Show in folder**.
+
+The Export window says under the name where your video will go: **Replaces this clip in the Library**, or the export folder.
+
+No end card is added to what you export from the editor.
+
+### Edit a whole video or a file from your PC
+
+- **A whole video:** in **Clip Editor**, pick the video and click **Edit whole video**, choose a shape (16:9 wide, 9:16 tall, 1:1 square, 4:5 portrait) and click **Open**. The Editor page offers the same under **Edit a whole video**.
+- **A file from your PC:** on the **Editor** page, choose a shape under **Edit a file from your PC** and click **Choose a file…**. No AI runs and nothing is added to your Library.
+
+Your projects are listed under **Recent projects** on the Editor page. Click one to open it again, or **✕** to delete it (videos you exported from it stay).
+
+### Your editor changes are never lost without a word
+
+Once you've exported a clip from the editor, today's clip editor (**Edit this clip** in the Clip Editor page, called **Quick edit** here) would start again from the clip as the AI made it. So:
+
+- **Apply**, the AI chat edit, saving captions and **Apply edits & upload** ask first. Choose **Open in editor**, **Apply anyway** or **Cancel**.
+- **Export in other languages** asks too, because those new files are made from the clip as the AI made it.
+- **Make clips again** and Storage clean-up keep your editor version.
+- If you changed a clip in Quick edit after its editor project was made, opening it in the editor asks whether to **Open the project** as you left it or **Start a new project from the clip**. An export from that older project is saved next to the clip instead of replacing it.
+
+### Good to know
+
+- The editor is drawn over the page. When Clips Kitty shows something of its own there (for example the Feedback window), the editor steps aside until you close it.
+- Click in the editor to type in it; click anywhere else in Clips Kitty to type there. With the keyboard: **Tab** to the editor and press **Enter** to use it, **Ctrl+F6** to come back.
+- If your graphics card can't be used, or the editor can't start, the Editor page says so with **Try again**. Updating the graphics driver usually helps.
+- The editor needs Windows.
 
 ## Captions and text in the editor
 

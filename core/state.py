@@ -8,6 +8,7 @@ nothing is ever reprocessed or double-uploaded.
 
 import hashlib
 import json
+import os
 import sqlite3
 import unicodedata
 from contextlib import contextmanager
@@ -562,6 +563,32 @@ def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+# Where Clips Kitty Editor's exports of a clip's project go, under the data
+# folder (kitty_editor/intake.py), named <project id>-<n>.mp4. Nothing else
+# ever writes there, so a clip whose file is in this folder is an editor
+# export (editor suite step K2, E5), with or without its project.
+PROJECT_EXPORTS_FOLDER = ("clips", "projects")
+
+
+def in_project_exports(path, data_dir) -> bool:
+    """Whether `path` is a file directly in the data folder's project
+    exports folder: compared as the system compares paths (case on
+    Windows, "." and ".." parts), and by where links lead. False without a
+    data folder."""
+    if not path or data_dir is None:
+        return False
+    folder = Path(data_dir).joinpath(*PROJECT_EXPORTS_FOLDER)
+
+    def same(a, b) -> bool:
+        return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+    try:
+        parent = Path(str(path)).parent
+        return same(parent, folder) or same(os.path.realpath(parent), os.path.realpath(folder))
+    except (OSError, ValueError):
+        return False
+
+
 # app_state: the last clip id from before clips.edited_at was kept. A title,
 # description or hashtags a person changed on that clip, or on any before it,
 # left no mark, so Make clips again (core/remake.py) keeps those clips. Every
@@ -1019,6 +1046,51 @@ class StateDB:
                         "at": str(row["updated_at"] or ""),
                     })),
                 )
+
+    def project_export_of(self, clip_id: int) -> str | None:
+        """"" when this clip's file is an export of Clips Kitty Editor, None
+        when it is not (editor suite step K2, E5). An editor export points
+        the clip at its file and keeps the clip's window and render options
+        as they were, so a re-render from those would replace the export
+        with the clip as it was before the editor's changes, and delete it.
+
+        Told from the file alone: an editor export is the only thing written
+        to data/clips/projects/ (kitty_editor/intake.py), so the rule holds
+        with no project left. The routes add which project it was
+        (kitty_editor.registry.project_of_export); the database never loads
+        that package."""
+        try:
+            row = self.conn.execute("SELECT path FROM clips WHERE id = ?", (int(clip_id),)).fetchone()
+        except (OverflowError, TypeError, ValueError):
+            return None
+        if row is None or not row["path"]:
+            return None
+        return "" if in_project_exports(row["path"], self.data_dir()) else None
+
+    def project_export_clips(self, clip_ids) -> dict[int, str]:
+        """Of these clips, the ones whose file is an editor export, in the
+        order given (project_export_of). For the routes and jobs that make
+        a separate file from a clip's own window."""
+        found: dict[int, str] = {}
+        for clip_id in clip_ids or ():
+            try:
+                key = int(clip_id)
+            except (TypeError, ValueError):
+                continue
+            if key in found:
+                continue
+            project_id = self.project_export_of(key)
+            if project_id is not None:
+                found[key] = project_id
+        return found
+
+    def data_dir(self) -> Path | None:
+        """The data folder: the one this database file is in (state.db sits
+        at its top, server/api.py). None for a database with no file."""
+        for entry in self.conn.execute("PRAGMA database_list").fetchall():
+            if entry["name"] == "main" and entry["file"]:
+                return Path(entry["file"]).parent
+        return None
 
     def mark_edited(self, clip_id: int) -> None:
         """A person asked for a render of the clip: marked as its job is

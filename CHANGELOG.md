@@ -12,6 +12,19 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Added
 
+- **A full editor, inside Clips Kitty (when the editor is installed).** The new Editor page
+  holds Clips Kitty Editor, a full timeline editor with tracks, captions, sound and export,
+  based on Concat. "Open in editor" on a clip opens that clip in it with the AI's framing kept, its
+  cuts as pieces you can drag back, and its captions as text you can change. "Edit whole
+  video" opens a Library video whole, in 16:9, 9:16, 1:1 or 4:5, and you can open a file
+  from your PC the same way with no AI run. When you export a clip there, it becomes that
+  clip's video in the Library; a whole video or a file is saved to your export folder under
+  the name you give it in the Export window (it starts as "name - date"). If you changed the clip in Quick edit meanwhile, the export is saved next
+  to it instead and nothing is replaced. After that, anything that would make the clip
+  again from the AI's version (Apply in Quick edit, the chat edit, Export in other
+  languages) asks you first, and Make clips again and Storage clean-up leave it alone. No
+  end card is added to what the editor exports. Without the editor installed, Clips Kitty
+  looks and works as before.
 - **A built-in voice, and your own voice apps.** Clips Kitty now has its own voice for
   English, Spanish, French, Hindi, Italian and Portuguese. It runs on your PC with no
   account and no internet, and its voices may be used in videos that earn money. Dubbing
