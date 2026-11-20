@@ -43,6 +43,9 @@ _STAGES = {
     "ranking": (0.65, 0.05, "Ranking the best moments"),
     # A Marketplace plugin saying what happens in the moments (plugins/steps.py).
     "understand": (0.65, 0.05, "Understanding the moments"),
+    # The local vision model looking at the finalists' frames before ranking
+    # (analysis/game_vision.py, sports/*/look.py).
+    "looking": (0.65, 0.05, "Looking at the best clips"),
     "reactions": (0.70, 0.08, "Scoring on-screen reactions"),
     # A Marketplace plugin suggesting edits for the clips (plugins/steps.py).
     "edit": (0.70, 0.08, "Suggesting edits"),

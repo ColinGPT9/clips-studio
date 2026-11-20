@@ -26,6 +26,10 @@ const STAGES: Record<string, { base: number; weight: number; label: string }> = 
   ranking: { base: 0.65, weight: 0.05, label: 'Ranking the best moments' },
   // A Marketplace plugin saying what happens in the moments (Rate & understand).
   understand: { base: 0.65, weight: 0.05, label: 'Understanding the moments' },
+  // The local vision model looking at the finalists' frames before ranking
+  // (a gaming stream's best clips, a match's reaction shots): one image call
+  // per clip, minutes on CPU — the last analyze pass that reported nothing.
+  looking: { base: 0.65, weight: 0.05, label: 'Looking at the best clips' },
   reactions: { base: 0.7, weight: 0.08, label: 'Scoring on-screen reactions' },
   // A Marketplace plugin suggesting edits for the clips (Suggest edits).
   edit: { base: 0.7, weight: 0.08, label: 'Suggesting edits' },

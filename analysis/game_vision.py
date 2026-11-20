@@ -137,13 +137,17 @@ def look_at(candidates: list, video_path, llm, gaming, segments, events, grab=No
 
 def _look(ranked, template, llm, gaming, segments, events, grab, budget, cancel, talk=None) -> int:
     from analysis.gaming import genre_spec
+    from core import progress
 
     t0 = time.monotonic()
     looked = 0
-    for c in ranked:
+    for li, c in enumerate(ranked, 1):
         if time.monotonic() - t0 > budget:
             break
         cancel.check_active()
+        # One image call per clip, each tens of seconds on CPU — without this
+        # the bar sat at the end of "analyze" for minutes, reading as a hang.
+        progress.emit(stage="looking", current=li, total=len(ranked))
         times = frame_times(c.start, c.end)
         frames = [grab(t) for t in times]
         images = [_jpeg(f) for f in frames if f is not None]
