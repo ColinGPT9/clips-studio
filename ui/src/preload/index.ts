@@ -56,6 +56,47 @@ contextBridge.exposeInMainWorld('studio', {
     set: (on: boolean): Promise<{ keepInTray: boolean }> => ipcRenderer.invoke('tray:set', on)
   },
 
+  // Clips Kitty Editor inside this window (ui/src/main/editor.ts). The page
+  // names a project by its id only; where the editor and the project are
+  // comes from the engine, in the main process.
+  editor: {
+    show: (projectId: string, opts: { exportFolder: string; destination?: string }): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('editor:show', projectId, opts),
+    setBounds: (rect: { x: number; y: number; width: number; height: number }): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('editor:setBounds', rect),
+    setVisible: (visible: boolean): Promise<{ ok: boolean }> => ipcRenderer.invoke('editor:setVisible', visible),
+    focus: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('editor:focus'),
+    blur: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('editor:blur'),
+    close: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('editor:close'),
+    getState: (): Promise<Record<string, unknown> | null> => ipcRenderer.invoke('editor:getState'),
+    setWords: (words: { message: string; keep: string; quit: string }): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('editor:words', words),
+    reveal: (projectId: string, index: number): Promise<boolean> =>
+      ipcRenderer.invoke('editor:reveal', projectId, index),
+    ask: (question: {
+      message: string
+      detail?: string
+      buttons: string[]
+      defaultId?: number
+      cancelId?: number
+    }): Promise<number> => ipcRenderer.invoke('editor:ask', question),
+    onState: (fn: (s: Record<string, unknown>) => void): (() => void) => {
+      const handler = (_e: unknown, s: Record<string, unknown>): void => fn(s)
+      ipcRenderer.on('editor:state', handler)
+      return () => ipcRenderer.removeListener('editor:state', handler)
+    },
+    onExport: (fn: (answer: Record<string, unknown>) => void): (() => void) => {
+      const handler = (_e: unknown, answer: Record<string, unknown>): void => fn(answer)
+      ipcRenderer.on('editor:export', handler)
+      return () => ipcRenderer.removeListener('editor:export', handler)
+    },
+    onMeasure: (fn: () => void): (() => void) => {
+      const handler = (): void => fn()
+      ipcRenderer.on('editor:measure', handler)
+      return () => ipcRenderer.removeListener('editor:measure', handler)
+    }
+  },
+
   // Updates. The renderer never touches electron-updater directly; it asks
   // the main process and listens for state.
   update: {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { noticeText } from '../lib/projectExportPrompt'
 import type { CaptionLine, CaptionStyle, Clip } from '../lib/types'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
 
@@ -75,7 +76,7 @@ export default function CaptionEditor({
       setDirty(false)
       onQueued('Caption changes queued — the clip is re-rendering.')
     } catch (e) {
-      onQueued(`Error: ${e instanceof Error ? e.message : String(e)}`)
+      onQueued(noticeText(e, 'Error: '))
     } finally {
       setBusy(false)
     }

@@ -20,6 +20,10 @@ import { remakeBlocked, remakeResultText } from '../lib/remake'
 import { useEvents } from '../lib/useEvents'
 import { useExportJobs } from '../lib/useExportJobs'
 import { useJobWatch } from '../lib/useJobWatch'
+import { openInEditor } from '../lib/editor'
+import { useEditorFound } from '../lib/editorStatus'
+import type { EditorShape } from '../lib/api'
+import { ShapeSelect } from './Editor'
 import type { StudioTarget } from '../App'
 import type { Clip, ExportJob, RemakePreview, StudioEvent, Video } from '../lib/types'
 
@@ -46,6 +50,10 @@ export default function ClipStudio({
   const [publishOne, setPublishOne] = useState<Clip | null>(null)
   const [showSchedule, setShowSchedule] = useState(false)
   const [editingClipId, setEditingClipId] = useState<number | null>(null)
+  // Clips Kitty Editor (editor suite K2): offered only when it is found.
+  const editorFound = useEditorFound()
+  const [wholeOpen, setWholeOpen] = useState(false)
+  const [wholeShape, setWholeShape] = useState<EditorShape>('16:9')
   const [videoSearch, setVideoSearch] = useState('')
   // Publishing is only offered once Upload-Post is switched on AND a key
   // is stored — the same rule the editor tab follows.
@@ -213,6 +221,9 @@ export default function ClipStudio({
     if (e.type === 'job' && e.status === 'done' && e.result && e.video_id === activeVideo)
       setRemakeNotice(`${t('Make clips again:')} ${remakeResultText(e.result, t)}`)
     if (e.type === 'queue' && activeVideo) void refreshRemake(activeVideo)
+    // Clips Kitty Editor's export taken in as a clip's video: its card and
+    // player show the new file.
+    if ((e.type as string) === 'clip_file_replaced' && activeVideo) refreshClips(activeVideo)
     // A publish or an export starting or ending: Make clips again is off
     // while one of the video's clips is being sent or exported.
     if (
@@ -359,6 +370,9 @@ export default function ClipStudio({
           clip={editingClip}
           onClose={() => setEditingClipId(null)}
           onChanged={() => activeVideo && refreshClips(activeVideo)}
+          onOpenInEditor={
+            editorFound ? () => void openInEditor({ kind: 'clip', clip_id: editingClip.id }) : undefined
+          }
         />
       </div>
     )
@@ -513,6 +527,40 @@ export default function ClipStudio({
               >
                 {t('Make clips again…')}
               </button>
+              {editorFound && activeVideo && (
+                <div className="relative">
+                  <button
+                    className="btn-ghost !py-1 !px-3 text-xs"
+                    aria-haspopup="dialog"
+                    aria-expanded={wholeOpen}
+                    onClick={() => setWholeOpen((o) => !o)}
+                    title={t('Open this whole video in the editor')}
+                  >
+                    {t('Edit whole video')}
+                  </button>
+                  {wholeOpen && (
+                    <div
+                      role="dialog"
+                      aria-label={t('Edit whole video')}
+                      className="absolute z-40 right-0 mt-1 flex gap-2 items-center rounded-lg bg-surface border border-raised shadow-xl p-2"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') setWholeOpen(false)
+                      }}
+                    >
+                      <ShapeSelect value={wholeShape} onChange={setWholeShape} />
+                      <button
+                        className="btn-accent !py-1 !px-3 text-xs"
+                        onClick={() => {
+                          setWholeOpen(false)
+                          void openInEditor({ kind: 'video', video_id: activeVideo, shape: wholeShape })
+                        }}
+                      >
+                        {t('Open')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             {exportNotice && <p className="text-sm text-accent">{exportNotice}</p>}
             {remakeNotice && <p className="text-sm text-accent">{remakeNotice}</p>}
@@ -532,6 +580,7 @@ export default function ClipStudio({
                   onDelete={() => deleteClip(clip.id)}
                   onToggleExported={() => toggleExported(clip)}
                   onPublish={() => setPublishOne(clip)}
+                  onEdit={editorFound ? () => void openInEditor({ kind: 'clip', clip_id: clip.id }) : undefined}
                 />
               ))}
               {clips.length === 0 && (
@@ -553,6 +602,9 @@ export default function ClipStudio({
                 clip={current}
                 onChanged={() => activeVideo && refreshClips(activeVideo)}
                 onOpenEditor={() => setEditingClipId(current.id)}
+                onOpenInEditor={
+                  editorFound ? () => void openInEditor({ kind: 'clip', clip_id: current.id }) : undefined
+                }
                 onPublish={publishReady ? () => setPublishOne(current) : undefined}
                 exports={exports}
               />

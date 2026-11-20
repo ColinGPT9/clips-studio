@@ -313,3 +313,75 @@ def test_the_worker_and_the_database_never_import_the_package():
         if PACKAGE not in path.parents and project_imports(path.read_text(encoding="utf-8")))
     assert importers == ["server/projects_api.py"]
 
+
+
+# ---- Clips Kitty Editor's package (editor suite step K2) -----------------------------------------
+#
+# kitty_editor/ builds the projects of the editor behind the Editor page and
+# takes its exports back in. The same rules as the project package: plain
+# auto-clipping never loads it, it is standard library only when imported,
+# and the clip database and the job worker never import it at their top (the
+# worker asks it one thing, inside the function that re-renders a clip).
+
+KITTY = ROOT / "kitty_editor"
+KITTY_FILES = ("__init__.py", "automation.py", "build.py", "fastbase.py", "intake.py", "registry.py")
+KITTY_ASKS_INSIDE_A_FUNCTION = {
+    "registry.py": {"core.binaries"},
+    # core.modes, video.encoding: the base's layout and its encoder settings; video.asd and
+    # video.tracker: the full render's models loaded while it cuts (K-D24).
+    "build.py": {"core.binaries", "core.models", "core.modes", "core.paths", "core.pipeline", "video.asd",
+                 "video.captions", "video.encoding", "video.tracker", "video_editor.captions",
+                 "video_editor.timeline"},
+    # The clip's framing read back from its file (K-D24): numpy and OpenCV, as the tracker uses them.
+    "fastbase.py": {"core.binaries", "core.modes", "core.pipeline", "cv2", "numpy", "numpy.lib.stride_tricks",
+                    "video.encoding", "video.filters"},
+    # core.remake: file_in_use, so an export never deletes a file another clip plays (K-D16).
+    "intake.py": {"core.paths", "core.remake", "core.state", "server.jobs"},
+}
+
+
+def _kitty(name: str) -> bool:
+    return name == "kitty_editor" or name.startswith("kitty_editor.")
+
+
+def test_nothing_the_pipeline_loads_imports_the_editor_package():
+    names = {_module_name(ROOT, path) for path in reachable_modules(ROOT, PIPELINE)}
+    assert not any(_kitty(n) for n in names), "plain auto-clipping would load kitty_editor"
+    for path, via in reachable_modules(ROOT, PIPELINE).items():
+        found = sorted(n for n in _imported_names(ROOT, path) if _kitty(n))
+        assert not found, f"{' -> '.join(via)} imports {found}"
+        text = path.read_text(encoding="utf-8")
+        assert "import_module('kitty_editor" not in text and 'import_module("kitty_editor' not in text, via
+
+
+def test_the_editor_package_is_these_files_and_standard_library_only():
+    assert sorted(p.name for p in KITTY.glob("*.py")) == sorted(KITTY_FILES)
+    for name in KITTY_FILES:
+        top, inner = _imports(KITTY / name)
+        assert {n for n in _outside(top) if not _kitty(n)} == set(), f"{name} imports {_outside(top)} at its top"
+        assert {n for n in _outside(inner) if not _kitty(n)} == KITTY_ASKS_INSIDE_A_FUNCTION.get(name, set()), name
+
+
+def test_loading_the_editor_package_loads_nothing_heavy():
+    code = "; ".join((
+        "import sys",
+        f"sys.path.insert(0, {str(ROOT)!r})",
+        "from kitty_editor import automation, build, intake, registry",
+        "registry.list_all('nowhere'); registry.project_of_export('x/clips/projects/' + '0' * 32 + '-1.mp4')",
+        "heavy = [m for m in ('numpy', 'cv2', 'torch', 'PIL', 'fastapi', 'pydantic', 'yaml', 'core.pipeline',"
+        " 'core.state', 'server.jobs', 'server.api') if m in sys.modules]",
+        "print('loaded:', heavy)",
+    ))
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "loaded: []", out.stdout
+
+
+def test_the_database_and_the_worker_never_import_the_editor_package_at_their_top():
+    for rel in ("core/state.py", "server/jobs.py", "core/housekeeping.py", "core/remake.py", "core/pipeline.py"):
+        top, _ = _imports(ROOT / rel)
+        assert not any(_kitty(n) for n in top), rel
+    # The database and Storage's clean-up never import it at all: they tell
+    # an editor export by its folder and read the manifests as plain JSON.
+    for rel in ("core/state.py", "core/housekeeping.py", "core/pipeline.py"):
+        assert "kitty_editor" not in {n.split(".")[0] for n in _imported_names(ROOT, ROOT / rel)}, rel

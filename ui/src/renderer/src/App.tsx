@@ -7,6 +7,8 @@ import Models from './pages/Models'
 import Queue from './pages/Queue'
 import Settings from './pages/Settings'
 import Watch from './pages/Watch'
+import Editor from './pages/Editor'
+import ProjectExportPrompt from './components/editor/ProjectExportPrompt'
 import FeedbackHub from './components/FeedbackHub'
 import ModelSwitcher from './components/ModelSwitcher'
 import SetupWizard, { setupDone } from './components/SetupWizard'
@@ -16,11 +18,20 @@ import { api } from './lib/api'
 import type { StudioEvent } from './lib/types'
 import { useEvents } from './lib/useEvents'
 import { useQueueNotifications } from './lib/queueNotifications'
-import { ApprovalCards, ClipUpdatesProvider } from './components/ApprovalCard'
+import { ApprovalCards, ClipUpdatesProvider, usePendingApprovals } from './components/ApprovalCard'
+import {
+  OPEN_EDITOR_PAGE,
+  connectEditorBridge,
+  noteAppPointer,
+  onEditorProjectEvent,
+  useEditorStore
+} from './lib/editor'
+import { useEditorCover } from './lib/editorCover'
+import { loadEditorStatus, useEditorFound } from './lib/editorStatus'
 import { OPEN_MARKETPLACE, checkOnlineListAtStart } from './lib/plugins'
 import mascot from './assets/mascot.png'
 
-type Page = 'dashboard' | 'queue' | 'watch' | 'studio' | 'creators' | 'marketplace' | 'models' | 'settings'
+type Page = 'dashboard' | 'queue' | 'watch' | 'studio' | 'editor' | 'creators' | 'marketplace' | 'models' | 'settings'
 
 const GITHUB_URL = 'https://github.com/ColinGPT9/clips-studio'
 
@@ -32,6 +43,9 @@ const NAV: { id: Page; label: string; icon: string }[] = [
   // enough to block the Microsoft Store listing, so do not change it back —
   // "Clip Editor" is also just what the page is.
   { id: 'studio', label: 'Clip Editor', icon: '✂' },
+  // Clips Kitty Editor (editor suite K2). Only shown while the engine says
+  // the editor is found (lib/editorStatus.ts); otherwise the app is as before.
+  { id: 'editor', label: 'Editor', icon: '▶' },
   { id: 'creators', label: 'Creators', icon: '◉' },
   // Community pipelines: browse the registry, install, manage (plugins/).
   { id: 'marketplace', label: 'Marketplace', icon: '⊞' },
@@ -44,7 +58,18 @@ export interface StudioTarget {
   clipId?: number
 }
 
+/** The clip-updates provider sits above the shell, so the shell's own hooks
+ *  (usePendingApprovals, for the Editor page's strip) read it, not its
+ *  empty default. */
 export default function App(): JSX.Element {
+  return (
+    <ClipUpdatesProvider>
+      <Shell />
+    </ClipUpdatesProvider>
+  )
+}
+
+function Shell(): JSX.Element {
   const [page, setPage] = useState<Page>('dashboard')
   const [studioTarget, setStudioTarget] = useState<StudioTarget | null>(null)
   const [creatorTarget, setCreatorTarget] = useState<number | null>(null)
@@ -86,6 +111,39 @@ export default function App(): JSX.Element {
   }, [])
   // Installed pipelines hear about a blocked version without the Marketplace being opened.
   useEffect(() => checkOnlineListAtStart(), [])
+  // Clips Kitty Editor: whether it is there (asked once), its state from the
+  // main process, and the ways in that switch to its page.
+  const editorFound = useEditorFound()
+  const editor = useEditorStore()
+  useEffect(() => {
+    loadEditorStatus()
+    connectEditorBridge()
+    const open = (): void => setPage('editor')
+    window.addEventListener(OPEN_EDITOR_PAGE, open)
+    return () => window.removeEventListener(OPEN_EDITOR_PAGE, open)
+  }, [])
+  // A click or focus anywhere in the app gives the keys back to the app
+  // (a click in the editor gives them to the editor by itself).
+  useEffect(() => {
+    if (!editor.runtime.running) return
+    const back = (): void => noteAppPointer()
+    document.addEventListener('pointerdown', back, true)
+    document.addEventListener('focusin', back, true)
+    return () => {
+      document.removeEventListener('pointerdown', back, true)
+      document.removeEventListener('focusin', back, true)
+    }
+  }, [editor.runtime.running])
+  // Clip approvals are cards at the bottom right, which the editor would be
+  // drawn over: while a project is shown, the strip offers them instead, and
+  // the editor is hidden while they are open.
+  const editorShown = page === 'editor' && !!editor.shownId
+  const approvals = usePendingApprovals()
+  const [approvalsOpen, setApprovalsOpen] = useState(false)
+  useEffect(() => {
+    if (!editorShown || approvals === 0) setApprovalsOpen(false)
+  }, [editorShown, approvals])
+  useEditorCover(editorShown && approvalsOpen)
   // Whether any AI runs in the cloud on the user's own key, so the sidebar's
   // "100% local" line is only ever shown when it is true.
   const [cloudAI, setCloudAI] = useState('')
@@ -126,6 +184,7 @@ export default function App(): JSX.Element {
     return () => clearInterval(id)
   }, [])
   useEvents((e: StudioEvent) => {
+    if ((e.type as string) === 'editor_project') onEditorProjectEvent(e)
     if (e.type === 'automation' && !('activity' in e) && !('doing' in e)) {
       api
         .automation()
@@ -154,8 +213,14 @@ export default function App(): JSX.Element {
   }
 
   return (
-    <ClipUpdatesProvider><div className="flex h-screen" key={locale}>
-      <ApprovalCards onOpen={videoId => { setStudioTarget({videoId}); setPage('studio') }} />
+    <div className="flex h-screen" key={locale}>
+      <ApprovalCards
+        onOpen={videoId => { setStudioTarget({videoId}); setPage('studio') }}
+        hidden={editorShown && !approvalsOpen}
+        onClose={editorShown ? () => setApprovalsOpen(false) : undefined}
+        onRequestShow={() => setApprovalsOpen(true)}
+      />
+      <ProjectExportPrompt />
       <aside className="w-52 shrink-0 bg-surface border-r border-raised/60 flex flex-col">
         {/* Same lockup as the website header: Clippy, then the name and
             tagline stacked beside him. `min-w-0` on the text column so a
@@ -177,7 +242,7 @@ export default function App(): JSX.Element {
           </div>
         </div>
         <nav className="flex-1 px-3 space-y-1">
-          {NAV.map((item) => (
+          {NAV.filter((item) => item.id !== 'editor' || editorFound).map((item) => (
             <button
               key={item.id}
               onClick={() => setPage(item.id)}
@@ -237,6 +302,9 @@ export default function App(): JSX.Element {
         {page === 'studio' && (
           <ClipStudio target={studioTarget} onTargetConsumed={() => setStudioTarget(null)} />
         )}
+        {page === 'editor' && editorFound && (
+          <Editor approvals={approvals} onShowApprovals={() => setApprovalsOpen(true)} />
+        )}
         {page === 'creators' && (
           <Creators initialSelected={creatorTarget} onTargetConsumed={() => setCreatorTarget(null)} />
         )}
@@ -252,6 +320,6 @@ export default function App(): JSX.Element {
           }}
         />
       )}
-    </div></ClipUpdatesProvider>
+    </div>
   )
 }

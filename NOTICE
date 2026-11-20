@@ -190,6 +190,43 @@ mean accepting those terms on every user's behalf.
 
 
 -------------------------------------------------------------------------------
+Clips Kitty Editor
+-------------------------------------------------------------------------------
+
+The Editor page shows Clips Kitty Editor, a separate program kept in its own
+repository (https://github.com/ColinGPT9/clips-kitty-editor). It is based on
+Concat (https://github.com/jub0t/Concat), Copyright its authors, and is
+licensed under the GNU Affero General Public License, version 3 or later
+(AGPL-3.0-or-later), the licence Concat is published under. Concat's name is
+used only to say what the editor is based on; Clips Kitty Editor is a
+modified build and is not Concat. What it changes, and why, is listed in
+PATCHES.md at the top of its repository, with its complete source.
+
+Its folder carries its own LICENSE and THIRD_PARTY_NOTICES.md, which travel
+with it wherever it is shipped. In short, it includes:
+
+  FFmpeg libraries          LGPL         decoding, encoding and muxing in the
+                                         editor: BtbN's lgpl-shared build of
+                                         FFmpeg 8.1 for Windows
+                                         (LGPL-3.0-or-later), as DLLs beside
+                                         the program, with nothing GPL-only or
+                                         non-free in it. Source:
+                                         https://ffmpeg.org/download.html
+  Slint                     GPL-3.0-only its interface toolkit, used under the
+                                         GPL
+  whisper.cpp and ggml      MIT          the editor's own captions from speech
+  ONNX Runtime              MIT          the editor's sound and picture models
+  Microsoft Visual C++      Microsoft    runtime DLLs beside the program
+  runtime                   terms
+  Hanken Grotesk and its    see its      the editor's caption and title fonts
+  other fonts               notices
+
+The models, voices and sounds the editor can download are not bundled; each
+is fetched only when a person asks for it there, and its licence is named in
+the editor's THIRD_PARTY_NOTICES.md.
+
+
+-------------------------------------------------------------------------------
 Fonts
 -------------------------------------------------------------------------------
 

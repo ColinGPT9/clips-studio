@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "Clips Kitty editor suite",
-  "updated": "2026-11-13",
+  "updated": "2026-11-18",
   "about": "Machine-readable tracker for the editor suite. STATUS.md is the readable view of this file; when they disagree, this file wins. Acceptance criteria are copied from the plan's Proof column; step 0 also carries the checks from the plan's section on keeping plain auto-clipping identical. depends_on is read from the plan's text (which earlier step's output a step uses): the plan gives the run order, not a dependency list.",
   "now": "1",
   "stop_after_phase": 2,
@@ -2197,6 +2197,337 @@
       ],
       "results": [],
       "defects": []
+    },
+    {
+      "id": "K1",
+      "title": "Clips Kitty Editor: the branded fork of Concat",
+      "size": "M",
+      "scope": "The fork (repository clips-kitty-editor, branch kitty/embed) carries the name Clips Kitty Editor, Clips Kitty's icon and colours, its own data folder id, the credit \"Based on Concat\" with its licence, a PATCHES.md, no call to Concat's servers, and the hooks the app needs when the editor runs inside its window (where exports go, opening a project, telling the app an export ended)",
+      "closes": [],
+      "depends_on": [],
+      "status": "in_progress",
+      "user_visible": true,
+      "acceptance": [
+        "Every name a person sees says Clips Kitty Editor; the binary is clips-kitty-editor.exe",
+        "Its own data folder id; nothing of a standalone Concat is read or moved",
+        "About shows \"Based on Concat\", AGPL-3.0-or-later and a link; LICENSE and THIRD_PARTY_NOTICES stay; PATCHES.md lists every change",
+        "No update check or other call to Concat's servers while branded",
+        "Built by GitHub Actions and tested in the stage-1 harness before it is reported"
+      ],
+      "files": [
+        "(the fork's repository)"
+      ],
+      "notes": [
+        "The editor is Clips Kitty Editor, a fork of Concat shown inside the Clips Kitty window (ED24, the owner's decision of 2026-11-16). It replaces steps 8 to 10 and V2 of the hand-built path, which are not continued; step 11 becomes K7 and step E becomes K8",
+        "Built and reported by the fork's own engineer; this file records the Clips Kitty side"
+      ],
+      "results": [],
+      "defects": [
+        {
+          "id": "K-D5",
+          "date": "2026-11-18",
+          "found_by": "qc",
+          "summary": "The launch screen's two guide links still open the upstream project's guides. Not changed: they open only on a click, the launch screen is never shown when embedded, and they describe the same features; PATCHES.md says so",
+          "routed_to": "eng-fork",
+          "status": "wont_fix"
+        },
+        {
+          "id": "K-D11",
+          "date": "2026-11-18",
+          "found_by": "review",
+          "summary": "Settings named the upstream download mirror \"Clips Kitty Editor's mirror\" and the sound library \"Clips Kitty Editor sounds\". Fixed in the fork (daafd34f): those two lines keep the upstream name (brand::UPSTREAM_KEYS); both still run only on a press",
+          "routed_to": "eng-fork",
+          "status": "fixed"
+        }
+      ]
+    },
+    {
+      "id": "K2",
+      "title": "The Editor page: Clips Kitty Editor inside Clips Kitty",
+      "size": "L",
+      "scope": "The engine finds the editor, builds its project for a clip (the AI's framing kept as a framed, caption-free render; cuts, captions, hook, music and watermark as items), a whole video or a file, and takes exports back in; the app shows the editor inside its window as the Editor page; nothing of a person's editor work is lost silently (ED25)",
+      "closes": [],
+      "depends_on": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "V1",
+        "K1"
+      ],
+      "status": "in_progress",
+      "user_visible": true,
+      "acceptance": [
+        "One resolver: CLIPS_KITTY_EDITOR_DIR, else the installed app's resources/editor; a status route says in plain words when it is missing; the UI offers the editor only when it is found",
+        "A project for a clip, a whole video (16:9, 9:16, 1:1, 4:5) and a file from the PC, built through the editor's own automation; remembered, reopened, deleted; a deleted clip's project still opens and exports",
+        "Routes guarded like the project routes; a client's path is checked like the other local-file routes",
+        "A clip's export becomes that clip's video only when the clip is still on the file the project started from; otherwise it is kept beside it; a whole-video or file export goes to the export folder; a failed or cancelled export changes nothing; no end card",
+        "Anything that re-makes a clip from its original window asks first, or keeps the export, when the clip's file is an editor export",
+        "Plain auto-clipping and today's clip editor behave and render exactly as before for any clip the editor never exported: argv snapshots, golden renders, import guard"
+      ],
+      "files": [
+        "kitty_editor/",
+        "server/kitty_editor_api.py",
+        "core/binaries.py",
+        "core/state.py",
+        "core/pipeline.py",
+        "core/housekeeping.py",
+        "server/api.py",
+        "server/jobs.py",
+        "server/youtube_api.py",
+        "tests/test_kitty_editor_engine.py",
+        "tests/test_kitty_editor_routes.py",
+        "tests/test_kitty_editor_guards.py",
+        "tests/test_kitty_editor_real.py",
+        "tests/fakes/fake_kitty_editor.py",
+        "docs/editor-suite/api/k2-editor.md",
+        "ui/src/main/editor.ts",
+        "ui/src/main/index.ts",
+        "ui/src/main/updater.ts",
+        "ui/src/preload/index.ts",
+        "ui/src/renderer/src/pages/Editor.tsx",
+        "ui/src/renderer/src/lib/editor.ts",
+        "ui/src/renderer/src/lib/editorStatus.ts",
+        "ui/src/renderer/src/lib/editorCover.ts",
+        "ui/src/renderer/src/lib/projectExportPrompt.ts",
+        "ui/src/renderer/src/components/editor/ProjectExportPrompt.tsx",
+        "tests/test_ui_editor_page.py",
+        "tests/test_ui_editor_main.py"
+      ],
+      "notes": [
+        "The editor is Clips Kitty Editor, a fork of Concat shown inside the Clips Kitty window (ED24, the owner's decision of 2026-11-16). It replaces steps 8 to 10 and V2 of the hand-built path, which are not continued; step 11 becomes K7 and step E becomes K8",
+        "Contract: docs/editor-suite/api/k2-editor.md",
+        "Measured on the owner's PC (RTX 3060) with the unbranded test build of the editor: a clip's project is ready 82 s after it is asked for the first time (a 45 s window, the tracking models loading; nearly all of it the framed render), the editor's own part takes 0.6 s; a whole-video or file project takes 0.5 s; a 35 s program at 1080x1920 and 60 fps exported headless in 14 s",
+        "Bundling the editor into the installer and the Store package is step K3: until then the editor is found only through CLIPS_KITTY_EDITOR_DIR",
+        "The app's half (ED26): the main process starts the editor detached inside the window (--embed, the token in its environment only), polls host.state, hands finished exports to the engine by file name, and closes it with host.close on every quit route; the Editor page lists projects and shows the editor in its area, hidden while anything of the app's own is open over it"
+      ],
+      "results": [
+        {
+          "date": "2026-11-18",
+          "agent": "Engineering (engine)",
+          "check": "E1 to E5 and their tests",
+          "outcome": "pass",
+          "evidence": "tests/test_kitty_editor_engine.py, test_kitty_editor_routes.py, test_kitty_editor_guards.py and the extended import guard pass on the system Python; the two tests with the real editor pass with the unbranded build renamed; the step-0 argv snapshots pass without --update-snapshots and the golden check passes; ruff passes"
+        },
+        {
+          "date": "2026-11-18",
+          "agent": "Engineering (UI)",
+          "check": "U1 to U5 in the real desktop app with build 44439018733",
+          "outcome": "pass",
+          "evidence": "A Library clip opened with Edit appeared in the Editor page inside the window with its video and captions (made in 69 s); it played; a cut and a caption change, then the editor's Export: the clip's file became data/clips/projects/<id>-1.mp4, the Library card showed 25 s and played the new picture; Quick edit's Re-render asked first and Cancel left \"Nothing was made.\"; Edit whole video on synth_timer_2h (16:9, 1920x1080) and a file from the PC (1:1, exported to the export folder as \"own_clip_45s - 2026-11-18.mp4\"); the editor matched the page's area to the pixel after a resize, maximise, restore, minimise and restore, and page switches; the Feedback dialog hid it and it came back; closing the app right after a cut and opening the project again kept the cut; with no Clips Kitty Editor found, nothing of it was shown; screenshots kept outside the repository"
+        },
+        {
+          "date": "2026-11-19",
+          "agent": "Engineering (first open)",
+          "check": "First 'Open in editor' on a clip at most 10 s; the bar moves with the render; the base keeps the clip's look",
+          "outcome": "partial",
+          "evidence": "Desktop app (launch_desktop.py, editor build 44647238259), real_150s's 24.8 s clip (1080x1920 60 fps, face-safe layout), project deleted between runs: 17.9 / 15.0 / 15.1 s, median 15.1 s (63.1 s before); the base 12.4 to 15.5 s of it, the editor's project 0.4 s, the editor's start about 2 s. The bar went 5% to 80% with the base and never back, 99% at most before the editor showed. Base against the old code's, 3 clips and a vintage+vignette+sharpen variant: crop within 0.1 px, SSIM 0.980 to 0.992 at 5 points, frames within 1, loudness within 0.1 LU; a letterboxed clip is refused and made the full way, which is byte-identical to before (59 s). 10 s not met: about 3 s of decoding and 6 to 7 s of CPU encoding on this PC (no NVENC in Clips Kitty's FFmpeg here)."
+        }
+      ],
+      "defects": [
+        {
+          "id": "K-D1",
+          "date": "2026-11-18",
+          "found_by": "qc",
+          "summary": "The walk through the real desktop app (QC step 5) was not done: drive C: was full (filled by work outside this step). Not a code defect; QC reruns step 5 once C: has room, with the newest editor build",
+          "routed_to": "qc",
+          "status": "open"
+        },
+        {
+          "id": "K-D2",
+          "date": "2026-11-18",
+          "found_by": "qc",
+          "summary": "The quit-while-exporting question in the main process was English only. Fixed: the page sends its words through t() (editor:words), again when the language changes; English until then",
+          "routed_to": "eng",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D3",
+          "date": "2026-11-18",
+          "found_by": "qc",
+          "summary": "A whole-video or file export's folder comes from the page, not from the engine's settings. Not changed: the export folder in Settings is kept only in the page (localStorage 'export-folder'); the engine has no copy, and every existing export (Quick edit, Export in other languages, Clip Editor) passes it the same way. The engine checks it (absolute, no network share, made if missing)",
+          "routed_to": "eng",
+          "status": "wont_fix"
+        },
+        {
+          "id": "K-D4",
+          "date": "2026-11-18",
+          "found_by": "qc",
+          "summary": "CI's compileall step did not list kitty_editor. Fixed with the whole class: campaigns, gaming, kitty_editor and remote_render added (every engine package but the vendored third_party)",
+          "routed_to": "eng",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D6",
+          "date": "2026-11-18",
+          "found_by": "review",
+          "summary": "An export whose name has '..' in it (a title such as 'Wait... what happened?') was never taken in, and recovery skipped it every time; a .webm export the same. Fixed: any name the editor's export sheet writes is taken (only its unfinished work files .<name>.concat-*.<ext> are refused, the file is looked for only directly in out/), .webm accepted, safe_name keeps a run of dots as one",
+          "routed_to": "eng",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D7",
+          "date": "2026-11-18",
+          "found_by": "review",
+          "summary": "An empty or non-video export replaced the clip's video and its original file was removed. Fixed: probe_seconds is 0 for a file with no picture, and take_in refuses such a file before anything changes; it stays in out/",
+          "routed_to": "eng",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D8",
+          "date": "2026-11-18",
+          "found_by": "review",
+          "summary": "A screen-scale change while exporting restarted the editor and cancelled the export without a word. Fixed: the restart waits for the export to end (the editor is re-placed meanwhile) and asks again just before it closes the editor",
+          "routed_to": "eng",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D9",
+          "date": "2026-11-18",
+          "found_by": "review",
+          "summary": "Clip approvals could not be reached while a project was shown: the approvals hook read outside its provider and always gave 0. Fixed: App renders ClipUpdatesProvider around a Shell component that holds the page",
+          "routed_to": "eng",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D10",
+          "date": "2026-11-18",
+          "found_by": "review",
+          "summary": "Exports that ended after the last poll were not taken in at a close; recovered whole-video exports went to Downloads. Fixed: closeNow asks host.state once more before host.close, and the page sends the export folder when it opens a project again",
+          "routed_to": "eng",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D12",
+          "date": "2026-11-18",
+          "found_by": "eng",
+          "summary": "Found while re-running the tests: on Windows a manifest write failed (os.replace refused, access denied) while another thread was reading the manifest. Fixed: the replace is retried for up to two seconds",
+          "routed_to": "eng",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D13",
+          "date": "2026-11-19",
+          "found_by": "qc",
+          "summary": "A regression gate failed: tests/test_project_routes.py::test_the_routes_are_internal (CI's Plugin platform job) expected the routes with 'project' in their path to be exactly step 5's eight, and the editor's six /editor/projects... routes matched. Fixed in the tests only: that filter leaves out /editor/ routes, and tests/test_kitty_editor_routes.py checks that the served /editor/ routes are exactly the editor's eight and all internal",
+          "routed_to": "eng",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D14",
+          "date": "2026-11-19",
+          "found_by": "qc",
+          "summary": "The editor still showed the upstream product's name in two lines (Settings > Downloads \"Concat's mirror\", the sound shelf's offline notice), left so by K-D11. Fixed in the fork (34fa4320): the brand layer gives those two keys its own lines, \"Project mirror (GitHub)\" and \"Could not reach the sound library. Check the connection and try again.\" (English in every language; the locales are untouched), UPSTREAM_KEYS removed; a test checks that no line in any shipped language names the upstream editor. Build 44475550509: that test and the brand tests passed, both lines are in clips-kitty-editor.exe, and a whole-video project opened in the Editor page; the open Downloads list was not seen on screen (the owner held the foreground). Supersedes K-D11",
+          "routed_to": "eng",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D15",
+          "date": "2026-11-19",
+          "found_by": "black-box",
+          "summary": "Typing into a caption's Content box in the embedded editor lost characters. Diagnosed (k2/typing): real key presses arrive whole; only injected VK_PACKET characters are lost when embedded (winit's WM_CHAR pairing), and a press on the box's border band takes the keyboard from the field so single-letter shortcuts edit the timeline. Both are the fork's; nothing in Clips Kitty takes keys (no accelerator, global shortcut or before-input-event), so nothing was changed here",
+          "routed_to": "eng-fork",
+          "status": "routed"
+        },
+        {
+          "id": "K-D16",
+          "date": "2026-11-19",
+          "found_by": "review",
+          "summary": "Taking an editor export in as clip A's video deleted A's old file even when clip B (same whole-second window, same clip_<start>-<end>.mp4) still played it. Fixed: intake._discard_old skips the delete when core.remake.file_in_use(db, old) is true after the re-point (another row, or a run holding it), under the clip lock with the database open; recover() goes through it; project delete only removes the project's own folder. Tests: test_an_export_never_deletes_a_file_another_clip_still_plays, test_a_file_a_run_holds_is_never_deleted_by_an_export; review test_C1 passes, test_C2 still passes",
+          "routed_to": "eng-ck",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D17",
+          "date": "2026-11-19",
+          "found_by": "review",
+          "summary": "An export taken in by a reopen's recover() could be reported as failed (take_in raised Busy, the route answered 409, the main process said 'The export did not finish.'). Fixed: the route waits up to intake.LOCK_WAIT (120 s) for the project's lock and answers the recorded result (again: true); the main process asks again 6 times 2 s apart on 409 or an unreachable engine. Tests: test_a_report_while_a_reopen_takes_the_export_in_is_answered_as_taken, test_a_waiting_report_is_had_once_the_lock_is_free, test_a_busy_or_unreachable_engine_is_asked_again_before_an_export_is_called_failed",
+          "routed_to": "eng-ck",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D18",
+          "date": "2026-11-19",
+          "found_by": "qc",
+          "summary": "tests/test_kitty_editor_routes.py and tests/test_kitty_editor_guards.py ran in no CI job. Fixed: both are in the Plugin platform job's list; that list run locally as the job runs it passed",
+          "routed_to": "eng-ck",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D19",
+          "date": "2026-11-19",
+          "found_by": "qc",
+          "summary": "test_an_export_named_with_dots_comes_back wrote a name too long for out/ under Windows' default tmp folder (MAX_PATH). Fixed: the long name, still with dots, is as long as the tmp path allows (up to 120 characters); passes with the default tmp folder",
+          "routed_to": "eng-ck",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D20",
+          "date": "2026-11-19",
+          "found_by": "ux",
+          "summary": "The editor showed a whole Library video as the engine's cache name (local_<hash>.mp4) and a clip's video as base.mp4. Fixed: media/<clip title>.mp4 for a clip, a hard link media/<video title>.<ext> to the download for a whole video (the download itself where the drive can't link; never copied), named with registry.safe_name, ids only in the manifest (video_file, media); deleting a project keeps the Library's download; older projects with base.mp4 still open",
+          "routed_to": "eng-ck",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D21",
+          "date": "2026-11-19",
+          "found_by": "ux",
+          "summary": "The 'Saved as this clip's video.' notice had the internal data/clips/projects folder as its tooltip (read by screen readers). Fixed: no tooltip on that notice; 'Saved to <folder>' and 'kept beside' keep the path",
+          "routed_to": "eng-ck",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D22",
+          "date": "2026-11-19",
+          "found_by": "qc",
+          "summary": "With no export folder in Settings, a whole-video or file export went to ~/Downloads, not where the app's own Export buttons go. Fixed: the main process sends app.getPath('downloads') when the page gives no full path, and the engine's own fallback is Windows' Downloads known folder (on the test PC on another drive, not ~/Downloads); k2-editor.md and the user guide say so",
+          "routed_to": "eng-ck",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D23",
+          "date": "2026-11-19",
+          "found_by": "review",
+          "summary": "Make clips again kept a clip with an editor project only through the step-5 projects table, which editor projects never write: a clip opened but not yet exported could be deleted and made again. Fixed: core.remake reads the editor projects' manifests (plain JSON) and counts those clips as edited (kept). Test: test_a_clip_opened_in_the_editor_but_never_exported_is_kept_by_make_clips_again",
+          "routed_to": "eng-ck",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D24",
+          "date": "2026-11-19",
+          "found_by": "perf",
+          "summary": "The first 'Open in editor' on a clip took 63.1 s (median of 3; 24.8 s clip of real_150s, 1080x1920 60 fps) against a 10 s target, 62.5 s of it the engine re-running the full render for the caption-free base (cut 8.8 s, YOLO load 5.6 s, frame pass and shot check about 17 s, TalkNet 7.7 s, crop through Python and CPU encode 24.3 s). Fixed: for a clip framed by the tracker's moving crop (9:16 or the face-safe 4:5), kitty_editor/fastbase.py reads the crop back from the clip's own file and makes the base in one FFmpeg pass (x264 ultrafast CRF 16); anything else, or any frame that doesn't match, takes the full render with the pipeline's own encoder and the models loaded during the cut (59 s, byte-identical to before). Measured: 15.1 s median in the desktop app (12.6 s of it the base), the same crop to 0.1 px, SSIM 0.98 to 0.99 at 5 points, loudness within 0.1 LU, one frame shorter at most. Target not met: floor on this PC about 3 s decoding + 6 to 7 s CPU encode + 2 s editor start. ED28",
+          "routed_to": "eng-ck",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D25",
+          "date": "2026-11-19",
+          "found_by": "perf",
+          "summary": "The Editor page's bar sat at 5% for the whole base render and jumped to 80%. Fixed: the base's own progress (frames read and encoded, or the full render's time against an estimate) moves the project from 5% to 80%, never back; the page shows at most 99% until the editor shows the project, and asks for the project at once when the engine says the build ended",
+          "routed_to": "eng-ck",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D26",
+          "date": "2026-11-19",
+          "found_by": "perf",
+          "summary": "A clip's base was made again for every new project of the clip and for a build retried after failing. Fixed: the manifest keeps base_key (window, framing options, the clip's and the source's files, tracking settings) and a rebuild or a new project of the same clip reuses a base with the same key (another project's is copied, never linked); a change to any of them makes it again",
+          "routed_to": "eng-ck",
+          "status": "fixed"
+        },
+        {
+          "id": "K-D27",
+          "date": "2026-11-20",
+          "found_by": "black-box",
+          "summary": "S4: the Export sheet said '~31 MB' before a 30 s 1920x1080 export that came to 2.9 MB (S3: '~17 MB' for 1.77 MB); the finished sheet's 'Exported · 3 MB' was right. Not changed, by choice: the estimate is Concat's own (export.rs size_bytes = target_kbps x length + sound, unchanged in the fork), 8 Mbps for 1080p30; x264's average-bitrate mode spends far less on the synthetic near-still test videos (synth_timer_2h is 0.15 Mbps as made), and on real footage it held (S8 '~16 MB' for 16.7 MB). A content-aware estimate needs the sources' bitrate added to the fork's probe and model, a fork build and a heuristic, for a figure marked '~' that only errs high; no work lost, no wrong file",
+          "routed_to": "eng-fork",
+          "status": "wont_fix"
+        }
+      ]
     }
   ]
 }

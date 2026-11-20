@@ -28,6 +28,7 @@ import { basename, join } from 'node:path'
 import { isInstallingUpdate, setupUpdater } from './updater'
 import { isMicrosoftStore } from './distribution'
 import { dropStalePartials } from './stalePartials'
+import { closeEditor, confirmQuitWhileExporting, editorRunning, setupEditor, watchEditorWindow } from './editor'
 
 const API_PORT = 8765
 
@@ -423,6 +424,8 @@ function createWindow(): void {
 
   mainWindow = win
   setupUpdater(win)
+  // Clips Kitty Editor draws inside this window (ui/src/main/editor.ts).
+  watchEditorWindow(win)
 
   // With "keep watching" on and channels actually being watched, closing
   // hides the window and the backend keeps running. Otherwise closing quits,
@@ -874,6 +877,7 @@ if (!app.requestSingleInstanceLock()) {
     // the engine means the first preflight is more likely to find it up.
     startOllama()
     startBackend()
+    setupEditor({ window: () => mainWindow, apiPort: API_PORT, secret: SESSION_SECRET })
     createWindow()
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -882,8 +886,12 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 app.on('window-all-closed', () => {
-  stopChildren()
-  app.quit()
+  // Normally the editor has already been asked to save and leave on the way
+  // here (before-quit). If not, it is asked now, for at most 3 s.
+  void closeEditor(3000).finally(() => {
+    stopChildren()
+    app.quit()
+  })
 })
 
 // Every quit comes through here: closing the window, the tray's Quit, File >
@@ -905,9 +913,14 @@ app.on('before-quit', (event) => {
     const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
     const parent = win && (win.isVisible() || !tray) ? win : null
     // confirmQuit waits at most 2 s for the engine, then quits without asking.
+    // Then, when Clips Kitty Editor is exporting, whether to stop that; and
+    // the editor is asked to save and leave (host.close) before the engine
+    // and Ollama are stopped.
     void confirmQuit(parent)
       .catch(() => true)
-      .then((quit) => {
+      .then(async (quit) => {
+        if (quit && editorRunning()) quit = await confirmQuitWhileExporting(parent).catch(() => true)
+        if (quit) await closeEditor(10000).catch(() => undefined)
         askingToQuit = false
         if (!quit) return
         quitting = true

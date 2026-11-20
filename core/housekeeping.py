@@ -34,6 +34,41 @@ _SCRATCH_SUFFIXES = (".source.mp4", ".edited.mp4", ".plain.mp4", ".cropped.mp4")
 _ASIDE = re.compile(r"^(?P<first>.+)\.clip-\d+$")
 _KEPT = ".remaking"
 
+# Clips Kitty Editor's exports of a clip's project (data/clips/projects/,
+# kitty_editor/intake.py) and its projects (data/editor/): the person's own
+# work, never swept (editor suite step K2, E5). An export stays even when no
+# clip row points at it any more.
+PROJECT_EXPORTS = ("clips", "projects")
+EDITOR_PROJECTS = ("editor", "projects")
+
+
+def _editor_media(data_dir: Path) -> set[str]:
+    """The files the editor's projects use outside their own folders (each
+    manifest's `media`), as keys to compare with. Read as plain JSON, so
+    nothing that deletes files loads the editor's package; a manifest that
+    can't be read names nothing."""
+    import json
+
+    named: set[str] = set()
+    root = data_dir.joinpath(*EDITOR_PROJECTS)
+    try:
+        folders = [f for f in root.iterdir() if f.is_dir()]
+    except OSError:
+        return named
+    for folder in folders:
+        try:
+            manifest = json.loads((folder / "kitty.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        media = manifest.get("media") if isinstance(manifest, dict) else None
+        for path in media if isinstance(media, list) else ():
+            if isinstance(path, str) and path:
+                try:
+                    named.add(str(Path(path).resolve()).lower())
+                except (OSError, ValueError):
+                    continue
+    return named
+
 
 def _size(paths) -> int:
     total = 0
@@ -71,11 +106,14 @@ def survey(db, data_dir: Path) -> dict:
         "previews": [],
     }
 
+    editor_media = _editor_media(data_dir)
     downloads = data_dir / "downloads"
     if downloads.is_dir():
         for f in downloads.iterdir():
             if not f.is_file():
                 continue
+            if editor_media and str(f.resolve()).lower() in editor_media:
+                continue        # a project of the editor's uses it
             # yt-dlp leftovers from an interrupted download.
             if f.suffix == ".part" or ".part-Frag" in f.name:
                 groups["partial_downloads"].append(f)
@@ -98,9 +136,12 @@ def survey(db, data_dir: Path) -> dict:
         ]
 
     clips = data_dir / "clips"
+    exports = Path(str(data_dir.joinpath(*PROJECT_EXPORTS).resolve()).lower())
     if clips.is_dir():
         for f in clips.rglob("*.mp4"):
             key = Path(str(f.resolve()).lower())
+            if key.parent == exports:
+                continue        # an editor export: never an orphan clip
             aside = _ASIDE.match(key.stem)
             if f.name.endswith(_SCRATCH_SUFFIXES):
                 groups["render_leftovers"].append(f)

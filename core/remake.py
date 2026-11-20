@@ -406,7 +406,8 @@ def _evidence(db, video_id: str, data_dir: Path | None = None) -> dict:
         # A clip opened in the new editor has a project (core/state.py
         # projects.clip_id, which follows the clip through a re-render): a
         # person's work on it, whether or not it was rendered since.
-        "projects": _project_clips(db, video_id),
+        # So does a clip with a project in Clips Kitty Editor (K-D23).
+        "projects": _project_clips(db, video_id) | _editor_project_clips(db, video_id, data_dir),
         "chosen": chosen,
         "busy": busy,
         # A thumbnail a person chose for the clip (server/youtube_api.py
@@ -429,6 +430,35 @@ def _project_clips(db, video_id: str) -> set[int]:
     except sqlite3.OperationalError:
         return set()
     return {int(r[0]) for r in rows}
+
+
+def _editor_project_clips(db, video_id: str, data_dir: Path | None) -> set[int]:
+    """The video's clips that have a project in Clips Kitty Editor
+    (data/editor/projects/<id>/kitty.json, kind "clip"; the id follows the
+    clip through a re-render, kitty_editor.registry.follow_clip_id), opened
+    and not yet exported or not. Read as plain JSON, as core/housekeeping.py
+    reads them, so Make clips again never loads the editor's package. A
+    manifest that can't be read names nothing; none without `data_dir`."""
+    if data_dir is None:
+        return set()
+    root = Path(data_dir) / "editor" / "projects"
+    try:
+        folders = [f for f in root.iterdir() if f.is_dir()]
+    except OSError:
+        return set()
+    named: set[int] = set()
+    for folder in folders:
+        try:
+            manifest = json.loads((folder / "kitty.json").read_text(encoding="utf-8"))
+            clip = manifest.get("clip") if manifest.get("kind") == "clip" else None
+            if isinstance(clip, dict) and clip.get("id") is not None:
+                named.add(int(clip["id"]))
+        except (OSError, ValueError, TypeError, AttributeError):
+            continue
+    if not named:
+        return set()
+    mine = {int(r[0]) for r in db.conn.execute("SELECT id FROM clips WHERE video_id = ?", (video_id,)).fetchall()}
+    return named & mine
 
 
 def _made_as(row) -> str:

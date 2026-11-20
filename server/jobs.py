@@ -30,6 +30,24 @@ from server.events import broadcaster
 # retries; older ones are pruned so the folder can't grow without limit.
 _KEEP_LOGS = 50
 
+# One re-render of a clip at a time, and never while Clips Kitty Editor's
+# export is being taken in as that clip's file (kitty_editor/intake.py,
+# editor suite step K2): both take the clip's lock.
+_CLIP_LOCKS: dict[int, threading.Lock] = {}
+_CLIP_LOCKS_GUARD = threading.Lock()
+
+# A render job that would go over an editor export the person never chose to
+# replace (E5): the job fails with this, and the export stays.
+PROJECT_EXPORT_KEPT = ("This clip was changed in the editor since this was asked for, so nothing was "
+                       "applied: applying it would replace the video you exported from the editor. "
+                       "Apply your changes again to choose.")
+
+
+def clip_lock(clip_id) -> threading.Lock:
+    """The lock a re-render of this clip holds while it runs."""
+    with _CLIP_LOCKS_GUARD:
+        return _CLIP_LOCKS.setdefault(int(clip_id), threading.Lock())
+
 # (base, weight, label) per pipeline stage, folded into one overall progress
 # figure. Kept identical to the UI's STAGES in ui/src/renderer/src/lib/
 # jobProgress.ts, so the app and an integration's dock never show different
@@ -340,7 +358,12 @@ class Worker(threading.Thread):
                         remake.check_cancelled()
                         self._note_remake(db, job["id"], remake.finish())
                 elif job["type"] == "render":
-                    self._rerender_clip(db, payload)
+                    # A render queued from the clip's own settings never
+                    # goes over an editor export unless the person chose so
+                    # (K2, E5): one queued before the export landed, or
+                    # retried after it, is refused like the routes are.
+                    self._rerender_clip(db, payload,
+                                        keep_project_export=not payload.get("replace_project_edits"))
                 elif job["type"] == "translate":
                     try:
                         self._translate_clips(db, payload)
@@ -542,6 +565,18 @@ class Worker(threading.Thread):
         stage = payload.get("stage", "export")
         folder = Path(payload.get("folder") or data_dir)
         languages = payload["languages"]
+        if (stage != "translate" and (payload.get("burn") or payload.get("dub") or payload.get("subtitles"))
+                and not payload.get("without_project_edits")):
+            # Asked again when the job runs (K2, E5), as a render job is: a
+            # clip whose file became an editor export after the job was
+            # queued is never translated from its old window without the
+            # person's word. Before anything is written.
+            changed = db.project_export_clips(payload["clip_ids"])
+            if changed:
+                raise RuntimeError(
+                    "A clip in this export was changed in the editor after the export was started, so "
+                    "nothing was made. Start the export again to choose whether to make it without those "
+                    "changes.")
         # Translation may run on its own local model (see llm.translation_model).
         # With a cloud model chosen, translation uses it too: everything the
         # local model would have done runs on the user's own key instead.
@@ -890,7 +925,21 @@ class Worker(threading.Thread):
                 db.set_video_status(vid, "done")  # the Shorts pass finished
             raise RuntimeError(f"The 9:16 Shorts were made; the 16:9 pass failed: {e}") from e
 
-    def _rerender_clip(self, db: StateDB, payload: dict) -> None:
+    def _rerender_clip(self, db: StateDB, payload: dict, keep_project_export: bool = False) -> None:
+        """_rerender_clip_now holding the clip's lock (clip_lock): never two
+        re-renders of one clip at once, and never one while an editor export
+        is being taken in as the clip's file.
+
+        `keep_project_export` (the job queue's render jobs): refuse, under
+        the lock, when the clip's file is an editor export
+        (StateDB.project_export_of), as the routes that queue the job do."""
+        with clip_lock(payload["clip_id"]):
+            if keep_project_export and db.project_export_of(payload["clip_id"]) is not None:
+                raise ValueError(PROJECT_EXPORT_KEPT)
+            # Called on the class: tests pass an owner that is not a Worker.
+            Worker._rerender_clip_now(self, db, payload)
+
+    def _rerender_clip_now(self, db: StateDB, payload: dict) -> None:
         """Re-render one clip from the original source video, with optionally
         edited timestamps and/or render options (crop mode, caption style).
         The clip's user-visible metadata survives the re-render."""
@@ -1096,6 +1145,13 @@ class Worker(threading.Thread):
             # Its posts on other platforms follow it too, so "Where it went"
             # still shows them after the edits are applied.
             db.follow_clip_id(clip["id"], new_row["id"])
+            # And Clips Kitty Editor's projects of this clip (kitty_editor/,
+            # K2): each then says the clip was changed here since, instead
+            # of taking it for deleted. Reads a folder that is only there
+            # once the editor was used.
+            from kitty_editor import registry as _editor_projects
+
+            _editor_projects.follow_clip_id(data_dir, clip["id"], new_row["id"])
             # A watched video's first publish kept the windows it chose
             # (server/automation.py publish): a trimmed clip is still one of them.
             db.follow_chosen_clip(video_id, (clip["start_s"], clip["end_s"]), (start, end))

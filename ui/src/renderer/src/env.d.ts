@@ -75,6 +75,33 @@ interface Window {
       get: () => Promise<{ keepInTray: boolean }>
       set: (on: boolean) => Promise<{ keepInTray: boolean }>
     }
+    /** Clips Kitty Editor inside the window (ui/src/main/editor.ts). Absent
+     *  in the browser shim and in a preload older than the renderer: the
+     *  Editor page is then never offered. */
+    editor?: {
+      show: (
+        projectId: string,
+        opts: { exportFolder: string; destination?: string }
+      ) => Promise<{ ok: boolean; error?: string }>
+      setBounds: (rect: { x: number; y: number; width: number; height: number }) => Promise<{ ok: boolean }>
+      setVisible: (visible: boolean) => Promise<{ ok: boolean }>
+      focus: () => Promise<{ ok: boolean }>
+      blur: () => Promise<{ ok: boolean }>
+      close: () => Promise<{ ok: boolean }>
+      getState: () => Promise<Record<string, unknown> | null>
+      setWords?: (words: { message: string; keep: string; quit: string }) => Promise<{ ok: boolean }>
+      reveal: (projectId: string, index: number) => Promise<boolean>
+      ask: (question: {
+        message: string
+        detail?: string
+        buttons: string[]
+        defaultId?: number
+        cancelId?: number
+      }) => Promise<number>
+      onState: (fn: (s: Record<string, unknown>) => void) => () => void
+      onExport: (fn: (answer: Record<string, unknown>) => void) => () => void
+      onMeasure: (fn: () => void) => () => void
+    }
     update: {
       check: () => Promise<{ ok: boolean; reason?: string }>
       download: () => Promise<{ ok: boolean }>

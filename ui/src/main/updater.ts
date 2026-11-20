@@ -18,6 +18,7 @@ import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { autoUpdater, type UpdateInfo } from 'electron-updater'
 import { isMicrosoftStore } from './distribution'
+import { closeEditor } from './editor'
 import { STORE_CATALOG, STORE_PAGE, isNewer, storeVersionOf } from './storeVersion'
 
 /** Which releases this install is offered. Alpha sees everything, stable
@@ -314,7 +315,9 @@ export function setupUpdater(win: BrowserWindow): void {
 
   // Quits and runs the installer. Anything mid-render is lost, so the
   // renderer asks first.
-  ipcMain.handle('update:install', () => {
+  ipcMain.handle('update:install', async () => {
+    // Clips Kitty Editor saves and leaves first (at most 3 s).
+    await closeEditor(3000).catch(() => undefined)
     autoUpdater.quitAndInstall(false, true)
     return { ok: true }
   })

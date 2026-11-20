@@ -61,6 +61,7 @@ import type {
 } from './youtube'
 import type { Capabilities, FanOut, PlatformRow, UploadPostStatus } from './uploadpost'
 import type { RemoteRenderState } from './remoteRender'
+import { sendAskingFirst, sendAskingFirstForNewFiles } from './projectExportPrompt'
 
 export const API_BASE = 'http://127.0.0.1:8765'
 
@@ -75,6 +76,52 @@ export interface FramePeople {
 
 function layoutQuery(source: { url?: string; path?: string }): string {
   return source.path ? `&path=${encodeURIComponent(source.path)}` : `&url=${encodeURIComponent(source.url ?? '')}`
+}
+
+/** A request that makes a clip again from its own window (Apply, the chat
+ *  edit, the caption save, "Apply edits & upload"): as request(), but when the
+ *  clip's file is a Clips Kitty Editor export the person is asked first
+ *  (lib/projectExportPrompt.ts), and the request is sent again with
+ *  replace_project_edits only when they choose "Apply anyway". */
+async function renderRequest<T>(
+  path: string,
+  body: Record<string, unknown>,
+  method: 'POST' | 'PUT' = 'POST',
+  /** Where the flag goes: the body itself, or the body's part that is the
+   *  render ("Apply edits & upload" sends it as render_first). */
+  withReplace: (body: Record<string, unknown>) => Record<string, unknown> = (b) => ({ ...b, replace_project_edits: true })
+): Promise<T> {
+  const res = await sendAskingFirst((replace) =>
+    fetch(`${API_BASE}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(replace ? withReplace(body) : body)
+    })
+  )
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`${res.status} ${path}: ${text.slice(0, 200)}`)
+  }
+  return res.json() as Promise<T>
+}
+
+/** A request that makes new files from a clip's own settings (Export in
+ *  other languages): when a clip's file is a Clips Kitty Editor export the
+ *  person is asked first, and "Make it anyway" sends it again with
+ *  without_project_edits (lib/projectExportPrompt.ts). */
+async function newFilesRequest<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const res = await sendAskingFirstForNewFiles((goAhead) =>
+    fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(goAhead ? { ...body, without_project_edits: true } : body)
+    })
+  )
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`${res.status} ${path}: ${text.slice(0, 200)}`)
+  }
+  return res.json() as Promise<T>
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -340,10 +387,7 @@ export const api = {
     request<Clip>(`/clips/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   captions: (id: number) => request<{ lines: CaptionLine[] }>(`/clips/${id}/captions`),
   saveCaptions: (id: number, lines: CaptionLine[]) =>
-    request<{ job_id: number }>(`/clips/${id}/captions`, {
-      method: 'PUT',
-      body: JSON.stringify({ lines })
-    }),
+    renderRequest<{ job_id: number }>(`/clips/${id}/captions`, { lines }, 'PUT'),
   tightenClip: (id: number, opts?: { silence?: boolean; fillers?: boolean }) =>
     request<{
       keep: [number, number][]
@@ -387,10 +431,7 @@ export const api = {
       skipped: { clip_id: number; reason: string }[]
     }>('/publish/plan/execute', { method: 'POST', body: JSON.stringify({ items }) }),
   aiEdit: (id: number, message: string) =>
-    request<{ reply: string; job_id: number | null }>(`/clips/${id}/ai-edit`, {
-      method: 'POST',
-      body: JSON.stringify({ message })
-    }),
+    renderRequest<{ reply: string; job_id: number | null }>(`/clips/${id}/ai-edit`, { message }),
   /** `suggestions`: the edits plugins suggested that the creator used in
    *  this render, as the editor recorded each Use. */
   rerenderClip: (
@@ -399,13 +440,10 @@ export const api = {
     renderOpts?: RenderOpts,
     suggestions?: UsedSuggestions
   ) =>
-    request<{ job_id: number }>(`/clips/${id}/render`, {
-      method: 'POST',
-      body: JSON.stringify({
-        ...(range ?? {}),
-        render_opts: renderOpts ?? null,
-        ...(suggestions ? { suggestions } : {})
-      })
+    renderRequest<{ job_id: number }>(`/clips/${id}/render`, {
+      ...(range ?? {}),
+      render_opts: renderOpts ?? null,
+      ...(suggestions ? { suggestions } : {})
     }),
   /** Export with the preset saved in Settings → Export unless told otherwise.
    *  Original copies the file, exactly as before; anything else queues an
@@ -559,10 +597,7 @@ export const api = {
     voices?: Record<string, string>
     style?: CaptionStyle
   }) =>
-    request<{ job_id: number; languages: string[]; clips: number }>('/translate', {
-      method: 'POST',
-      body: JSON.stringify(body)
-    }),
+    newFilesRequest<{ job_id: number; languages: string[]; clips: number }>('/translate', body),
   translations: (clipId: number) =>
     request<{ source: CaptionLine[]; translations: Translation[] }>(
       `/clips/${clipId}/translations`
@@ -822,11 +857,21 @@ export const api = {
     request<{ upload: PublishRecord | null; job: PublishJobRow | null }>(
       `/clips/${clipId}/publish`
     ),
+  /** With render_first ("Apply edits & upload"), the clip is rendered
+   *  first, so the person is asked when its file is a Clips Kitty Editor
+   *  export, as Apply asks (lib/projectExportPrompt.ts). */
   publishClip: (clipId: number, body: Record<string, unknown>) =>
-    request<{ publish_job_id: number; render_job_id: number | null }>(
-      `/clips/${clipId}/publish`,
-      { method: 'POST', body: JSON.stringify(body) }
-    ),
+    body.render_first
+      ? renderRequest<{ publish_job_id: number; render_job_id: number | null }>(
+          `/clips/${clipId}/publish`,
+          body,
+          'POST',
+          (b) => ({ ...b, render_first: { ...(b.render_first as Record<string, unknown>), replace_project_edits: true } })
+        )
+      : request<{ publish_job_id: number; render_job_id: number | null }>(`/clips/${clipId}/publish`, {
+          method: 'POST',
+          body: JSON.stringify(body)
+        }),
   cancelPublish: (jobId: number) =>
     request<{ cancelled?: boolean; cancelling?: boolean }>(`/publish/${jobId}/cancel`, {
       method: 'POST'
@@ -1144,4 +1189,101 @@ export function errorText(e: unknown): string {
     // not JSON: fall through to the raw text
   }
   return raw
+}
+
+// ---- Clips Kitty Editor (editor suite step K2) ------------------------------
+
+/** One of the editor's projects, as the engine keeps it
+ *  (docs/editor-suite/api/k2-editor.md). */
+export interface EditorProject {
+  id: string
+  name: string
+  kind: 'clip' | 'video' | 'file'
+  state: 'building' | 'ready' | 'failed'
+  progress: number
+  message: string
+  created_at: string
+  last_opened_at: string
+  shape?: string
+  clip?: { id: number; video_id: string } | null
+  video_id?: string | null
+  notes?: string[]
+  exports?: { file: string; at: string; result: string; path: string; seconds: number }[]
+  clip_changed?: boolean
+  clip_gone?: boolean
+  media_missing?: boolean
+  damaged?: boolean
+  /** POST /editor/projects/{id}/open only: exports found in the project's
+   *  out folder after the app stopped, taken in now. */
+  recovered?: EditorTakeIn[]
+}
+
+/** What the engine answered when it took an export in (E4), or what the
+ *  main process says of an export that did not finish. */
+export interface EditorTakeIn {
+  project_id?: string
+  result: 'replaced_clip' | 'kept_beside' | 'saved_to_folder' | 'failed' | 'cancelled'
+  clip_id?: number
+  path?: string
+  folder?: string
+  file?: string
+  seconds?: number
+  again?: boolean
+  error?: string
+}
+
+export type EditorShape = '16:9' | '9:16' | '1:1' | '4:5'
+
+export type EditorOpenRequest =
+  | { kind: 'clip'; clip_id: number; fresh?: boolean }
+  | { kind: 'video'; video_id: string; shape: EditorShape }
+  | { kind: 'file'; path: string; shape: EditorShape }
+
+/** An editor route's refusal: its status, the engine's `reason` when it gave
+ *  one, and its plain sentence. */
+export class EditorRouteError extends Error {
+  constructor(
+    readonly status: number,
+    readonly reason: string,
+    message: string
+  ) {
+    super(message)
+  }
+}
+
+async function editorRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...init, headers: await sessionHeaders() })
+  } catch {
+    throw new EditorRouteError(0, 'offline', '')
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { detail?: unknown } | null
+    const detail = body?.detail as unknown
+    const message =
+      typeof detail === 'string' ? detail : String((detail as { message?: unknown } | null)?.message ?? '')
+    const reason = String((detail as { reason?: unknown } | null)?.reason ?? '')
+    throw new EditorRouteError(res.status, reason, message)
+  }
+  return res.json() as Promise<T>
+}
+
+/** The editor's routes. All of them need the desktop app's session. */
+export const editorApi = {
+  status: () =>
+    editorRequest<{ found: boolean; version: string; message: string; reason: string }>('/editor/status'),
+  open: (req: EditorOpenRequest) =>
+    editorRequest<{ project: EditorProject; created: boolean }>('/editor/projects/open', {
+      method: 'POST',
+      body: JSON.stringify(req)
+    }),
+  projects: () => editorRequest<{ projects: EditorProject[] }>('/editor/projects'),
+  project: (id: string) => editorRequest<EditorProject>(`/editor/projects/${id}`),
+  reopen: (id: string, exportFolder?: string) =>
+    editorRequest<EditorProject>(`/editor/projects/${id}/open`, {
+      method: 'POST',
+      body: JSON.stringify(exportFolder ? { export_folder: exportFolder } : {})
+    }),
+  remove: (id: string) => editorRequest<{ deleted: boolean }>(`/editor/projects/${id}`, { method: 'DELETE' })
 }

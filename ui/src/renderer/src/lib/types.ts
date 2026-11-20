@@ -507,6 +507,10 @@ export interface Clip {
    *  api.mediaUrl, so a player shows the file as it is now (a clip Make clips
    *  again made again in place keeps its id). */
   media_version?: string
+  /** Only for a clip whose file is a Clips Kitty Editor export (editor suite
+   *  K2): the file's real length, and the project it came from ('' when
+   *  that project is gone). */
+  editor_export?: { seconds: number; project_id: string }
 }
 
 export interface Job {
@@ -1165,6 +1169,15 @@ export interface StudioEvent {
   type: 'progress' | 'job' | 'model_pull' | 'queue' | 'publish' | 'automation' | 'clip_replaced' | 'export'
   /** export only: the export job as it is now. */
   export?: ExportJob
+  // Clips Kitty Editor (editor suite K2) also sends 'editor_project' (a
+  // project being made), 'clip_file_replaced' (an export taken in as a clip's
+  // video) and 'editor_export' (an export saved to a folder); `type` is read
+  // as a string for those (lib/editor.ts, App.tsx, ClipStudio.tsx).
+  /** editor_project only: the project's id and how far it is (0 to 1). */
+  id?: string
+  progress?: number
+  /** clip_file_replaced and editor_export: the editor project. */
+  project_id?: string
   /** clip_replaced only: the clip's id before the re-render, and after it. */
   old?: number
   new?: number
