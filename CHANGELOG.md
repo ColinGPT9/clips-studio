@@ -82,6 +82,10 @@ Kitty after you change it.
 
 ### Fixed
 
+- **A video added with "Upload video file" now keeps every setting you chose for it.**
+  The chosen Gaming detector or Marketplace pipeline, Sports, the clip direction, Gaming
+  scoring and the Rate, Understand and Suggest edits plugins were left out for uploaded
+  files, so they ran with Clips Kitty's own scoring instead. Pasted links were not affected.
 - **Longform no longer fails with "concat join failed" when a video's title has an
   apostrophe** (#197), as in "I'll" or "Let's". Clips of such a video also keep their
   end card, which they had quietly been made without, and its story reels join again.
