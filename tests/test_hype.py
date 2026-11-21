@@ -96,3 +96,17 @@ def test_missing_oauth_token_is_normal_fallback(monkeypatch, tmp_path):
     monkeypatch.setenv("CLIPS_STUDIO_DATA_DIR", str(tmp_path))
 
     assert hype._youtube_organic_retention("video", 60.0) is None
+
+
+def test_a_local_upload_does_not_ask_a_platform(monkeypatch):
+    def boom(*_a, **_k):
+        raise AssertionError("a local upload must not call out")
+
+    monkeypatch.setattr(hype, "_youtube_organic_retention", boom)
+    monkeypatch.setattr(hype, "_youtube_heatmap", boom)
+    monkeypatch.setattr(hype, "_youtube_live_chat", boom)
+    monkeypatch.setattr(hype, "_twitch_chat", boom)
+
+    assert hype.audience_signals("local:local_0123456789ab", "local_0123456789ab", 90) == (None, [])
+    assert hype.audience_curve("local://uploads/clip.mp4", "local_abcdef012345", 30) is None
+    assert hype._local_upload("https://www.youtube.com/watch?v=abcdefghijk", "abcdefghijk") is False

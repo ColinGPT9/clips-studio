@@ -169,9 +169,72 @@ def test_a_video_where_nothing_is_said_has_an_empty_transcript(audio, monkeypatc
     assert cloud.transcribe(tmp_path / "v.mp4", "vid00000003", tmp_path / "t", online) == []
 
 
-@pytest.mark.parametrize("value,code", [("english", "en"), ("en", "en"), ("Spanish", "es"), ("", "")])
+@pytest.mark.parametrize("value,code", [
+    ("english", "en"), ("en", "en"), ("Spanish", "es"), ("", ""),
+    ("es-mx", "es"), ("fil", "tl"), ("tagalog", "tl"),
+])
 def test_languages_become_codes(value, code):
     assert cloud.normalize_language(value) == code
+
+
+def test_xai_sends_the_configured_language_with_format(audio, monkeypatch, tmp_path):
+    """format=true is what xAI rejects unless language is in the same form."""
+    keys.save_key(tmp_path, "xai", "xai-" + "Qr9" * 20)
+    monkeypatch.setattr(cloud, "_duration", lambda path: 30.0)
+    calls = []
+
+    def transport(method, url, **kw):
+        calls.append(kw)
+        return Response({"language": "id", "words": [{"text": "Halo.", "start": 0.2, "end": 0.6}]})
+
+    monkeypatch.setattr(http, "transport", transport)
+    online = {"backend": "xai", "data_dir": str(tmp_path)}
+    cloud.transcribe(tmp_path / "v.mp4", "idvid", tmp_path / "t", online, language="id")
+    form = calls[0]["data"]
+    assert form == {"model": "grok-voice-transcribe-2.0", "language": "id", "format": "true"}
+    name, payload, mime = calls[0]["files"]["file"]
+    assert name.endswith(".mp3") and payload == b"mp3" and mime == "audio/mpeg"
+    saved = json.loads((tmp_path / "t" / "idvid.json").read_text(encoding="utf-8"))
+    assert saved["language"] == "id"
+
+    calls.clear()
+    cloud.transcribe(tmp_path / "v.mp4", "tlvid", tmp_path / "t", online, language="tl")
+    assert calls[0]["data"]["language"] == "fil" and calls[0]["data"]["format"] == "true"
+    assert json.loads((tmp_path / "t" / "tlvid.json").read_text(encoding="utf-8"))["language"] == "tl"
+
+
+def test_xai_auto_detect_omits_format_then_reuses_the_detected_language(audio, monkeypatch, tmp_path):
+    keys.save_key(tmp_path, "xai", "xai-" + "Qr9" * 20)
+    monkeypatch.setattr(cloud, "_duration", lambda path: 1300.0)  # two 1200 s parts
+    calls = []
+    answers = [
+        {"language": "es-mx", "words": [{"text": "Hola", "start": 0.2, "end": 0.5}]},
+        {"language": "es-mx", "words": [{"text": "otra", "start": 1.0, "end": 1.4}]},
+    ]
+
+    def transport(method, url, **kw):
+        calls.append(kw)
+        return Response(answers[len(calls) - 1])
+
+    monkeypatch.setattr(http, "transport", transport)
+    online = {"backend": "xai", "data_dir": str(tmp_path)}
+    for language in (None, "auto"):
+        calls.clear()
+        cloud.transcribe(tmp_path / "v.mp4", f"autovid-{language}", tmp_path / "t", online, language=language)
+        assert set(calls[0]["data"]) == {"model"}
+        assert calls[1]["data"]["language"] == "es" and calls[1]["data"]["format"] == "true"
+        assert calls[0]["files"]["file"][2] == calls[1]["files"]["file"][2] == "audio/mpeg"
+        saved = json.loads((tmp_path / "t" / f"autovid-{language}.json").read_text(encoding="utf-8"))
+        assert saved["language"] == "es"
+
+
+def test_xai_text_without_word_timings_is_refused():
+    with pytest.raises(LLMError) as err:
+        cloud._xai_words({"text": "hello", "words": [{"text": "hello"}]})
+    assert err.value.kind == "bad_response"
+    assert cloud._xai_words({"text": "", "words": []}) == []
+    kept = cloud._xai_words({"words": [{"text": "Hi", "start": 0.0, "end": 0.2}, "nope"]})
+    assert kept == [{"start": 0.0, "end": 0.2, "word": "Hi"}]
 
 
 def test_openai_and_xai_requests(audio, monkeypatch, tmp_path):
@@ -196,6 +259,9 @@ def test_openai_and_xai_requests(audio, monkeypatch, tmp_path):
     assert ("model", "whisper-1") in openai_call["data"]
     assert "file" in openai_call["files"]
     assert xai_call["url"] == "https://api.x.ai/v1/stt" and xai_call["data"]["model"] == "grok-voice-transcribe-2.0"
+    # No content language: format=true is illegal without one, so it stays off.
+    assert "language" not in xai_call["data"] and "format" not in xai_call["data"]
+    assert xai_call["files"]["file"][2] == "audio/mpeg"
 
 
 def test_no_key_means_nothing_is_sent(audio, monkeypatch, tmp_path):

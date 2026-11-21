@@ -30,6 +30,7 @@ import time
 import urllib.request
 from datetime import date
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import numpy as np
 
@@ -61,11 +62,31 @@ def audience_curve(url: str, video_id: str, duration: float) -> np.ndarray | Non
     return audience_signals(url, video_id, duration)[0]
 
 
+def _local_upload(url: str, video_id: str) -> bool:
+    """A file from this PC, not a platform video.
+
+    Imported files are queued as "local:<video_id>". Asking YouTube or
+    yt-dlp about that URL warns "Unsupported url scheme: local" and can
+    call YouTube Analytics with an id that is not a video.
+    """
+    text = (url or "").strip().lower()
+    if text.startswith("local:"):
+        return True
+    scheme = urlsplit(text).scheme
+    if scheme == "local":
+        return True
+    if scheme in ("http", "https"):
+        return False
+    return (video_id or "").startswith("local_")
+
+
 def audience_signals(url: str, video_id: str, duration: float) -> tuple[np.ndarray | None, list]:
     """(the hype curve, the chat messages it came from). The messages are
     [(offset seconds, author, text)] when the curve came from chat replay, for
     the gaming profile's reading of what chat said (analysis/chat_moments.py);
     empty for the other sources. Never raises."""
+    if _local_upload(url, video_id):
+        return None, []
     try:
         if video_id.startswith("tw_clip_"):
             return None, []
