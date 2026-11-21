@@ -396,9 +396,9 @@ def test_the_workflow_uses_clips_kittys_python_and_the_test_extra(made):
     assert job["strategy"]["matrix"]["os"] == ["ubuntu-latest", "windows-latest"]
     steps = job["steps"]
 
-    # The same action versions as Clips Kitty's own CI, and Clips Kitty's Python.
+    # The same actions as Clips Kitty's own CI, pinned to the same commits, and Clips Kitty's Python.
     uses = [s["uses"] for s in steps if "uses" in s]
-    assert uses == ["actions/checkout@v7", "actions/setup-python@v7.0.0"]
+    assert uses == ["actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"]
     assert all(f"uses: {u}" in ours for u in uses)
     setup = next(s for s in steps if s.get("uses", "").startswith("actions/setup-python"))
     assert setup["with"]["python-version"] == ".".join(map(str, APP_PYTHON)) == "3.11"
