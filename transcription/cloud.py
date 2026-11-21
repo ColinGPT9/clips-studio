@@ -28,6 +28,7 @@ plain words.
 
 import base64
 import json
+import logging
 import re
 import subprocess
 import tempfile
@@ -40,6 +41,8 @@ from llm.providers import keys
 from llm.providers.base import LLMError
 from llm.providers.catalog import get
 from llm.providers.http import send
+
+log = logging.getLogger(__name__)
 
 # A three-second spoken phrase, for checking a voice model the app has not
 # seen return word timings before (check_model).
@@ -68,6 +71,13 @@ def transcribe(video_path: Path, video_id: str, transcript_dir: Path, online: di
     duration = _duration(video_path)
     starts = [i * length for i in range(max(1, int(-(-duration // length))))]
     print(f"  Transcribing online with {spec.label} ({model}), {len(starts)} part(s)...")
+    # xAI rejects format=true unless language is set. Auto-detect leaves it
+    # off for the first part that is actually sent; a language the model
+    # reports is reused for the parts after that, so a configured language
+    # is never replaced with English.
+    if spec.stt.get("format") == "xai" and _xai_language(language) is None:
+        print("      xAI: no content language is set, so the spoken language is detected")
+        log.info("xAI speech-to-text language is auto; format stays off until a language is known")
 
     words: list[dict] = []
     detected = ""
@@ -82,7 +92,10 @@ def transcribe(video_path: Path, video_id: str, transcript_dir: Path, online: di
             if speech == []:
                 silent += 1
                 continue
-            part_words, part_language = _request(spec, key, model, audio, language)
+            request_language = language
+            if spec.stt.get("format") == "xai" and _xai_language(language) is None:
+                request_language = _xai_language(detected)
+            part_words, part_language = _request(spec, key, model, audio, request_language)
             if speech is not None:
                 kept = [w for w in part_words if _spoken(w, speech)]
                 made_up += len(part_words) - len(kept)
@@ -100,7 +113,12 @@ def transcribe(video_path: Path, video_id: str, transcript_dir: Path, online: di
         print(f"      Nobody speaks in {silent} part(s), not sent; {made_up} word(s) outside speech dropped")
 
     segments = group_words(words)
-    lang = (language or normalize_language(detected) or "en").lower()
+    # "auto" is the settings value for detect-per-video. It is not a language
+    # code, so the transcript keeps what the provider reported instead.
+    forced = (language or "").strip()
+    if forced.lower() in _AUTO_LANGUAGE:
+        forced = ""
+    lang = (forced or normalize_language(detected) or "en").lower()
     transcript_dir.mkdir(parents=True, exist_ok=True)
     payload = {"video_id": video_id, "language": lang, "source": f"{provider}/{model}",
                "segments": [vars(s) for s in segments]}
@@ -157,6 +175,31 @@ def _spoken(word: dict, speech: list[tuple[float, float]]) -> bool:
 # ---- one request per provider format -------------------------------------------
 
 
+# "auto" / missing means the model should detect the language. "und" is the
+# ISO code for undetermined, which xAI does not accept as a formatting language.
+_AUTO_LANGUAGE = {"", "auto", "none", "und", "unknown"}
+# The app's content language for Filipino is tl; xAI's speech API spells it fil.
+_XAI_LANGUAGE_CODES = {"tl": "fil"}
+_APP_LANGUAGE_CODES = {"fil": "tl"}
+
+
+def _xai_language(language: str | None) -> str | None:
+    """Language code for xAI /stt, or None when this part should be detected.
+
+    A configured content language is sent as xAI spells it. Auto-detect
+    (None, "", "auto") stays unset: format=true is a 400 without a code,
+    and English is not invented in its place.
+    """
+    text = (language or "").strip().lower()
+    if text in _AUTO_LANGUAGE:
+        return None
+    code = normalize_language(text)
+    if not code:
+        log.warning("xAI speech-to-text ignored an unrecognised language %r", language)
+        return None
+    return _XAI_LANGUAGE_CODES.get(code, code)
+
+
 def _request(spec, key: str, model: str, audio: Path, language: str | None) -> tuple[list[dict], str]:
     fmt = spec.stt["format"]
     data = audio.read_bytes()
@@ -177,15 +220,53 @@ def _request(spec, key: str, model: str, audio: Path, language: str | None) -> t
                       files={"file": (audio.name, data, "audio/mpeg")}, timeout=STT_TIMEOUT)
         return _whisper_words(answer), str(answer.get("language") or "")
     if fmt == "xai":
-        form = {"model": model, "format": "true"}
-        if language:
-            form["language"] = language
-        answer = send(spec, key, "POST", "/stt", data=form,
-                      files={"file": (audio.name, data, "audio/mpeg")}, timeout=STT_TIMEOUT)
-        words = [{"start": float(w["start"]), "end": float(w["end"]), "word": str(w.get("text") or "").strip()}
-                 for w in answer.get("words") or [] if isinstance(w, dict) and str(w.get("text") or "").strip()]
-        return words, str(answer.get("language") or "")
+        # format=true asks for written numbers and currency. xAI requires
+        # language whenever it is on, and word timings come back either way.
+        # The file field stays last: requests encodes `data` before `files`.
+        spoken = _xai_language(language)
+        form = {"model": model}
+        if spoken:
+            form["language"] = spoken
+            form["format"] = "true"
+        try:
+            answer = send(spec, key, "POST", "/stt", data=form,
+                          files={"file": (audio.name, data, "audio/mpeg")}, timeout=STT_TIMEOUT)
+        except LLMError as e:
+            log.warning("xAI speech-to-text failed (%s): %s", e.kind, e.message)
+            raise
+        return _xai_words(answer), str(answer.get("language") or "")
     raise LLMError("not_configured", f"{spec.label} transcription is not set up in this version.")
+
+
+def _xai_words(answer: dict) -> list[dict]:
+    """Timed words from an xAI /stt answer. Text with no timings is refused,
+    the same as a Whisper answer captions could not place."""
+    if not isinstance(answer, dict):
+        log.warning("xAI speech-to-text returned %s, not an object", type(answer).__name__)
+        raise LLMError("bad_response", "xAI Grok returned a transcript this app couldn't read.")
+    words: list[dict] = []
+    skipped = 0
+    for w in answer.get("words") or []:
+        if not isinstance(w, dict):
+            skipped += 1
+            continue
+        text = str(w.get("text") or "").strip()
+        if not text:
+            continue
+        try:
+            start, end = float(w["start"]), float(w["end"])
+        except (KeyError, TypeError, ValueError):
+            skipped += 1
+            continue
+        words.append({"start": start, "end": end, "word": text})
+    if skipped:
+        log.warning("xAI speech-to-text dropped %s word(s) without timings", skipped)
+        print(f"      (xAI dropped {skipped} word(s) without timings)")
+    said = str(answer.get("text") or "").strip()
+    if said and not words:
+        raise LLMError("bad_response", "The transcription came back without word timings, which "
+                                       "captions need. Choose a different transcription model.")
+    return words
 
 
 def _whisper_words(answer: dict) -> list[dict]:
@@ -254,10 +335,11 @@ def _segment(words: list[dict]) -> Segment:
 
 
 def normalize_language(value: str) -> str:
-    """"en" stays "en"; "english" (whisper-1) becomes "en"."""
-    text = (value or "").strip().lower()
-    if re.fullmatch(r"[a-z]{2,3}", text):
-        return text
+    """"en" stays "en"; "english" (whisper-1) becomes "en"; "es-mx" becomes "es"."""
+    text = (value or "").strip().lower().replace("_", "-")
+    primary = text.split("-", 1)[0]
+    if re.fullmatch(r"[a-z]{2,3}", primary):
+        return _APP_LANGUAGE_CODES.get(primary, primary)
     from multilingual.languages import LANGUAGES
 
     names = {english.split(" ")[0].lower(): code for code, (english, _native, _prompt) in LANGUAGES.items()}
