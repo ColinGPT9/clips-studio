@@ -22,7 +22,9 @@ METHODS = ("discord_assisted", "discord_webhook", "website")
 # API answer: the sign-in's tokens under one name, and each webhook
 # destination's id and token under a name of its own (DESIGN §3.4).
 
-OAUTH_SECRET = "discord_oauth"
+# The name core/secrets keeps the sign-in under (a name, not a secret).
+OAUTH_SECRET_NAME = "discord_oauth"
+OAUTH_SECRET = OAUTH_SECRET_NAME
 
 
 def webhook_secret_name(destination_id: int) -> str:

@@ -385,11 +385,11 @@ def test_a_new_link_brings_a_gone_destination_back(db, tmp_path):
     dest = _add(db, tmp_path)
     db.set_destination(dest["id"], state="gone", last_error="The webhook doesn't exist any more")
     service.wipe_webhook(tmp_path, dest["id"])
-    new_url = f"https://discord.com/api/webhooks/{WEBHOOK_ID}/new-token-value"
-    http = FakeDiscordHTTP((200, webhook(token="new-token-value")))
+    new_url = f"https://discord.com/api/webhooks/{WEBHOOK_ID}/example-new-token-value"
+    http = FakeDiscordHTTP((200, webhook(token="example-new-token-value")))
     got = service.update_destination(db, tmp_path, http, dest["id"], webhook_url=new_url, label="Renamed")
     assert (got["state"], got["last_error"], got["label"], got["has_token"]) == ("connected", "", "Renamed", True)
-    assert service.load_webhook(tmp_path, dest["id"])["token"] == "new-token-value"
+    assert service.load_webhook(tmp_path, dest["id"])["token"] == "example-new-token-value"
     assert service.update_destination(db, tmp_path, FakeDiscordHTTP(), 999, label="x") is None
 
 

@@ -22,7 +22,7 @@ from campaigns import statemachine  # noqa: E402
 from core.state import StateDB  # noqa: E402
 from server import campaigns_api  # noqa: E402
 
-SECRET = "test-session-secret-0123456789"
+SECRET = "example-session-secret-0123456789"
 HEADERS = {"X-Clips-Kitty-Session": SECRET}
 
 

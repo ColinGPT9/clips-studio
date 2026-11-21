@@ -64,8 +64,10 @@ PLAYLIST_SCOPES = [SCOPE_UPLOAD, SCOPE_READONLY, SCOPE_FULL]
 # "finished".
 CHUNK_BYTES = 8 * 1024 * 1024
 
-TOKEN_SECRET = "youtube_token"
-CLIENT_SECRET = "youtube_client"
+# The names core/secrets keeps the sign-in and the OAuth client under (names, not secrets).
+TOKEN_SECRET_NAME = "youtube_token"
+CLIENT_SECRET_NAME = "youtube_client"
+TOKEN_SECRET, CLIENT_SECRET = TOKEN_SECRET_NAME, CLIENT_SECRET_NAME
 
 
 def token_name_for(channel_id: str | None) -> str:

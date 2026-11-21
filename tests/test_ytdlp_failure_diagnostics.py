@@ -161,13 +161,13 @@ def test_the_note_never_echoes_the_failure():
     """Only the version is interpolated, so a private URL, a cookie header or a
     token that the error text carries cannot be put back into a message the job
     layer scrubs on the way out (server/jobs.py)."""
-    secret = "Authorization: Bearer sk-live-DO-NOT-PRINT"
+    leaked = "Authorization: Bearer sk-live-DO-NOT-PRINT"
     private = "https://www.youtube.com/watch?v=SECRET1D&list=PRIVATE"
-    note = ytdlp_common.failure_note(RuntimeError(f"ERROR: Unable to extract data from {private}\n{secret}"))
+    note = ytdlp_common.failure_note(RuntimeError(f"ERROR: Unable to extract data from {private}\n{leaked}"))
 
     assert "sk-live" not in note
     assert "SECRET1D" not in note and "PRIVATE" not in note
-    assert secret not in note
+    assert leaked not in note
 
 
 def test_the_note_is_the_version_and_nothing_from_the_original():

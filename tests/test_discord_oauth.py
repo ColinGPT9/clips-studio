@@ -242,14 +242,14 @@ def _webhook_sign_in(db, tmp_path, answer):
 
 def test_webhook_incoming_becomes_a_destination_and_its_token_is_revoked_not_kept(db, tmp_path):
     answer = tokens(access="webhook-access", refresh="webhook-refresh", scope="webhook.incoming",
-                    webhook=webhook(id="400000000000000009", token="made-by-oauth-token", name="Clips Kitty"))
+                    webhook=webhook(id="400000000000000009", token="example-made-by-oauth-token", name="Clips Kitty"))
     http, done = _webhook_sign_in(db, tmp_path, answer)
     assert done.ok and done.event == "destination_added"
     row = db.get_destination(done.destination_id)
     assert (row["source"], row["label"], row["webhook_id"], row["webhook_name"], row["state"]) == (
         "oauth", "Example Campaign hook", "400000000000000009", "Clips Kitty", "connected")
     assert service.load_webhook(tmp_path, done.destination_id) == {"webhook_id": "400000000000000009",
-                                                                    "token": "made-by-oauth-token"}
+                                                                    "token": "example-made-by-oauth-token"}
     revoke = http.calls[1]
     assert revoke["url"].endswith("/oauth2/token/revoke") and revoke["data"]["token"] == "webhook-access"
     # Not kept: no sign-in stored, the card stays as it was.

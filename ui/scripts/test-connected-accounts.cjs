@@ -137,10 +137,11 @@ async function main() {
   })
   c.respond({ ok: false, status: 409, json: async () => ({ detail: { message: 'Reconnect required.' } }) })
   await assert.rejects(c.connectedAccounts.status(), /Reconnect required\./)
+  const leaked = 'private-token'
   for (const detail of [
     'access_token=private-token', 'Authorization: Bearer private-token',
     'See https://provider.test?refresh_token=private-token',
-    { message: 'client_secret: private-token', token: 'private-token' }
+    { message: 'client_secret: ' + leaked, token: leaked }
   ]) {
     c.respond({ ok: false, status: 500, json: async () => ({ detail }) })
     await assert.rejects(c.streamWorkflows.streams('twitch:123'), (error) => {

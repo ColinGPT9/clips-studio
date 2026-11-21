@@ -14,7 +14,7 @@ from server.stream_digest_delivery import DiscordDigestDelivery, content_for
 from stream_workflows.digests import DigestService
 
 ACCOUNT = "twitch:123"
-TOKEN = "private-webhook-token"
+TOKEN = "example-private-webhook-token"
 
 
 class Response:

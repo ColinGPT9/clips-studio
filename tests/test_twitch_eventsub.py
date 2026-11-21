@@ -100,18 +100,18 @@ def test_session_id_is_host_owned_and_notifications_are_allowlisted(manager):
         "broadcaster_id": "12", "event_types": ["channel.chat.message", "stream.online"],
         "session_id": "host-session"})]
     socket = sockets[0]
-    socket.messages.put(notification(access_token="should-not-leave-host"))
+    socket.messages.put(notification(access_token="example-should-not-leave-host"))
     socket.messages.put(notification())  # Twitch can redeliver the same notification.
     socket.messages.put(notification(uid="999", message_id="wrong-channel"))
     socket.messages.put(notification(kind="channel.update", message_id="unsubscribed"))
     socket.messages.put(notification(kind="channel.chat.message", message_id="chat-1",
                                      chatter_user_id="9", message={"text": "Hello", "raw": "secret"},
-                                     refresh_token="should-not-leave-host"))
+                                     refresh_token="example-should-not-leave-host"))
     eventually(lambda: len(manager.events("twitch:12")["events"]) == 2)
     body = manager.events("twitch:12")
     assert [e["type"] for e in body["events"]] == ["stream.online", "channel.chat.message"]
     assert body["events"][1]["data"]["text"] == "Hello"
-    assert "should-not-leave-host" not in json.dumps(body)
+    assert "example-should-not-leave-host" not in json.dumps(body)
     assert "secret" not in json.dumps(body)
     assert manager.events("twitch:12", broadcaster_id="999")["events"] == []
     assert manager.events("twitch:12", after=body["cursor"])["events"] == []

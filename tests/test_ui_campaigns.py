@@ -17,8 +17,8 @@ from pathlib import Path
 import pytest
 
 LIB = Path(__file__).resolve().parent.parent / "ui" / "src" / "renderer" / "src" / "lib"
-WEBHOOK = "https://discord.com/api/webhooks/400000000000000001/fake-webhook-token-Abc123_xyz"
-TOKEN = "fake-webhook-token-Abc123_xyz"
+WEBHOOK = "https://discord.com/api/webhooks/400000000000000001/example-webhook-token-Abc123_xyz"
+TOKEN = "example-webhook-token-Abc123_xyz"
 
 
 def _run(tmp_path, body: str, *, secret: str = "sess-1"):

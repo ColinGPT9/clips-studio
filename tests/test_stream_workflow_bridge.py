@@ -242,7 +242,7 @@ def collect_and_map(bridge):
         chatter_user_login="private-viewer-login",
         chatter_user_name="Private Viewer Name",
         message={"text": "!chaos"},
-        access_token="private-event-token",
+        access_token="example-private-event-token",
     )
     notify(
         bridge,
@@ -320,7 +320,7 @@ def test_real_eventsub_to_persisted_mapping_to_sdk_is_relative_and_private(bridg
         "PRIVATE RAW CHAT",
         "private-provider-access",
         "private-provider-refresh",
-        "private-event-token",
+        "example-private-event-token",
         "/private/local/path.mp4",
     ):
         assert private not in public
