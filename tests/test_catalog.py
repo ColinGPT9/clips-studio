@@ -109,6 +109,7 @@ def test_an_entry_goes_into_the_index_with_its_labels_and_numbers(cat):
     ({"relationship": "related"}, "relationship: built-with (it uses Clips Kitty's API or SDK)"),
     ({"relationship": "related"}, "A project that doesn't is not an entry"),
     ({"uses": None}, "uses: what it uses of Clips Kitty"),
+    ({"uses": "fork"}, "or code for a project built from Clips Kitty's own code"),
     ({"section": "nowhere"}, "section: one of built-with, works-with, video-clipping, gaming"),
     ({"section": "works-with"}, "adapter: an app in works-with names the listed pipeline"),
     ({"source": {}}, "source: github, huggingface or url"),
@@ -137,6 +138,16 @@ def test_a_bad_entry_is_left_out_and_says_why(cat, change, fragment):
     index, problems = cat.build()
     assert any(fragment in p for p in problems), problems
     assert [e["id"] for e in index["catalog"]] == ["apps/good-one"]
+
+
+@pytest.mark.parametrize("uses", ["api", "sdk", "both", "code"])
+def test_every_way_of_using_clips_kitty_is_an_entry(cat, uses):
+    """"code" is an app built from Clips Kitty's own code (an edition, or a
+    project started from it), which calls neither its API nor its SDK."""
+    cat.write("apps/example-clipper.yaml", {**APP, "uses": uses})
+    index, problems = cat.build()
+    assert problems == []
+    assert [(e["id"], e["uses"]) for e in index["catalog"]] == [("apps/example-clipper", uses)]
 
 
 GH = APP["source"]["github"]

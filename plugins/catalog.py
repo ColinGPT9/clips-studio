@@ -72,7 +72,10 @@ OFFICIAL_OWNERS = ("colingpt9",)
 
 PLATFORMS = ("windows", "macos", "linux", "web", "android", "ios")
 RUNS = ("local", "cloud", "both")
-USES = ("api", "sdk", "both")
+# What a built-with project uses of Clips Kitty. "code": an app built from Clips
+# Kitty's own code (an edition, or a project started from it) rather than one
+# that calls its API or SDK.
+USES = ("api", "sdk", "both", "code")
 ENTRY_FIELDS = ("name", "description", "section", "relationship", "license", "license_note", "source", "models",
                 "platforms", "runs", "setup", "tags", "games", "sports", "adapter", "uses", "featured", "warning",
                 "added", "checked")
@@ -390,7 +393,8 @@ def check_entry(data, kind: str, slug: str, sections: dict) -> list[str]:
     if kind == "app" and section == "works-with" and not data.get("adapter"):
         problems.append("adapter: an app in works-with names the listed pipeline or plugin that runs it in Clips Kitty")
     if relationship == "built-with" and data.get("uses") not in USES:
-        problems.append("uses: what it uses of Clips Kitty: api, sdk or both")
+        problems.append("uses: what it uses of Clips Kitty: api, sdk or both, or code for a project built "
+                        "from Clips Kitty's own code")
     if "uses" in data and relationship != "built-with":
         problems.append("uses: only for built-with projects")
     if not isinstance(data.get("license"), str) or not re.match(manifest.LICENSE_PATTERN, data["license"]) \
