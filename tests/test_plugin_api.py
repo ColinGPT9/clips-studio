@@ -25,7 +25,7 @@ def api(tmp_path, monkeypatch):
     from main import BUNDLED_CONFIG, load_config
     from server.api import create_app
 
-    monkeypatch.setenv("CLIPS_KITTY_SESSION_SECRET", "test-session-secret-0123456789")
+    monkeypatch.setenv("CLIPS_KITTY_SESSION_SECRET", "example-session-secret-0123456789")
     settings = tmp_path / "settings.yaml"
     shutil.copy(ROOT / "config" / "settings.yaml", settings)
     config = load_config(BUNDLED_CONFIG)
@@ -35,7 +35,7 @@ def api(tmp_path, monkeypatch):
     return TestClient(app, base_url="http://127.0.0.1"), data_dir
 
 
-HEADERS = {"X-Clips-Kitty-Session": "test-session-secret-0123456789"}
+HEADERS = {"X-Clips-Kitty-Session": "example-session-secret-0123456789"}
 
 
 def test_every_plugin_route_is_labelled_experimental(api):

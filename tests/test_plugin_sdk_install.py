@@ -38,7 +38,7 @@ from clipskitty_sdk.client import LocalAPI  # noqa: E402
 
 pytest.importorskip("yaml")  # install checks clipskitty.yaml first
 
-SECRET = "test-session-secret-0123456789"
+SECRET = "example-session-secret-0123456789"
 PLUGIN_ID = "your-github-name/quarkbloom-bursts"
 APP_TEXT = ("Install Quarkbloom Bursts 0.1.0?\nyour-github-name/quarkbloom-bursts · the folder ... · MIT\n"
             "Not listed · Clips Kitty has not checked this\n\nIt will\n  Reads its transcript (Clips Kitty hands "

@@ -24,7 +24,8 @@ from core import secrets
 from server import posts
 
 SETTINGS_KEY = "uploadpost"
-KEY_SECRET = "uploadpost_key"
+KEY_SECRET_NAME = "uploadpost_key"  # where core/secrets keeps the API key
+KEY_SECRET = KEY_SECRET_NAME
 
 # Every upload has to name an Upload-Post "profile", the thing that owns the
 # connected social accounts. A creator with one set of accounts does not care

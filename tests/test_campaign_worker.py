@@ -57,7 +57,7 @@ def test_a_pass_sends_and_announces_through_the_broadcaster(db, tmp_path, emitte
 
 
 @pytest.mark.parametrize("failure_text", [
-    "https://discord.com/api/webhooks/400000000000000001/fake-webhook-token-Abc123_xyz",
+    "https://discord.com/api/webhooks/400000000000000001/example-webhook-token-Abc123_xyz",
     "private diagnostic that isn't a recognisable token",
 ])
 def test_the_step_never_raises_into_the_loop(db, tmp_path, monkeypatch, capsys, failure_text):

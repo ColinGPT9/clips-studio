@@ -38,7 +38,7 @@ from core.state import StateDB  # noqa: E402
 from server import discord_api, publisher  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
-SECRET = "test-session-secret-0123456789"
+SECRET = "example-session-secret-0123456789"
 HEADERS = {"X-Clips-Kitty-Session": SECRET}
 WEBHOOK_URL = f"https://discord.com/api/webhooks/{WEBHOOK_ID}/{WEBHOOK_TOKEN}"
 
@@ -352,10 +352,10 @@ def test_create_with_discord_starts_a_webhook_sign_in(client, fake_http, events)
     query = _state(client.post("/discord/destinations/authorize", json={"label": "From Discord"},
                                headers=HEADERS).json()["url"])
     assert query["scope"] == "webhook.incoming"
-    hook = webhook(id="400000000000000009", token="made-by-oauth-token", name="Clips Kitty")
+    hook = webhook(id="400000000000000009", token="example-made-by-oauth-token", name="Clips Kitty")
     fake_http.add((200, tokens(scope="webhook.incoming", webhook=hook)), (200, {}))
     page = client.get("/discord/callback", params={"state": query["state"], "code": "c"})
-    assert page.status_code == 200 and "made-by-oauth-token" not in page.text
+    assert page.status_code == 200 and "example-made-by-oauth-token" not in page.text
     assert events == [{"type": "campaign", "discord": "destination_added"}]
     listed = client.get("/discord/destinations").json()["destinations"]
     assert [(d["label"], d["source"]) for d in listed] == [("From Discord", "oauth")]

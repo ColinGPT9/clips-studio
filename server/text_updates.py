@@ -11,7 +11,8 @@ from campaigns import service as discord
 from core.scrub import redact_secrets
 
 KEY = 'text_updates'
-BOT_SECRET = 'clip_updates_discord_bot'
+BOT_SECRET_NAME = 'clip_updates_discord_bot'  # where core/secrets keeps the bot token
+BOT_SECRET = BOT_SECRET_NAME
 TTL = 24 * 60 * 60
 DEFAULTS = {'enabled': False, 'away_from_desk': False, 'show_dmca': True,
             'events': ['ready', 'scheduled', 'run_failed', 'publish_failed', 'rejected'],

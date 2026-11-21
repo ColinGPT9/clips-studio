@@ -90,7 +90,7 @@ def test_a_project_is_created_rather_than_asked_for(client, monkeypatch):
     from uuid import uuid4
 
     account_id = "fixture-" + uuid4().hex
-    private_token = "private-" + uuid4().hex
+    private_token = "example-private-" + uuid4().hex
 
     class FakeClient:
         def projects(self):

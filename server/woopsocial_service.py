@@ -17,7 +17,8 @@ from core import secrets
 from server import posts
 
 SETTINGS_KEY = "woopsocial"
-KEY_SECRET = "woopsocial_key"
+KEY_SECRET_NAME = "woopsocial_key"  # where core/secrets keeps the API key
+KEY_SECRET = KEY_SECRET_NAME
 
 # A WoopSocial "project" is what their UI calls a Business Profile: the thing
 # connected social accounts belong to. Created on demand under this name so a

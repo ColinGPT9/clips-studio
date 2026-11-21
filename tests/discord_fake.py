@@ -26,7 +26,7 @@ GUILDS = [
     {"id": "300000000000000003", "name": "read-only-server", "owner": False, "permissions": "1024"},
 ]
 WEBHOOK_ID = "400000000000000001"
-WEBHOOK_TOKEN = "fake-webhook-token-Abc123_xyz"
+WEBHOOK_TOKEN = "example-webhook-token-Abc123_xyz"
 CHANNEL_ID = "500000000000000001"
 
 
@@ -210,8 +210,8 @@ class FakeDiscordServer:
                                         scope=issued["scope"])
                         if "webhook.incoming" in issued["scope"].split() and fake.give_webhook:
                             hook_id = "400000000000000009"
-                            fake.webhooks[hook_id] = "made-by-oauth-token"
-                            answer["webhook"] = webhook(id=hook_id, token="made-by-oauth-token",
+                            fake.webhooks[hook_id] = "example-made-by-oauth-token"
+                            answer["webhook"] = webhook(id=hook_id, token="example-made-by-oauth-token",
                                                         name="Clips Kitty")
                     elif form.get("grant_type") == "refresh_token":
                         if form.get("refresh_token") not in fake.refresh_tokens:
