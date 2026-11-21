@@ -3265,9 +3265,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             "privacy": config.get("upload", {}).get("privacy", "public"),
             "content_language": config.get("content_language", "auto"),
             "translation_model": config.get("llm", {}).get("translation_model", ""),
-            # Absent counts as ON, matching how the pipeline reads it, so the
-            # toggle shows the state an upgrading user actually gets.
-            "outro": config.get("clips", {}).get("outro", True),
+            # Absent counts as OFF, matching how the pipeline reads it
+            # (video.outro.enabled), so the toggle shows what clips will get.
+            "outro": config.get("clips", {}).get("outro", False),
             "min_score": int(config.get("clips", {}).get("min_score", 55)),
             "youtube_cookies": ytdlp_common.cookies(),  # as the engine uses it: "", "firefox" or "file"
         }

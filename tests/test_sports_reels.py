@@ -374,6 +374,7 @@ def test_a_reel_is_made_again_into_its_own_row(tmp_path, db, monkeypatch):
         return True
 
     monkeypatch.setattr(outro, "finish", finish)
+    on = {"clips": {"outro": True}}  # off by default; this is about the reel's one card
     db.upsert_video("vid", title="A match")
     clips = []
     for i, t in enumerate((1000, 2000)):
@@ -390,19 +391,19 @@ def test_a_reel_is_made_again_into_its_own_row(tmp_path, db, monkeypatch):
     def rows():
         return {Path(r["path"]).relative_to(tmp_path).as_posix(): r for r in db.clips_for_video("vid")}
 
-    made = pipeline._sport_reels(db, "vid", recap, clips, tmp_path, {})
+    made = pipeline._sport_reels(db, "vid", recap, clips, tmp_path, on)
     assert [m.path.name for m in made] == ["reel_recap.mp4"] and abs(made[0].candidate.end - 6.0) < 0.2
     assert cards == ["reel_recap.mp4"] and not list(tmp_path.glob("*.pre-card.mp4"))
     assert abs(reels.duration(made[0].path) - 6.0) < 0.6
 
     # The same clips again: made again into its row and file, one more card.
     db.set_clip(rows()["reel_recap.mp4"]["id"], title="My title")
-    assert pipeline._sport_reels(db, "vid", recap, clips, tmp_path, {}) == []
+    assert pipeline._sport_reels(db, "vid", recap, clips, tmp_path, on) == []
     assert list(rows()) == ["reel_recap.mp4"] and rows()["reel_recap.mp4"]["title"] == "My title"
     assert cards == ["reel_recap.mp4"] * 2
 
     # Longform's 16:9 reel: a row of its own, its profile marking it Longform.
-    wide = pipeline._sport_reels(db, "vid", recap, clips, tmp_path / "Longform", {},
+    wide = pipeline._sport_reels(db, "vid", recap, clips, tmp_path / "Longform", on,
                                  start=0.011, opts={"profile": "short_clips"})
     assert len(wide) == 1 and wide[0].candidate.start == 0.011
     assert json.loads(rows()["Longform/reel_recap.mp4"]["render_opts"]) == {"profile": "short_clips", "reel": "recap"}
@@ -414,7 +415,7 @@ def test_a_reel_is_made_again_into_its_own_row(tmp_path, db, monkeypatch):
             Segment(start=2000.5, end=2004.0, text="and SURNAME scores"),
             Segment(start=2002.0, end=2010.0, text="Player C, after the whistle")]
     named = SimpleNamespace(option={"reels": ["players"], "teams": "Surname, Player C"}, report_data={})
-    made = pipeline._sport_reels(db, "vid", named, clips, tmp_path, {}, said)
+    made = pipeline._sport_reels(db, "vid", named, clips, tmp_path, on, said)
     assert [m.candidate.hook for m in made] == ["Surname: the match"]
     player = rows()[made[0].path.name]
     assert json.loads(player["render_opts"]) == {"reel": "player", "of": "Surname"}

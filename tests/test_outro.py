@@ -204,11 +204,11 @@ def test_spec_bundles_the_prebuilt_cards():
 
 
 # ---------------------------------------------------------------- the setting
-def test_absent_setting_means_on():
-    """Existing users have no `outro:` line. They must get it on upgrade, and
-    anyone who turned it off must keep it off."""
-    assert outro.enabled({}) is True
-    assert outro.enabled({"clips": {}}) is True
+def test_absent_setting_means_off():
+    """The end card is something a creator turns on: no `outro:` line means
+    none, and only `outro: true` adds it."""
+    assert outro.enabled({}) is False
+    assert outro.enabled({"clips": {}}) is False
     assert outro.enabled({"clips": {"outro": True}}) is True
     assert outro.enabled({"clips": {"outro": False}}) is False
 
@@ -243,7 +243,7 @@ def test_toggling_off_works_on_a_file_with_no_outro_line():
 
 def test_shipped_settings_yaml_has_the_key():
     cfg = yaml.safe_load((ROOT / "config" / "settings.yaml").read_text(encoding="utf-8"))
-    assert cfg["clips"]["outro"] is True
+    assert cfg["clips"]["outro"] is False
 
 
 def test_every_longform_mode_gets_a_card_by_construction():
@@ -384,6 +384,7 @@ def cfg(tmp_path):
     base = yaml.safe_load((ROOT / "config" / "settings.yaml").read_text(encoding="utf-8"))
     c = copy.deepcopy(base)
     c.setdefault("paths", {})["data_dir"] = str(tmp_path / "data")
+    c["clips"]["outro"] = True  # off by default; these are about the card itself
     return c
 
 

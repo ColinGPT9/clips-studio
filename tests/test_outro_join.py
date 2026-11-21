@@ -37,6 +37,8 @@ FMT = {
     "w": 1080, "h": 1920, "fps": 29.97, "rate": "30000/1001", "timescale": 30000,
     "pix_fmt": "yuv420p", "sample_rate": 48000, "channels": 2,
 }
+# The card is off by default; these tests are about how it is joined when on.
+ON = {"clips": {"outro": True}}
 
 
 # ---- the card's own encoding -------------------------------------------------
@@ -258,7 +260,7 @@ def test_append_joins_with_copyts_and_the_final_flags(monkeypatch, tmp_path):
     clip = tmp_path / "clip.mp4"
     clip.write_bytes(b"clip")
 
-    appended = outro.append(clip, {})
+    appended = outro.append(clip, ON)
     assert appended is True
     assert len(joins) == 1
     assert _join_shape(joins[0][0], tmp_path / ".clip.outro.mp4")
@@ -324,7 +326,7 @@ def test_a_late_start_never_costs_append_its_card(monkeypatch, tmp_path):
         clip = tmp_path / "clip.mp4"
         clip.write_bytes(b"clip")
 
-        appended = outro.append(clip, {})
+        appended = outro.append(clip, ON)
         assert appended is True
         assert [_kind(cmd) for cmd, _l in joins] == ["copyts", "final"]
         assert clip.read_bytes() == b"made by ffmpeg: " + kept
@@ -391,7 +393,7 @@ def test_longforms_join_starts_the_video_at_0_too(monkeypatch, tmp_path):
     source, out = tmp_path / "stream.mp4", tmp_path / "Longform" / "highlights.mp4"
     source.write_bytes(b"stream")
 
-    assert longform.assemble(source, [(0.0, 5.0), (9.0, 12.0)], out, "vid", config={}) == out
+    assert longform.assemble(source, [(0.0, 5.0), (9.0, 12.0)], out, "vid", config=ON) == out
     assert len(joins) == 1
     cmd, listing = joins[0]
     assert _join_shape(cmd, out.resolve())

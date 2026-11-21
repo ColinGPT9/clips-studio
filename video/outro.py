@@ -4,8 +4,9 @@ Clip ends -> Clippy pounces on a ball of yarn -> "Clips Kitty" lands ->
 "Made with" / "Free & Open Source" -> hard cut. 2.9 seconds.
 
 This is organic marketing: a clip in someone's feed is the only distribution
-the app gets for free, so a viewer should be able to see what made it. ON by
-default, because a feature nobody enables markets nothing.
+the app gets for free, so a viewer should be able to see what made it. Off by
+default since the release after 2.1.0: it is the creator's choice, in
+Settings > Branding.
 
 Everything about the animation lives in this one file, so it can be redrawn
 later without the pipeline knowing. The pipeline's entire interface is
@@ -1063,9 +1064,10 @@ def _render(fmt: dict, dst: Path) -> None:
 
 
 def enabled(config: dict) -> bool:
-    """Absent means ON, so existing users get it on upgrade without their
-    settings.yaml being rewritten, and anyone who turned it off keeps it off."""
-    return bool(config.get("clips", {}).get("outro", True))
+    """Absent means OFF: the end card is something a creator turns on. An
+    install whose settings.yaml still says `outro: true` from when it was on
+    by default is switched off once (core.paths.end_card_off_once)."""
+    return bool(config.get("clips", {}).get("outro", False))
 
 
 # How long to keep trying the atomic rename before writing in place instead.

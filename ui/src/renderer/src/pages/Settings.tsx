@@ -737,12 +737,12 @@ function YouTubeCookiesSetting(): JSX.Element {
 }
 
 function BrandingCard(): JSX.Element {
-  const [outro, setOutro] = useState(true)
+  const [outro, setOutro] = useState(false)
 
   useEffect(() => {
     api
       .settings()
-      .then((s) => setOutro(s.outro !== false))
+      .then((s) => setOutro(s.outro === true))
       .catch(() => {})
   }, [])
 
