@@ -15,10 +15,10 @@
    "metrics": {
     "github": {
      "archived": false,
-     "discussions": 1,
+     "discussions": 4,
      "has_discussions": true,
-     "pushed_at": "2026-10-26",
-     "stars": 152
+     "pushed_at": "2026-11-16",
+     "stars": 272
     }
    },
    "name": "Clips Kitty MCP server and agent skill",
@@ -95,10 +95,10 @@
    "metrics": {
     "github": {
      "archived": false,
-     "discussions": 1,
+     "discussions": 4,
      "has_discussions": true,
-     "pushed_at": "2026-10-26",
-     "stars": 152
+     "pushed_at": "2026-11-16",
+     "stars": 272
     }
    },
    "name": "Clips Kitty SDK for Python",
@@ -125,7 +125,7 @@
   }
  ],
  "format": 1,
- "metrics_at": "2026-10-26",
+ "metrics_at": "2026-11-16",
  "plugins": [
   {
    "added": "2026-10-07",
@@ -163,10 +163,10 @@
    "metrics": {
     "github": {
      "archived": false,
-     "discussions": 1,
+     "discussions": 4,
      "has_discussions": true,
-     "pushed_at": "2026-10-26",
-     "stars": 152
+     "pushed_at": "2026-11-16",
+     "stars": 272
     }
    },
    "name": "Loud moments, cut on scene changes (example)",
@@ -284,7 +284,8 @@
     "funny_dialogue",
     "roleplay",
     "reaction",
-    "milestone"
+    "milestone",
+    "viewer_nominated"
    ],
    "execution": "local",
    "games": [
@@ -298,14 +299,14 @@
     "moments"
    ],
    "kind": "pipeline",
-   "latest": "0.4.1",
+   "latest": "0.5.3",
    "license": "MIT",
    "metrics": {
     "github": {
      "archived": false,
      "has_discussions": false,
-     "pushed_at": "2026-10-26",
-     "stars": 1
+     "pushed_at": "2026-10-28",
+     "stars": 4
     }
    },
    "name": "Grand Theft Auto 6 Clips Kitty Plugin",
@@ -321,8 +322,7 @@
     "video.read",
     "transcript.read",
     "ffmpeg",
-    "ollama",
-    "twitch.context.read"
+    "ollama"
    ],
    "publisher": "colingpt9",
    "relationship": "built-for",
@@ -345,6 +345,10 @@
    "section": "gaming/grand-theft-auto",
    "sends": [],
    "settings": {
+    "dialogue_review_minutes": {
+     "title": "Maximum minutes for optional model review per invocation",
+     "type": "number"
+    },
     "enabled_categories": {
      "title": "Categories separated by commas; leave empty for all",
      "type": "string"
@@ -411,6 +415,20 @@
     }
    },
    "versions": [
+    {
+     "commit": "20fa9e761c4343f0cf023f211ae7f4e8ac689f53",
+     "permissions": [
+      "video.read",
+      "transcript.read",
+      "ffmpeg",
+      "ollama"
+     ],
+     "requires": {
+      "clips_kitty": ">=2.1.0",
+      "plugin_api": 1
+     },
+     "version": "0.5.3"
+    },
     {
      "commit": "f1176c632acec146be70b60568e7c7b88abe286d",
      "permissions": [
