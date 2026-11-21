@@ -133,11 +133,14 @@ To ship something stable users must not be pulled onto, upload it as
 
 ### The website's download buttons name the version
 
-All nine "Download for Windows" buttons across `site/` link to
-`releases/download/v<version>/ClipsStudio-Web-Setup-<version>.exe`, so **they
-have to be bumped with the version**. The CI website job checks that internal
-paths resolve; it cannot tell that an external GitHub URL now points at a
-release that does not exist.
+Every "Download for Windows" button across `site/` points to
+`releases/download/v<version>/ClipsKitty-Web-Setup-<version>.exe` and must
+be updated when `ui/package.json` changes. The CI website job runs
+`python scripts/check_site_downloads.py`, which checks **all** buttons
+against that version (both the release tag and the installer filename) and
+fails on missing or stale links. The check is local and does not require the
+release to be published yet. It does not verify that the asset has actually
+been uploaded to GitHub: that still belongs in the post-publish checks.
 
 The two pages hosted on Vercel carry the version as well: `VERSION` in
 `whop-app/lib/content.ts` (the Whop page) and in `web/lib/content.ts` (Clips
