@@ -760,7 +760,7 @@ function EntryCard({
         <span className="font-semibold">{entry.name}</span>
         <p className="text-xs text-muted">
           {t(RELATIONSHIP_LABELS[entry.relationship] ?? entry.relationship)}
-          {entry.uses ? ` · ${t(entry.uses === 'both' ? 'uses the API and the SDK' : entry.uses === 'sdk' ? 'uses the SDK' : 'uses the local API')}` : ''}
+          {entry.uses ? ` · ${t(entry.uses === 'both' ? 'uses the API and the SDK' : entry.uses === 'sdk' ? 'uses the SDK' : entry.uses === 'code' ? 'built from Clips Kitty’s code' : 'uses the local API')}` : ''}
           {entry.runs ? ` · ${t(entry.runs === 'local' ? 'runs locally' : entry.runs === 'cloud' ? 'runs online' : 'local or online')}` : ''}
         </p>
       </div>
