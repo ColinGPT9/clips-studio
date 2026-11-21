@@ -44,6 +44,10 @@ fixed were often broken in a way that only showed up on somebody else's machine.
 
 ### Changed
 
+- **The Clips Kitty end card is now off by default.** Clips no longer end with the
+  2.9-second card unless you want it. If it was on, this update switches it off once.
+  To add it again, tick **Add the Clips Kitty end card to every clip** in Settings ›
+  Branding, and it stays on.
 - Plugin local-model requests now share their requested timeout between checking
   model capabilities and generating an answer. A capability check that uses the
   budget no longer starts another full-length request.

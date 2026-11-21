@@ -262,7 +262,7 @@ def test_a_vertical_live_clip_still_ends_with_the_clips_kitty_card(pipeline, tmp
                     "-f", "lavfi", "-i", "sine=sample_rate=48000", "-t", "6", "-c:v", "libx264",
                     "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(source)], check=True)
     config = _config(tmp_path, vertical_live=True)
-    del config["clips"]["outro"]  # the app's default: the end card is on
+    config["clips"]["outro"] = True  # off by default; switched on in Settings > Branding
     outro.reset_tally()
     final, _opts = pipeline._render_files(source, ClipCandidate(start=0.5, end=4.0, score=80), [],
                                           tmp_path / "clips", config)

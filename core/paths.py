@@ -7,6 +7,7 @@ made the rule impossible to test without a GPU-sized environment.
 """
 
 import os
+import re
 import shutil
 import stat
 import sys
@@ -124,7 +125,50 @@ def user_config_path(bundled: Path) -> Path:
             # failed with anyway, rather than this function inventing a new one.
             return bundled
 
+    end_card_off_once(user_copy)
     return user_copy
+
+
+# Beside an installed build's own settings.yaml once its end card has been
+# switched off for the new default (end_card_off_once).
+END_CARD_OFF_MARKER = "end-card-switched-off.txt"
+
+
+def end_card_off_once(settings: Path) -> bool:
+    """Switch the end card off once in an existing install's own settings.
+
+    The end card is off by default from the release after 2.1.0. An installed
+    build reads its own copy of settings.yaml, seeded from the one it first
+    shipped with, and copies seeded since 1.2.0 say `outro: true`. The new
+    default alone would leave all of them adding the card, so that one value is
+    set to false here, once. The marker beside the file records that it was
+    done, so turning the card back on in Settings afterwards sticks.
+
+    Only the value changes: comments, line endings and every other setting are
+    kept as they are. Returns True when the file was changed. A file that
+    can't be read or written is left alone, and tried again at the next start.
+    """
+    marker = settings.with_name(END_CARD_OFF_MARKER)
+    if marker.exists():
+        return False
+    try:
+        text = settings.read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    # Indented: clips.outro, never a top-level key of the same name.
+    new, n = re.subn(r"(?im)^([^\S\n]+outro:[^\S\n]*)(?:true|yes|on)\b", r"\g<1>false", text, count=1)
+    try:
+        if n:
+            tmp = settings.with_name(settings.name + ".end-card-off.tmp")
+            tmp.write_bytes(new.encode("utf-8"))
+            os.replace(tmp, settings)
+        marker.write_text(
+            "Clips Kitty switched the end card off here once, when it stopped being on by\n"
+            "default. Settings > Branding turns it back on, and that choice is kept.\n",
+            encoding="utf-8")
+    except OSError:
+        return False
+    return bool(n)
 
 
 def safe_name(name: str) -> str | None:
